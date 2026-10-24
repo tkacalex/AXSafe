@@ -24,7 +24,7 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_LIMIT_PROCESS_MEMORY,
 };
 use windows_sys::Win32::System::Threading::{
-    OpenThread, ResumeThread, CREATE_NO_WINDOW, CREATE_SUSPENDED, THREAD_SUSPEND_RESUME,
+    OpenThread, ResumeThread, CREATE_SUSPENDED, DETACHED_PROCESS, THREAD_SUSPEND_RESUME,
 };
 
 pub(crate) struct Contained {
@@ -84,7 +84,11 @@ impl Contained {
                 return Err(e);
             }
 
-            cmd.creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW);
+            // DETACHED_PROCESS statt CREATE_NO_WINDOW: ohne Konsole entsteht
+            // kein conhost.exe, das sonst im Job mitgezählt würde und als
+            // „verbliebener Nachkomme“ erschiene (auf dem Windows-Runner
+            // beobachtet). Ein-/Ausgabe läuft ohnehin über Pipes.
+            cmd.creation_flags(CREATE_SUSPENDED | DETACHED_PROCESS);
             let mut child = match cmd.spawn() {
                 Ok(c) => c,
                 Err(e) => {
@@ -132,7 +136,14 @@ impl Contained {
 
     /// Nach dem Ende des Hauptprozesses: noch aktive Prozesse im Job beenden.
     pub(crate) fn terminate_descendants(&mut self) -> bool {
-        let active = self.active_processes();
+        // Die Job-Buchhaltung kann dem Prozessende kurz nachlaufen: bis zu
+        // 100 ms auf 0 aktive Prozesse warten, bevor Nachkommen angenommen werden.
+        let mut active = self.active_processes();
+        let until = std::time::Instant::now() + std::time::Duration::from_millis(100);
+        while active > 0 && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            active = self.active_processes();
+        }
         if active > 0 {
             self.terminate_tree();
             true

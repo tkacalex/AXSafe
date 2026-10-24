@@ -66,6 +66,8 @@ def main() -> int:
     ap.add_argument("--require-none-ignored", action="store_true")
     ap.add_argument("--markdown", type=Path)
     a = ap.parse_args()
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
 
     out = [f"### Testergebnis – {a.platform}", ""]
     bad = False

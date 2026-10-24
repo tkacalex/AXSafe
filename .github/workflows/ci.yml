@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo test --workspace --locked -- --include-ignored 2>&1 | tee cargo-test.log
+          cargo test --workspace --locked --no-fail-fast -- --include-ignored 2>&1 | tee cargo-test.log
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: ui/global.json
@@ -195,7 +195,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo test --workspace --locked 2>&1 | tee cargo-test.log
+          cargo test --workspace --locked --no-fail-fast 2>&1 | tee cargo-test.log
       - name: Windows-Symlink-Test (benötigt Administrator; Runner läuft als Administrator)
         shell: bash
         run: |
