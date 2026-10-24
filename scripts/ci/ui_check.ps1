@@ -78,3 +78,4 @@ finally {
 }
 if ($failures.Count -gt 0) { Write-Host "$($failures.Count) UI-Prüfung(en) fehlgeschlagen."; exit 1 }
 Write-Host "Alle UI-Prüfungen bestanden."
+exit 0

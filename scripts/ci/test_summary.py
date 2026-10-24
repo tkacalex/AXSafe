@@ -38,7 +38,12 @@ def parse_cargo(text: str):
         if r:
             for i in range(3):
                 totals[i] += int(r.group(i + 1))
-    return passed, failed, ignored, totals
+    # Ein Test, der in einem gezielten Folgelauf ausgeführt wurde (z. B. der
+    # Windows-Symlink-Test mit --ignored), zählt nicht mehr als ausgelassen.
+    ran = set(passed) | set(failed)
+    still = [(n, w) for n, w in ignored if n not in ran]
+    totals[2] -= len(ignored) - len(still)
+    return passed, failed, still, totals
 
 
 def parse_trx(folder: Path):
