@@ -72,7 +72,7 @@
     "AXS-011": {
       "status": "teilweise",
       "where": "crates/*/src, crates/axsafe-cli/tests",
-      "evidence": "Jeder Scanpfad hat Positiv-, Gutartig- und Ausfalltest; Tests mit externer Vorbedingung sind #[ignore = Grund] und in Linux-CI Pflicht (--include-ignored, Abbruch bei Auslassung); Testzusammenfassung zählt bestanden/fehlgeschlagen/ausgelassen getrennt; 89 Rust- und 16 C#-Tests lokal unter Linux als Nicht-root mit ClamAV 1.5.4 bestanden",
+      "evidence": "Jeder Scanpfad hat Positiv-, Gutartig- und Ausfalltest; Tests mit Vorbedingung #[ignore = Grund], Linux-CI führt alle aus und duldet keine Auslassung; getrennte Zählung; Linux-CI 98 Rust + 16 C# bestanden, 0 ausgelassen; Windows Server 90 + 16 bestanden, 6 begründet ausgelassen",
       "rest": "Windows-Integrationstests auf Windows 10 LTSC (B-02, B-10)"
     },
     "AXS-012": {
@@ -82,16 +82,16 @@
       "rest": "automatischer Paketvergleich zwischen Releases"
     },
     "AXS-013": {
-      "status": "begonnen",
-      "where": "ui/AXSafe.Desktop/app.manifest",
-      "evidence": "UI asInvoker; Engines als getrennte Prozesse unter axsafe-proc: Windows Job Object (Kill-on-close, kein Breakaway, Speicher-/Prozessgrenze), Unix Prozessgruppe + RLIMIT_AS; gemeinsames Ablaufdatum",
-      "rest": "P02: Worker mit eingeschränktem Token/AppContainer ohne Netz (B-05)"
+      "status": "teilweise",
+      "where": "crates/axsafe-worker, crates/axsafe-proc, docs/adr/ADR-0006-worker-isolation.md",
+      "evidence": "YARA-X läuft im Scanworker: Windows AppContainer ohne Fähigkeiten + Job Object (1 Prozess, Speicher, Zeit), Linux Landlock; Probe weist nach, dass Schreiben, Anlegen, TCP und Programmstart scheitern (Windows Server CI und Linux); Worker ohne AppContainer wird abgelehnt; UI asInvoker",
+      "rest": "Typerkennung und ClamAV noch ohne AppContainer; Dienst mit minimalen Rechten (P02 Schritt 2); LTSC-Nachweis (B-02)"
     },
     "AXS-015": {
       "status": "teilweise",
       "where": "crates/axsafe-core/src/verdict.rs, report.rs",
       "evidence": "Berichtsschema v2: Fund (detection) und Prüflücken (gaps) je Objekt getrennt, Ergebnis detection_incomplete, Zählinvariante; CLI, Client und WPF synchron; Kombinationen getestet",
-      "rest": "UI-Assertions auf Windows 10 LTSC (B-10)"
+      "rest": "UI-Assertions auf Windows Server bestanden (CI); Windows 10 LTSC offen (B-10)"
     },
     "AXS-016": {
       "status": "begonnen",
@@ -114,14 +114,14 @@
     "AXS-021": {
       "status": "teilweise",
       "where": "crates/axsafe-engine-clamav",
-      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen)",
-      "rest": "B-05 isolierter Worker (P02), Windows-Laufzeitnachweis der Job Objects in CI, LTSC (B-02)"
+      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen); YARA-X-Worker: Absturz/Hänger/Protokollbruch bleiben im Worker, Neustart beim nächsten Objekt (Windows Server und Linux getestet)",
+      "rest": "ClamAV im AppContainer; LTSC (B-02)"
     },
     "AXS-022": {
       "status": "teilweise",
       "where": "crates/axsafe-engine-yarax, rules/",
-      "evidence": "Pflichtmetadaten, Mindestversion, Zeitlimit; Regelbestand nur Testregeln wird als test_only gemeldet und in UI/CLI unübersehbar angezeigt",
-      "rest": "Regelsignatur (P04), produktiver Regelbestand, Speicherlimit"
+      "evidence": "Pflichtmetadaten, Mindestversion, Zeitlimit; Regelbestand nur Testregeln wird als test_only gemeldet und in UI/CLI unübersehbar angezeigt; Speichergrenze des Workers (Job-Commit bzw. RLIMIT_AS) getestet",
+      "rest": "Regelsignatur (P04), produktiver Regelbestand"
     },
     "AXS-023": {
       "status": "teilweise",
@@ -144,8 +144,8 @@
     "AXS-028": {
       "status": "begonnen",
       "where": "crates/axsafe-core",
-      "evidence": "Scanner liest nur; PE-Parser übersteht jede Kürzung",
-      "rest": "Fuzzing"
+      "evidence": "Scanner liest nur; PE-Parser übersteht jede Kürzung; Worker-Protokoll prüft Rahmengrößen vor dem Allokieren",
+      "rest": "Fuzzing; Typerkennung in den Worker verlagern"
     },
     "AXS-085": {
       "status": "begonnen",
@@ -168,7 +168,7 @@
     "AXS-088": {
       "status": "begonnen",
       "where": "ui/AXSafe.Desktop",
-      "evidence": "Start, Abbruch, Fehler, Teilresultat sichtbar; auf Windows-Runner per --scan belegt",
+      "evidence": "Start, Abbruch, Fehler, Teilresultat sichtbar; UI-Automation-Prüfung auf Windows Server: Ergebnistext, Listenlänge und Zähler stimmen mit CLI-Bericht überein",
       "rest": "Bedientest auf Windows 10 LTSC, Tastatur, Screenreader, 125–200 % Skalierung (B-10)"
     },
     "AXS-089": {
@@ -182,6 +182,12 @@
       "where": "ui/AXSafe.Desktop",
       "evidence": "Deutsch, Status als Text, kein Konto, keine Uploads",
       "rest": "Bedientest auf Windows 10 LTSC, Tastatur, Screenreader, 125–200 % Skalierung (B-10)"
+    },
+    "AXS-014": {
+      "status": "geplant",
+      "where": "docs/adr/ADR-0006-worker-isolation.md",
+      "evidence": "IPC-Vertrag axsafe.ipc/1 entworfen",
+      "rest": "P02 Schritt 2: Dienst, Named Pipe mit ACL, Client-SID/Sitzung, Limits, Replay-Schutz"
     }
   },
   "tests": {
@@ -207,14 +213,17 @@
       "hang_is_timeout_within_budget",
       "orphan_holding_pipes_does_not_extend_call_and_is_flagged",
       "without_database_is_unavailable",
-      "parent_exits_but_descendant_holds_pipes"
+      "parent_exits_but_descendant_holds_pipes",
+      "crash_is_error_gap_and_worker_restarts",
+      "hanging_worker_is_timeout_and_killed_within_budget"
     ],
     "T-022": [
       "tests::eicar_positive",
       "tests::benign_counterexamples",
       "tests::timeout_is_reported_as_timeout",
       "tests::rule_without_required_meta_is_rejected",
-      "tests::repo_rules_are_marked_test_only"
+      "tests::repo_rules_are_marked_test_only",
+      "memory_hungry_worker_is_stopped_by_limit"
     ],
     "T-023": [
       "filetype::tests::renaming_does_not_change_type",
@@ -237,6 +246,11 @@
     "T-028": [
       "filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic",
       "scan::tests::fifo_does_not_block_and_is_gap"
+    ],
+    "T-013": [
+      "real_worker_is_isolated_and_scans",
+      "compromised_worker_cannot_touch_system_files_or_network",
+      "unsandboxed_worker_is_refused_on_windows"
     ]
   }
 }

@@ -1,0 +1,52 @@
+# Windows-CI-Lauf 40129436428 (Commit 3e0a9e0), windows-latest = Windows Server – KEIN Nachweis für Windows 10 LTSC
+
+### Testergebnis – Windows Server (windows-latest) – kein LTSC-Nachweis
+| Suite | bestanden | fehlgeschlagen | ausgelassen |
+| Rust (cargo test) | 90 | 0 | 6 |
+| C# (dotnet test) | 16 | 0 | 0 |
+- `both_engines_detect_eicar_with_real_clamav` – benötigt clamscan (Linux-CI: Pflicht)
+- `content_formats_are_backed_by_real_clamav` – benötigt clamscan (Linux-CI: Pflicht)
+- `harmless_archives_normal_encrypted_nested` – benötigt clamscan (Linux-CI: Pflicht)
+- `positive_benign_and_test_only_content` – benötigt clamscan (Linux-CI: Pflicht)
+- `recursion_limit_is_reported_as_gap` – benötigt clamscan (Linux-CI: Pflicht)
+- `without_database_is_unavailable` – benötigt clamscan (Linux-CI: Pflicht)
+Isolation: sandboxed_worker enforced=True – AppContainer ohne Fähigkeiten: kein Netzwerk, kein Zugriff auf Benutzerdateien; dazu Job Object (1 Prozess, Speicher- und Zeitgrenze); Probe: 5 verbotene Aktionen verweigert
+OK   Gesundheit zeigt 'Eingeschränkt' (nie grün ohne Dienst)
+OK   Hinweis 'nur Funktionstest-Regeln' auf der Übersicht sichtbar
+OK   Versionsanzeige passt zur CLI (ist: 'Vorversion 0.2')
+OK   Statuszeile nennt 'nur Testregeln'
+Alle UI-Prüfungen bestanden.
+Erwartung aus CLI: outcome=incomplete objects=4
+OK   Gesundheit zeigt 'Eingeschränkt' (nie grün ohne Dienst)
+OK   Versionsanzeige passt zur CLI (ist: 'Vorversion 0.2')
+OK   Statuszeile nennt 'nur Testregeln'
+OK   Ergebnistext passt zu outcome 'incomplete' (ist: 'Unvollständig: Einige Objekte oder Engines konnten nicht vollständig prüfen. Kein Fund im geprüften Teil.')
+OK   Ergebnisliste hat 4 Einträge (erwartet 4)
+OK   Zähler in der Zusammenfassung stimmen (ist: '4 Objekte · 3 gelesen · 0 mit Fund · 2 mit Prüflücke (davon 0 mit Fund) · 2 ohne Fund vollständig · 65 Bytes · 1 ms')
+Alle UI-Prüfungen bestanden.
+
+## Worker-Tests (AppContainer)
+test report_target_equal_to_scan_object_is_refused_and_unchanged ... ok
+test report_target_windows_symlink_is_refused ... ignored, benötigt Recht zum Anlegen symbolischer Links (Windows-CI: Administrator)
+test report_via_junction_into_scan_root_is_excluded_and_junction_target_refused ... ok
+test crash_is_error_gap_and_worker_restarts ... ok
+test memory_hungry_worker_is_stopped_by_limit ... ok
+test hanging_worker_is_timeout_and_killed_within_budget ... ok
+test missing_worker_and_bad_rules_are_unavailable ... ok
+test compromised_worker_cannot_touch_system_files_or_network ... ok
+test unsandboxed_worker_is_refused_on_windows ... ok
+test real_worker_is_isolated_and_scans ... ok
+test repeated_crashes_disable_engine_instead_of_looping ... ok
+test protocol_violations_are_errors ... ok
+test filetype::tests::renaming_does_not_change_type ... ok
+test identity::tests::appended_file_is_changed ... ok
+test verdict::tests::detection_beats_gap_but_change_beats_all ... ok
+test crash_is_error_gap ... ok
+test hang_is_timeout_within_budget ... ok
+test crash_is_not_success ... ok
+test breakaway_from_job_is_denied_and_tree_is_killed ... ok
+test memory_limit_stops_large_allocation ... ok
+test hanging_process_hits_shared_deadline ... ok
+test memory_limit_allows_normal_allocation ... ok
+test protocol::tests::roundtrip_and_limits ... ok
+test report_target_windows_symlink_is_refused ... ok

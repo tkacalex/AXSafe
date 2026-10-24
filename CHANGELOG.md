@@ -4,7 +4,19 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
-Noch nichts.
+### Neu – Phase P02, Schritt 1: isolierter Scanworker
+- **YARA-X läuft jetzt in einem abgeschotteten Worker-Prozess** (`axsafe-worker`). Er bekommt nur Regeltexte und Dateibytes, nie Pfade.
+  - Windows: **AppContainer ohne Fähigkeiten** (kein Netzwerk, kein Zugriff auf Benutzerdateien) im **Job Object** (1 Prozess, Speichergrenze, Kill-on-close). Ohne AppContainer verweigert der Worker die Arbeit.
+  - Linux (Entwicklung): Selbstbeschränkung mit **Landlock** (kein Dateizugriff, kein Programmstart, kein TCP).
+  - Die Abschottung wird bei jedem Start **nachgewiesen**: Lese-, Schreib-, Anlege-, Verbindungs- und Startversuche müssen scheitern. Auf Windows Server (CI) und Linux belegt; Windows 10 LTSC offen.
+  - Absturz, Hänger, Speicherüberschreitung und Protokollbruch bleiben im Worker, werden als Lücke gemeldet; der Worker wird beim nächsten Objekt neu gestartet, nach wiederholten Ausfällen abgeschaltet.
+- `axsafe engines` und die Oberfläche zeigen je Engine die **Isolation** (Art, nachgewiesen, Einzelheiten).
+- Oberfläche zeigt die Version aus dem Programm statt fest „0.1“ (vom UI-Screenshot aufgedeckt); UI-Prüfung vergleicht sie mit der CLI.
+
+### Behoben (nur durch echte Windows-Läufe sichtbar)
+- Jeder ClamAV-Aufruf galt unter Windows als „hinterließ Nachkommen“: `conhost.exe` zählte im Job mit. Kindprozesse starten jetzt ohne Konsole (`DETACHED_PROCESS`).
+- Paralleler erster Start mehrerer Worker scheiterte mit „Datei nicht gefunden“, solange das AppContainer-Profil angelegt wurde: prozessübergreifend serialisiert.
+- Probeordner paralleler Engines konnten kollidieren.
 
 ## [0.2.0] – 2026-10-24 · Korrektur unabhängiger Befunde (Release-Entwurf, nicht veröffentlicht)
 

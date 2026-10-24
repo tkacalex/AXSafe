@@ -8,7 +8,7 @@
   <img alt="Plattform" src="https://img.shields.io/badge/Windows%2010%20LTSC%20%2F%2011-x64-3B82F6">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-1.97-22D3EE">
   <img alt=".NET" src="https://img.shields.io/badge/.NET-10%20WPF-818CF8">
-  <a href="docs/TEST-MATRIX.md"><img alt="Tests" src="https://img.shields.io/badge/Tests%20Linux-89%20Rust%20%2B%2016%20C%23%20bestanden%2C%200%20ausgelassen-34D399"></a>
+  <a href="docs/TEST-MATRIX.md"><img alt="Tests" src="https://img.shields.io/badge/Tests%20Linux-98%20Rust%20%2B%2016%20C%23%20bestanden%2C%200%20ausgelassen-34D399"></a>
 </p>
 
 <p align="center">
@@ -76,6 +76,7 @@ Viele Sicherheitsprogramme zeigen große grüne Schilde, egal was im Hintergrund
 | Ehrliche Ergebnisse: Fund und Prüflücke getrennt, JSON-Bericht (Schema v2) | Sichere automatische Updates (P04) |
 | Archive nur dann „geprüft“, wenn eine Engine den Inhalt nachweislich prüft; Passwort-ZIP → *verschlüsselt* (mit ClamAV) | Web-, Phishing- und Netzwerkschutz (P10) |
 | Engines laufen mit hartem Zeit-, Speicher- und Ausgabelimit | Echte eigene Erkennungsregeln (heute nur Funktionstest) |
+| YARA-X im **abgeschotteten Worker** (Windows: AppContainer ohne Netz und Dateizugriff) – Abschottung wird bei jedem Start nachgewiesen | Hintergrunddienst mit gesicherter Schnittstelle (P02, nächster Schritt) |
 | Deutsche Oberfläche im dunklen Design, kein Konto nötig | Selbstschutz und Windows-Sicherheitscenter (P11) |
 
 Die vollständige Liste je Dateiformat steht in der [Fähigkeitsmatrix](docs/CAPABILITY-MATRIX.md).
@@ -93,15 +94,15 @@ Was du hier siehst: AXSafe sagt zuerst ehrlich, **welche Regeln geladen sind** �
 <!-- UI-SCREENSHOTS:START -->
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/ui-overview.png" alt="AXSafe Übersicht: gelbes Banner 'Schutzstatus eingeschränkt', echte Engine-Zustände, Schutzmodule mit ehrlichem Stand"></td>
-    <td width="50%"><img src="docs/images/ui-scan.png" alt="AXSafe Virenscan: Ergebnisliste mit 'Ohne Fund' und 'Nicht geprüft' für eine Verknüpfung, ClamAV automatisch abgewählt, weil nicht installiert"></td>
+    <td width="50%"><img src="docs/images/ui-overview.png" alt="AXSafe 0.2 Übersicht: gelbes Banner 'Schutzstatus eingeschränkt', rotes Banner 'Nur Funktionstest-Regeln geladen', Engine-Zustände mit Regelbestand und Isolation"></td>
+    <td width="50%"><img src="docs/images/ui-scan.png" alt="AXSafe 0.2 Virenscan: Ergebnis 'Unvollständig', PDF als 'Containerinhalt nicht geprüft', Verknüpfung nicht verfolgt, Zähler für Fund und Prüflücke getrennt"></td>
   </tr>
   <tr>
-    <td><b>Übersicht</b> – kein grünes Fake-Schild: Der Status bleibt <i>eingeschränkt</i>, solange es keinen Echtzeitschutz gibt. Fehlende Module sind mit ihrer Phase markiert.</td>
-    <td><b>Virenscan</b> – ClamAV fehlt auf diesem Rechner und wird deshalb sichtbar abgewählt. Die Verknüpfung wird nicht verfolgt und erscheint als <i>nicht geprüft</i>.</td>
+    <td><b>Übersicht</b> – kein grünes Fake-Schild: Status <i>eingeschränkt</i>, und unübersehbar: <i>nur Funktionstest-Regeln geladen</i>. Jede Engine zeigt Bereitschaft, Regelbestand, Containerfähigkeit und Isolation getrennt.</td>
+    <td><b>Virenscan</b> – ClamAV fehlt hier und ist sichtbar abgewählt. Die PDF-Datei gilt deshalb als <i>Containerinhalt nicht geprüft</i>, die Verknüpfung wird nicht verfolgt – Ergebnis <i>unvollständig</i>, nicht „sauber“.</td>
   </tr>
 </table>
-<p align="center"><sub>Automatisch aufgenommen von der CI auf einem Windows-Runner (Windows Server, 1024×768) mit einem Ordner harmloser Testdateien.</sub></p>
+<p align="center"><sub>Automatisch aufgenommen von der CI auf einem Windows-Runner (Windows Server, 1024×768) mit einem Ordner harmloser Testdateien. Die angezeigten Werte werden im selben Lauf per UI Automation gegen das CLI-Ergebnis geprüft.</sub></p>
 <!-- UI-SCREENSHOTS:END -->
 
 ## Schnellstart
@@ -166,7 +167,8 @@ Durchgezogen = vorhanden, gestrichelt = geplant. Details: [Bedrohungsmodell](doc
 crates/axsafe-core           Ergebnismodell, Dateiidentität, Typerkennung, Scan, Bericht
 crates/axsafe-engine-yarax   YARA-X-Adapter (eigene Regeln in rules/)
 crates/axsafe-engine-clamav  ClamAV-Adapter (clamscan, stdin, ohne TCP)
-crates/axsafe-proc           Kindprozesse mit Ablaufdatum, Speicher-/Ausgabegrenze, Job Object
+crates/axsafe-proc           Kindprozesse mit Ablaufdatum, Speicher-/Ausgabegrenze, Job Object, AppContainer
+crates/axsafe-worker         isolierter Scanworker (YARA-X) und Host-Adapter, Abschottungsnachweis
 crates/axsafe-cli            Kommandozeile axsafe
 ui/AXSafe.Client             Auftrag, Berichtsprüfung, Modell (plattformneutral, getestet)
 ui/AXSafe.Desktop            WPF-Oberfläche (.NET 10)
@@ -182,8 +184,8 @@ docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 | Status | Anzahl |
 | --- | ---: |
 | ✅ erfüllt | 0 |
-| 🟢 teilweise belegt | 10 |
-| 🔵 begonnen | 13 |
+| 🟢 teilweise belegt | 11 |
+| 🔵 begonnen | 12 |
 | 📝 Entwurf | 5 |
 | ⛔ blockiert | 1 |
 | ⚪ geplant | 71 |
@@ -194,7 +196,7 @@ docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 | Phase | Inhalt | Stand |
 | --- | --- | --- |
 | P00–P01 | Ziele, Plattform, Labor, Build, CI | 🔵 in Arbeit |
-| P02–P03 | Dienst, IPC, Erkennungskern | 🔵 Kern und Adapter begonnen |
+| P02–P03 | Dienst, IPC, Erkennungskern | 🔵 Scanworker abgeschottet (AppContainer/Landlock); Dienst und IPC offen |
 | P04–P05 | Updates, Quarantäne | ⚪ geplant |
 | P06–P10 | Sensorik, AMSI, Echtzeit, Ransomware, Web | ⚪ geplant |
 | P11–P15 | Selbstschutz, Cloud, UI, Nachweise, Release | 🔵 UI begonnen, Rest geplant |
@@ -237,4 +239,4 @@ Die Projektlizenz ist **noch nicht festgelegt** ([ADR-0003](docs/adr/ADR-0003-li
 
 **AXSafe** is an open-development, multi-layer endpoint protection project for **Windows 10 Enterprise LTSC 2021 / Windows 11 (x64)**, built with a Rust core and a German WPF (.NET 10) desktop UI.
 
-Its core idea is **honesty**: no green shield without evidence, every gap (encrypted, unsupported, access denied, timeout, engine error, changed during scan) is reported explicitly and never counted as "clean". The current **preview 0.2** is an *on-demand scanner* with YARA-X and ClamAV adapters, content-based file type detection, handle-based file identity and machine-readable JSON reports (schema v2: detections and coverage gaps reported side by side). Version 0.2 fixes eight independently reported findings (report overwrite, detection-plus-gap visibility, container coverage, engine timeouts with lingering child processes, report-to-job binding, empty scans, test-only rules, honest test counting). **The bundled rules are function tests only (EICAR) and detect no real malware. It is not real-time protection – keep Microsoft Defender enabled.** The full plan (16 phases, 100 requirements with acceptance tests) and its live status are in [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).
+Its core idea is **honesty**: no green shield without evidence, every gap (encrypted, unsupported, access denied, timeout, engine error, changed during scan) is reported explicitly and never counted as "clean". The current **preview 0.2** is an *on-demand scanner* with YARA-X and ClamAV adapters, content-based file type detection, handle-based file identity and machine-readable JSON reports (schema v2: detections and coverage gaps reported side by side). Version 0.2 fixes eight independently reported findings (report overwrite, detection-plus-gap visibility, container coverage, engine timeouts with lingering child processes, report-to-job binding, empty scans, test-only rules, honest test counting). YARA-X now runs in an isolated worker process (Windows: AppContainer without capabilities inside a Job Object; Linux: Landlock), and the isolation is verified at every start by denied write/network/process probes. **The bundled rules are function tests only (EICAR) and detect no real malware. It is not real-time protection – keep Microsoft Defender enabled.** The full plan (16 phases, 100 requirements with acceptance tests) and its live status are in [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).
