@@ -6,13 +6,19 @@
 
 #![allow(unsafe_code)]
 
-use crate::Limits;
-use std::io;
+use crate::{Limits, Sandbox};
+use std::io::{self, Read, Write};
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, ExitStatus};
 
+pub(crate) type Stdio3 = (
+    Option<Box<dyn Write + Send>>,
+    Option<Box<dyn Read + Send>>,
+    Option<Box<dyn Read + Send>>,
+);
+
 pub(crate) struct Contained {
-    pub(crate) child: Child,
+    child: Child,
     pgid: libc::pid_t,
     status: Option<ExitStatus>,
 }
@@ -43,6 +49,43 @@ impl Contained {
             pgid,
             status: None,
         })
+    }
+
+    /// Unix kennt keinen AppContainer; die Rechtebeschränkung übernimmt der
+    /// Worker selbst (Landlock). `Sandbox::AppContainer` ist hier ein Fehler.
+    pub(crate) fn spawn_sandboxed(
+        cmd: &mut Command,
+        limits: &Limits,
+        sandbox: &Sandbox,
+    ) -> io::Result<Self> {
+        match sandbox {
+            Sandbox::None => Self::spawn(cmd, limits),
+            Sandbox::AppContainer { .. } => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "AppContainer gibt es nur unter Windows",
+            )),
+        }
+    }
+
+    pub(crate) fn take_stdio(&mut self) -> Stdio3 {
+        (
+            self.child
+                .stdin
+                .take()
+                .map(|x| Box::new(x) as Box<dyn Write + Send>),
+            self.child
+                .stdout
+                .take()
+                .map(|x| Box::new(x) as Box<dyn Read + Send>),
+            self.child
+                .stderr
+                .take()
+                .map(|x| Box::new(x) as Box<dyn Read + Send>),
+        )
+    }
+
+    pub(crate) fn pid(&self) -> u32 {
+        self.child.id()
     }
 
     /// Prüft ohne Einsammeln, ob der Hauptprozess beendet ist.

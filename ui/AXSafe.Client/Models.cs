@@ -64,15 +64,25 @@ public sealed class EngineInfo
     [JsonPropertyName("content_kind")] public string ContentKind { get; set; } = "unknown";
     [JsonPropertyName("content_note")] public string ContentNote { get; set; } = "";
     [JsonPropertyName("inspects_contents_of")] public List<string> InspectsContentsOf { get; set; } = new();
+    [JsonPropertyName("isolation")] public IsolationInfo Isolation { get; set; } = new();
 
     [JsonIgnore] public bool Ready => Health.State == "ready";
     [JsonIgnore] public bool TestOnly => ContentKind == "test_only";
     [JsonIgnore] public string ReadinessLabel => Ready ? "bereit" : "nicht verfügbar";
     [JsonIgnore] public string ContentLabel => Texts.ContentKind(ContentKind);
+    [JsonIgnore] public string IsolationLabel => Texts.Isolation(Isolation);
+
     [JsonIgnore]
     public string ContainerLabel => InspectsContentsOf.Count == 0
         ? "keine (nur Rohbytes)"
         : string.Join(", ", InspectsContentsOf);
+}
+
+public sealed class IsolationInfo
+{
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "in_process";
+    [JsonPropertyName("enforced")] public bool Enforced { get; set; }
+    [JsonPropertyName("detail")] public string Detail { get; set; } = "";
 }
 
 public sealed class EngineHealth
@@ -160,6 +170,14 @@ public static class Texts
         "official_signatures" => "offizielle Signaturen",
         "custom_signatures" => "eigene Signaturen",
         _ => "unbekannt",
+    };
+
+    public static string Isolation(IsolationInfo i) => (i.Kind, i.Enforced) switch
+    {
+        ("sandboxed_worker", true) => "abgeschotteter Worker (nachgewiesen)",
+        ("sandboxed_worker", false) => "Worker – Abschottung NICHT nachgewiesen",
+        ("child_process", _) => "eigener Prozess mit Grenzen, Rechte des Benutzers",
+        _ => "im AXSafe-Prozess, Rechte des Benutzers",
     };
 
     public static string GapReason(string r) => r switch

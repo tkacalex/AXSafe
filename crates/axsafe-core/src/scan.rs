@@ -653,6 +653,7 @@ mod tests {
                 content_kind: ContentKind::TestOnly,
                 content_note: "Test".into(),
                 inspects_contents_of: self.caps.clone(),
+                isolation: crate::engine::Isolation::in_process(),
             }
         }
         fn scan(&self, input: &ScanInput<'_>) -> EngineOutcome {

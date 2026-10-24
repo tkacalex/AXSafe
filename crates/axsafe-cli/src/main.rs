@@ -12,11 +12,12 @@
 
 mod report_target;
 
-use axsafe_core::engine::{ContentKind, Engine, EngineHealth, EngineInfo};
+use axsafe_core::engine::{ContentKind, Engine, EngineHealth, EngineInfo, IsolationKind};
 use axsafe_core::report::{FileResult, ObjectStatus, ScanLimits, ScanReport};
 use axsafe_core::scan::{Progress, Scanner};
 use axsafe_engine_clamav::{ClamAvConfig, ClamAvEngine};
 use axsafe_engine_yarax::YaraXEngine;
+use axsafe_worker::host::{WorkerConfig, WorkerEngine};
 use clap::{Parser, Subcommand};
 use report_target::ReportTarget;
 use std::path::PathBuf;
@@ -45,6 +46,13 @@ struct EngineArgs {
     /// Verzeichnis mit YARA-X-Regeln (*.yar). Standard: ./rules oder <exe>/rules
     #[arg(long)]
     rules: Option<PathBuf>,
+    /// Pfad zum isolierten Scanworker. Standard: axsafe-worker neben axsafe
+    #[arg(long)]
+    worker: Option<PathBuf>,
+    /// YARA-X ohne isolierten Worker im eigenen Prozess ausführen (Diagnose;
+    /// wird in der Isolationsangabe sichtbar ausgewiesen)
+    #[arg(long)]
+    yara_in_process: bool,
     /// ClamAV nicht verwenden (Umfang wird im Bericht entsprechend kleiner)
     #[arg(long)]
     no_clamav: bool,
@@ -115,11 +123,28 @@ fn default_rules_dir() -> PathBuf {
     cwd
 }
 
-fn build_engines(a: &EngineArgs) -> Vec<Box<dyn Engine>> {
+fn default_worker() -> PathBuf {
+    let name = format!("axsafe-worker{}", std::env::consts::EXE_SUFFIX);
+    std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join(&name)))
+        .unwrap_or_else(|| PathBuf::from(name))
+}
+
+fn build_engines(a: &EngineArgs, max_scan_bytes: Option<u64>) -> Vec<Box<dyn Engine>> {
     let mut v: Vec<Box<dyn Engine>> = Vec::new();
-    v.push(Box::new(YaraXEngine::from_dir(
-        a.rules.clone().unwrap_or_else(default_rules_dir),
-    )));
+    let rules_dir = a.rules.clone().unwrap_or_else(default_rules_dir);
+    if a.yara_in_process {
+        v.push(Box::new(YaraXEngine::from_dir(rules_dir)));
+    } else {
+        // P02: YARA-X läuft im isolierten Worker (AppContainer/Landlock).
+        let rules = axsafe_engine_yarax::read_rule_sources(&rules_dir);
+        let mut cfg = WorkerConfig::new(a.worker.clone().unwrap_or_else(default_worker), rules);
+        if let Some(m) = max_scan_bytes {
+            cfg.max_scan_bytes = m;
+        }
+        v.push(Box::new(WorkerEngine::start(cfg)));
+    }
     if !a.no_clamav {
         let mut cfg = ClamAvConfig::default();
         if let Some(p) = &a.clamscan {
@@ -167,6 +192,16 @@ fn print_engines(infos: &[EngineInfo]) {
                 .join(", ")
         };
         println!("                    Containerinhalte: {caps}");
+        let iso = match (i.isolation.kind, i.isolation.enforced) {
+            (IsolationKind::SandboxedWorker, true) => "abgeschotteter Worker (nachgewiesen)",
+            (IsolationKind::SandboxedWorker, false) => "Worker, Abschottung NICHT nachgewiesen",
+            (IsolationKind::ChildProcess, _) => "eigener Prozess mit Grenzen, Rechte des Benutzers",
+            (IsolationKind::InProcess, _) => "im AXSafe-Prozess, Rechte des Benutzers",
+        };
+        println!(
+            "                    Isolation: {iso} – {}",
+            i.isolation.detail
+        );
     }
     let ready: Vec<&EngineInfo> = infos
         .iter()
@@ -259,7 +294,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Cmd::Engines { engines, json } => {
-            let engines = build_engines(&engines);
+            let engines = build_engines(&engines, None);
             let infos: Vec<EngineInfo> = engines.iter().map(|e| e.info()).collect();
             if json {
                 match serde_json::to_string_pretty(&infos) {
@@ -327,7 +362,8 @@ fn main() -> ExitCode {
                 "AXSafe {} – Vorversion. Kein Echtzeitschutz. Bitte bisherigen Virenschutz aktiv lassen.",
                 axsafe_core::AXSAFE_VERSION
             );
-            let engines = build_engines(&engines);
+            let engines =
+                build_engines(&engines, Some(max_file_size_mb.saturating_mul(1024 * 1024)));
             let limits = ScanLimits {
                 max_file_size: max_file_size_mb.saturating_mul(1024 * 1024),
                 engine_timeout_ms: timeout_ms.unwrap_or_else(|| timeout_secs.saturating_mul(1000)),

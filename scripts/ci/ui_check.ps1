@@ -51,6 +51,9 @@ try {
         # Der Hinweis steht auf der Übersicht; beim Direktscan ist die Prüfseite aktiv.
         Check (WaitFor { $t = Find $win 'TestRulesTitle'; $t -and -not $t.Current.IsOffscreen -and $t.Current.Name -like '*FUNKTIONSTEST*' } 30) "Hinweis 'nur Funktionstest-Regeln' auf der Übersicht sichtbar"
     }
+    $cliVer = ((& $Cli --version) -replace '[^0-9.]', '').Split('.')
+    $verText = (Find $win 'VersionText').Current.Name
+    Check ($verText -eq "Vorversion $($cliVer[0]).$($cliVer[1])") "Versionsanzeige passt zur CLI (ist: '$verText')"
     $detail = Find $win 'HealthDetail'
     Check ($null -ne $detail -and $detail.Current.Name -like '*nur Testregeln*') "Statuszeile nennt 'nur Testregeln'"
 

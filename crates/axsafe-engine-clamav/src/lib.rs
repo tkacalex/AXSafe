@@ -495,6 +495,19 @@ impl Engine for ClamAvEngine {
             content_kind: self.content_kind,
             content_note: self.content_note.clone(),
             inspects_contents_of: VERIFIED_CONTENT_FORMATS.to_vec(),
+            isolation: axsafe_core::engine::Isolation {
+                kind: axsafe_core::engine::IsolationKind::ChildProcess,
+                // Grenzen (Zeit, Speicher, Prozessbaum) ja, Rechtebeschränkung nein.
+                enforced: false,
+                detail: if cfg!(windows) {
+                    "eigener Prozess im Job Object (Zeit, Speicher, Prozessbaum begrenzt), \
+                     aber mit den Rechten des Benutzers"
+                } else {
+                    "eigener Prozess in eigener Prozessgruppe (Zeit, Speicher begrenzt), \
+                     aber mit den Rechten des Benutzers"
+                }
+                .into(),
+            },
         }
     }
 

@@ -154,6 +154,10 @@ public sealed class ClientTests : IDisposable
         Assert.True(y.Ready);
         Assert.True(y.TestOnly);
         Assert.Equal("keine (nur Rohbytes)", y.ContainerLabel);
+        // P02: YARA-X läuft im abgeschotteten Worker, Nachweis per Probe.
+        Assert.Equal("sandboxed_worker", y.Isolation.Kind);
+        Assert.True(y.Isolation.Enforced, y.Isolation.Detail);
+        Assert.Equal("abgeschotteter Worker (nachgewiesen)", y.IsolationLabel);
     }
 
     // --- Validierung mit gezielt verfälschten Berichten -------------------

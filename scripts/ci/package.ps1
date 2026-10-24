@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 
 # CLI in Unterordner: Windows unterscheidet axsafe.exe und AXSafe.exe nicht.
 New-Item -ItemType Directory "$Dist/cli/rules" -Force | Out-Null
-Copy-Item target/release/axsafe.exe "$Dist/cli/"
+Copy-Item target/release/axsafe.exe, target/release/axsafe-worker.exe "$Dist/cli/"
 Copy-Item -Recurse rules/* "$Dist/cli/rules/"
 if (-not (Test-Path "$Dist/AXSafe.dll")) { throw "Oberfläche fehlt im Paket" }
 Copy-Item README.md, CHANGELOG.md, SECURITY.md $Dist

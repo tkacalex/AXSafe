@@ -27,7 +27,21 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+mod session;
 mod sys;
+
+pub use session::{Session, SessionError};
+
+/// Rechtebeschränkung für einen Kindprozess (zusätzlich zu den [`Limits`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Sandbox {
+    /// Keine Rechtebeschränkung (nur Grenzen).
+    None,
+    /// Windows: AppContainer ohne Fähigkeiten – kein Netzwerk, kein Zugriff
+    /// auf Benutzerdateien, nur Lesezugriff auf System- und freigegebene
+    /// Dateien. Der Profilname bestimmt die AppContainer-SID.
+    AppContainer { profile: String },
+}
 
 /// Grenzen für einen Kindprozess.
 #[derive(Debug, Clone)]
@@ -143,12 +157,13 @@ pub fn run(mut cmd: Command, stdin: Option<Vec<u8>>, limits: &Limits) -> io::Res
     .stderr(Stdio::piped());
 
     let mut contained = sys::Contained::spawn(&mut cmd, limits)?;
+    let (child_in, child_out, child_err) = contained.take_stdio();
     let (tx, rx) = mpsc::channel();
 
     let mut stdin_done = stdin.is_none();
     let mut stdin_ok = true;
     if let Some(data) = stdin {
-        let mut pipe = contained.child.stdin.take().expect("stdin piped");
+        let mut pipe = child_in.expect("stdin piped");
         let tx = tx.clone();
         std::thread::spawn(move || {
             let ok = pipe.write_all(&data).is_ok();
@@ -157,13 +172,13 @@ pub fn run(mut cmd: Command, stdin: Option<Vec<u8>>, limits: &Limits) -> io::Res
         });
     }
     reader(
-        contained.child.stdout.take().expect("stdout piped"),
+        child_out.expect("stdout piped"),
         limits.max_output_bytes,
         tx.clone(),
         Event::Stdout,
     );
     reader(
-        contained.child.stderr.take().expect("stderr piped"),
+        child_err.expect("stderr piped"),
         limits.max_output_bytes,
         tx.clone(),
         Event::Stderr,

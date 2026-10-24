@@ -171,6 +171,45 @@ pub struct EngineInfo {
     pub content_note: String,
     /// Formate, deren Inhalt die Engine nachweislich prüft.
     pub inspects_contents_of: Vec<ContentFormat>,
+    /// Wo und wie abgeschottet die Engine läuft (AXS-013, P02).
+    #[serde(default)]
+    pub isolation: Isolation,
+}
+
+/// Ausführungsort einer Engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IsolationKind {
+    /// Im Prozess des Aufrufers, mit dessen Rechten.
+    #[default]
+    InProcess,
+    /// Eigener Kindprozess mit Zeit-, Speicher- und Prozessbaumgrenzen,
+    /// aber mit den Rechten des Aufrufers.
+    ChildProcess,
+    /// Eigener Worker-Prozess mit Grenzen UND eingeschränkten Rechten
+    /// (Windows: AppContainer ohne Fähigkeiten; Linux: Landlock).
+    SandboxedWorker,
+}
+
+/// Isolationsstand einer Engine, so wie er zur Laufzeit festgestellt wurde.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Isolation {
+    pub kind: IsolationKind,
+    /// `true` nur, wenn die Rechtebeschränkung zur Laufzeit nachgewiesen
+    /// wurde (z. B. Schreib- und Verbindungsversuch scheiterten).
+    pub enforced: bool,
+    /// Verständliche Beschreibung, inkl. bekannter Grenzen.
+    pub detail: String,
+}
+
+impl Isolation {
+    pub fn in_process() -> Self {
+        Isolation {
+            kind: IsolationKind::InProcess,
+            enforced: false,
+            detail: "läuft im AXSafe-Prozess mit den Rechten des Benutzers".into(),
+        }
+    }
 }
 
 /// Vertrag für Engineadapter.

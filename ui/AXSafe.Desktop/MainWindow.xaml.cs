@@ -22,6 +22,10 @@ public partial class MainWindow : Window
 
     private sealed record InfoPage(string Title, string State, string Now, string Needed, string Limit);
 
+    /// <summary>Version aus der Assembly (Major.Minor), nie hart kodiert.</summary>
+    private static readonly string AppVersion =
+        typeof(MainWindow).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}" : "unbekannt";
+
     private static readonly Dictionary<string, InfoPage> Pages = new()
     {
         ["realtime"] = new("Echtzeitschutz", "Nicht verfügbar · geplant in Phase P08",
@@ -51,7 +55,7 @@ public partial class MainWindow : Window
         ["settings"] = new("Einstellungen", "Nur Anzeige",
             "", "Einstellbare Policies mit Rollen und Audit folgen mit dem Dienst (AXS-017).",
             "Standardbenutzer können keine globalen Ausnahmen setzen."),
-        ["help"] = new("Hilfe", "AXSafe Vorversion 0.1",
+        ["help"] = new("Hilfe", $"AXSafe Vorversion {AppVersion}",
             "AXSafe ist ein Open-Development-Projekt für einen ehrlichen, mehrschichtigen Windows-Schutz. Diese Vorversion ist ein Datei-Scanner auf Anforderung.",
             "Installation: axsafe.exe und den Ordner 'rules' in den Unterordner 'cli' neben AXSafe.exe legen. Optional ClamAV installieren. Projekt und Doku: github.com/tkacalex/AXSafe",
             "Kein Antivirus erkennt jede Schadsoftware. Lass Microsoft Defender aktiv."),
@@ -72,6 +76,7 @@ public partial class MainWindow : Window
             await RunCommandLineScanAsync();
         };
         ReportsDirText.Text = $"Ablage: {CliLocator.ReportsDir}";
+        VersionText.Text = $"Vorversion {AppVersion}";
     }
 
     /// <summary>

@@ -231,6 +231,13 @@ jobs:
           dist/AXSafe/cli/axsafe.exe --version
           dist/AXSafe/cli/axsafe.exe engines --no-clamav --rules dist/AXSafe/cli/rules
           if ($LASTEXITCODE -ne 0) { throw "Engines nicht bereit" }
+          # P02: YARA-X muss im AppContainer-Worker laufen, Abschottung per Probe belegt.
+          $e = dist/AXSafe/cli/axsafe.exe engines --json --no-clamav --rules dist/AXSafe/cli/rules | ConvertFrom-Json
+          $y = $e | Where-Object name -eq 'yara-x'
+          Write-Host "Isolation: $($y.isolation.kind) enforced=$($y.isolation.enforced) – $($y.isolation.detail)"
+          if ($y.health.state -ne 'ready' -or $y.isolation.kind -ne 'sandboxed_worker' -or -not $y.isolation.enforced) {
+            throw "Scanworker nicht nachweislich abgeschottet"
+          }
       - name: Releaseinventar prüfen (T-012; Testregel bewusst freigegeben für Vorversion)
         run: python scripts/check_release_inventory.py dist/AXSafe --allow-test-rules --require-notices --inventory dist/inventory.json
       - name: Bildschirmauflösung für UI-Prüfung und Screenshots

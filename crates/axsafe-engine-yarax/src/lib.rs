@@ -50,6 +50,14 @@ pub struct YaraXEngine {
     rules_dir: PathBuf,
 }
 
+/// Kennzahlen eines geladenen Regelsatzes (für den Worker-Handshake).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RuleStats {
+    pub content_version: String,
+    pub rule_count: usize,
+    pub test_rule_count: usize,
+}
+
 fn collect_rule_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)?.collect::<Result<_, _>>()?;
     entries.sort_by_key(|e| e.path());
@@ -111,7 +119,42 @@ fn version_tuple(v: &str) -> Option<(u32, u32, u32)> {
     Some((it.next()??, it.next()??, it.next()??))
 }
 
-fn load(dir: &Path) -> Result<Loaded, String> {
+/// Regelbestand verständlich beschreiben (Befund 7): nur Testregeln werden
+/// unübersehbar als solche ausgewiesen.
+pub fn describe_content(st: &RuleStats) -> (ContentKind, String) {
+    if st.test_rule_count == st.rule_count {
+        (
+            ContentKind::TestOnly,
+            format!(
+                "nur Funktionstest-Regeln ({} von {}), z. B. EICAR – damit wird keine echte \
+                 Schadsoftware erkannt",
+                st.test_rule_count, st.rule_count
+            ),
+        )
+    } else {
+        (
+            ContentKind::Production,
+            format!(
+                "{} Regeln, davon {} produktiv und {} Funktionstest",
+                st.rule_count,
+                st.rule_count - st.test_rule_count,
+                st.test_rule_count
+            ),
+        )
+    }
+}
+
+/// Eine Regeldatei als Text (für den isolierten Worker, der selbst keine
+/// Dateien lesen darf).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RuleSource {
+    /// Relativer Pfad mit `/` (geht in die Inhaltsversion ein).
+    pub path: String,
+    pub text: String,
+}
+
+/// Liest alle `*.yar` rekursiv und sortiert. Fehler sind beschreibend.
+pub fn read_rule_sources(dir: &Path) -> Result<Vec<RuleSource>, String> {
     let mut files = Vec::new();
     collect_rule_files(dir, &mut files)
         .map_err(|e| format!("Regelverzeichnis {} nicht lesbar: {e}", dir.display()))?;
@@ -121,8 +164,7 @@ fn load(dir: &Path) -> Result<Loaded, String> {
             dir.display()
         ));
     }
-    let mut hasher = Sha256::new();
-    let mut compiler = yara_x::Compiler::new();
+    let mut out = Vec::with_capacity(files.len());
     for f in &files {
         let src = std::fs::read(f).map_err(|e| format!("{}: {e}", f.display()))?;
         let rel = f
@@ -130,14 +172,31 @@ fn load(dir: &Path) -> Result<Loaded, String> {
             .unwrap_or(f)
             .to_string_lossy()
             .replace('\\', "/");
-        hasher.update(rel.as_bytes());
-        hasher.update([0]);
-        hasher.update(&src);
-        hasher.update([0]);
         let text = String::from_utf8(src).map_err(|_| format!("{}: kein UTF-8", f.display()))?;
+        out.push(RuleSource { path: rel, text });
+    }
+    Ok(out)
+}
+
+fn load(dir: &Path) -> Result<Loaded, String> {
+    compile(&read_rule_sources(dir)?)
+}
+
+/// Kompiliert und validiert einen Regelsatz (fail closed).
+fn compile(sources: &[RuleSource]) -> Result<Loaded, String> {
+    if sources.is_empty() {
+        return Err("Regelsatz enthält keine Regeldateien".into());
+    }
+    let mut hasher = Sha256::new();
+    let mut compiler = yara_x::Compiler::new();
+    for src in sources {
+        hasher.update(src.path.as_bytes());
+        hasher.update([0]);
+        hasher.update(src.text.as_bytes());
+        hasher.update([0]);
         compiler
-            .add_source(text.as_str())
-            .map_err(|e| format!("{}: Kompilierfehler: {e}", f.display()))?;
+            .add_source(src.text.as_str())
+            .map_err(|e| format!("{}: Kompilierfehler: {e}", src.path))?;
     }
     let rules = compiler.build();
     let engine = version_tuple(YARAX_VERSION).expect("gültige Konstante");
@@ -190,6 +249,26 @@ impl YaraXEngine {
             loaded: load(&rules_dir),
             rules_dir,
         }
+    }
+
+    /// Kompiliert Regeln aus übergebenen Texten (Worker ohne Dateizugriff).
+    pub fn from_sources(sources: &[RuleSource]) -> Self {
+        YaraXEngine {
+            loaded: compile(sources),
+            rules_dir: PathBuf::new(),
+        }
+    }
+
+    /// Kennzahlen oder Ladefehler.
+    pub fn stats(&self) -> Result<RuleStats, String> {
+        self.loaded
+            .as_ref()
+            .map(|l| RuleStats {
+                content_version: l.content_version.clone(),
+                rule_count: l.rule_count,
+                test_rule_count: l.test_rule_count,
+            })
+            .map_err(|e| e.clone())
     }
 
     /// Anzahl geladener Regeln (0 bei Ladefehler).
@@ -251,24 +330,8 @@ impl Engine for YaraXEngine {
                 EngineHealth::Unavailable { reason: e.clone() },
             ),
         };
-        let (content_kind, content_note) = match &self.loaded {
-            Ok(l) if l.test_rule_count == l.rule_count => (
-                ContentKind::TestOnly,
-                format!(
-                    "nur Funktionstest-Regeln ({} von {}), z. B. EICAR – damit wird keine echte \
-                     Schadsoftware erkannt",
-                    l.test_rule_count, l.rule_count
-                ),
-            ),
-            Ok(l) => (
-                ContentKind::Production,
-                format!(
-                    "{} Regeln, davon {} produktiv und {} Funktionstest",
-                    l.rule_count,
-                    l.rule_count - l.test_rule_count,
-                    l.test_rule_count
-                ),
-            ),
+        let (content_kind, content_note) = match self.stats() {
+            Ok(st) => describe_content(&st),
             Err(_) => (ContentKind::Unknown, "Regelsatz nicht geladen".into()),
         };
         EngineInfo {
@@ -282,6 +345,7 @@ impl Engine for YaraXEngine {
             // YARA-X prüft die übergebenen Rohbytes; Containerinhalte werden
             // nicht entpackt (Befund 3).
             inspects_contents_of: Vec::new(),
+            isolation: axsafe_core::engine::Isolation::in_process(),
         }
     }
 

@@ -6,12 +6,31 @@
 
 #![allow(unsafe_code)]
 
-use crate::Limits;
-use std::io;
-use std::os::windows::io::AsRawHandle;
-use std::os::windows::process::CommandExt;
+use crate::{Limits, Sandbox};
+use std::ffi::OsStr;
+use std::fs::File;
+use std::io::{self, Read, Write};
+use std::os::windows::ffi::OsStrExt;
+use std::os::windows::io::{AsRawHandle, FromRawHandle};
+use std::os::windows::process::{CommandExt, ExitStatusExt};
 use std::process::{Child, Command, ExitStatus};
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, LocalFree, SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT,
+    INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
+};
+use windows_sys::Win32::Security::Authorization::{
+    GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W,
+    GRANT_ACCESS, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT, TRUSTEE_IS_SID, TRUSTEE_IS_WELL_KNOWN_GROUP,
+    TRUSTEE_W,
+};
+use windows_sys::Win32::Security::Isolation::{
+    CreateAppContainerProfile, DeriveAppContainerSidFromAppContainerName,
+};
+use windows_sys::Win32::Security::{
+    FreeSid, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE, PSECURITY_DESCRIPTOR, PSID,
+    SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES,
+};
+use windows_sys::Win32::Storage::FileSystem::{FILE_GENERIC_EXECUTE, FILE_GENERIC_READ};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
 };
@@ -23,17 +42,39 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOB_OBJECT_LIMIT_PROCESS_MEMORY,
 };
+use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
-    OpenThread, ResumeThread, CREATE_SUSPENDED, DETACHED_PROCESS, THREAD_SUSPEND_RESUME,
+    CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
+    InitializeProcThreadAttributeList, OpenThread, ResumeThread, UpdateProcThreadAttribute,
+    WaitForSingleObject, CREATE_SUSPENDED, DETACHED_PROCESS, EXTENDED_STARTUPINFO_PRESENT,
+    INFINITE, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
+    THREAD_SUSPEND_RESUME,
 };
 
+pub(crate) type Stdio3 = (
+    Option<Box<dyn Write + Send>>,
+    Option<Box<dyn Read + Send>>,
+    Option<Box<dyn Read + Send>>,
+);
+
+enum Proc {
+    Std(Child),
+    /// Selbst per CreateProcessW gestartet (AppContainer).
+    Raw {
+        process: HANDLE,
+        pid: u32,
+        stdio: Option<(File, File, File)>,
+    },
+}
+
 pub(crate) struct Contained {
-    pub(crate) child: Child,
+    proc: Proc,
     job: HANDLE,
     status: Option<ExitStatus>,
 }
 
-// SAFETY: Das Job-Handle wird nur von diesem Besitzer verwendet.
+// SAFETY: Job- und Prozess-Handle werden nur von diesem Besitzer verwendet.
 unsafe impl Send for Contained {}
 
 struct Handle(HANDLE);
@@ -51,39 +92,45 @@ fn last_err(what: &str) -> io::Error {
     io::Error::new(e.kind(), format!("{what}: {e}"))
 }
 
+fn create_job(limits: &Limits) -> io::Result<HANDLE> {
+    // SAFETY: dokumentierte Win32-Funktionen mit lokal initialisierten Strukturen.
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            return Err(last_err("CreateJobObjectW"));
+        }
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+        let mut flags =
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
+        if let Some(mem) = limits.max_memory_bytes {
+            flags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+            info.ProcessMemoryLimit = usize::try_from(mem).unwrap_or(usize::MAX);
+        }
+        if let Some(n) = limits.max_processes {
+            flags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+            info.BasicLimitInformation.ActiveProcessLimit = n.max(1);
+        }
+        info.BasicLimitInformation.LimitFlags = flags;
+        if SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        ) == 0
+        {
+            let e = last_err("SetInformationJobObject");
+            CloseHandle(job);
+            return Err(e);
+        }
+        Ok(job)
+    }
+}
+
 impl Contained {
     pub(crate) fn spawn(cmd: &mut Command, limits: &Limits) -> io::Result<Self> {
-        // SAFETY: Alle Aufrufe sind dokumentierte Win32-Funktionen mit
-        // gültigen Zeigern auf lokal initialisierte Strukturen.
+        let job = create_job(limits)?;
+        // SAFETY: gültiges Job-Handle; Kindprozess-Handle aus std.
         unsafe {
-            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-            if job.is_null() {
-                return Err(last_err("CreateJobObjectW"));
-            }
-            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-            let mut flags =
-                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
-            if let Some(mem) = limits.max_memory_bytes {
-                flags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY;
-                info.ProcessMemoryLimit = usize::try_from(mem).unwrap_or(usize::MAX);
-            }
-            if let Some(n) = limits.max_processes {
-                flags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
-                info.BasicLimitInformation.ActiveProcessLimit = n.max(1);
-            }
-            info.BasicLimitInformation.LimitFlags = flags;
-            if SetInformationJobObject(
-                job,
-                JobObjectExtendedLimitInformation,
-                &info as *const _ as *const core::ffi::c_void,
-                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            ) == 0
-            {
-                let e = last_err("SetInformationJobObject");
-                CloseHandle(job);
-                return Err(e);
-            }
-
             // DETACHED_PROCESS statt CREATE_NO_WINDOW: ohne Konsole entsteht
             // kein conhost.exe, das sonst im Job mitgezählt würde und als
             // „verbliebener Nachkomme“ erschiene (auf dem Windows-Runner
@@ -119,10 +166,45 @@ impl Contained {
                 }
             }
             Ok(Contained {
-                child,
+                proc: Proc::Std(child),
                 job,
                 status: None,
             })
+        }
+    }
+
+    /// Startet mit Rechtebeschränkung. Unter Windows: AppContainer ohne
+    /// Fähigkeiten (kein Netz, kein Zugriff auf Benutzerdateien), zusätzlich
+    /// im Job Object. Umgebung wird geerbt; Arbeitsordner ist System32.
+    pub(crate) fn spawn_sandboxed(
+        cmd: &mut Command,
+        limits: &Limits,
+        sandbox: &Sandbox,
+    ) -> io::Result<Self> {
+        match sandbox {
+            Sandbox::None => Self::spawn(cmd, limits),
+            Sandbox::AppContainer { profile } => spawn_appcontainer(cmd, limits, profile),
+        }
+    }
+
+    pub(crate) fn take_stdio(&mut self) -> Stdio3 {
+        match &mut self.proc {
+            Proc::Std(c) => (
+                c.stdin.take().map(|x| Box::new(x) as Box<dyn Write + Send>),
+                c.stdout.take().map(|x| Box::new(x) as Box<dyn Read + Send>),
+                c.stderr.take().map(|x| Box::new(x) as Box<dyn Read + Send>),
+            ),
+            Proc::Raw { stdio, .. } => match stdio.take() {
+                Some((i, o, e)) => (Some(Box::new(i)), Some(Box::new(o)), Some(Box::new(e))),
+                None => (None, None, None),
+            },
+        }
+    }
+
+    pub(crate) fn pid(&self) -> u32 {
+        match &self.proc {
+            Proc::Std(c) => c.id(),
+            Proc::Raw { pid, .. } => *pid,
         }
     }
 
@@ -130,7 +212,21 @@ impl Contained {
         if self.status.is_some() {
             return Ok(true);
         }
-        self.status = self.child.try_wait()?;
+        match &mut self.proc {
+            Proc::Std(c) => self.status = c.try_wait()?,
+            Proc::Raw { process, .. } => {
+                // SAFETY: gültiges Prozess-Handle.
+                unsafe {
+                    if WaitForSingleObject(*process, 0) == WAIT_OBJECT_0 {
+                        let mut code = 0u32;
+                        if GetExitCodeProcess(*process, &mut code) == 0 {
+                            return Err(last_err("GetExitCodeProcess"));
+                        }
+                        self.status = Some(ExitStatus::from_raw(code));
+                    }
+                }
+            }
+        }
         Ok(self.status.is_some())
     }
 
@@ -180,7 +276,19 @@ impl Contained {
 
     pub(crate) fn reap(&mut self) -> Option<ExitStatus> {
         if self.status.is_none() {
-            self.status = self.child.wait().ok();
+            match &mut self.proc {
+                Proc::Std(c) => self.status = c.wait().ok(),
+                Proc::Raw { process, .. } => {
+                    // SAFETY: gültiges Prozess-Handle; der Baum wurde vorher beendet.
+                    unsafe {
+                        WaitForSingleObject(*process, INFINITE);
+                        let mut code = 0u32;
+                        if GetExitCodeProcess(*process, &mut code) != 0 {
+                            self.status = Some(ExitStatus::from_raw(code));
+                        }
+                    }
+                }
+            }
         }
         self.status
     }
@@ -207,8 +315,338 @@ impl Drop for Contained {
         unsafe {
             TerminateJobObject(self.job, 1);
             CloseHandle(self.job);
+            if let Proc::Raw { process, .. } = &self.proc {
+                CloseHandle(*process);
+            }
         }
     }
+}
+
+fn wide(s: &OsStr) -> Vec<u16> {
+    s.encode_wide().chain(std::iter::once(0)).collect()
+}
+
+/// Quotet ein Argument nach den Regeln von CommandLineToArgvW.
+fn quote_arg(arg: &OsStr, out: &mut Vec<u16>) {
+    let a: Vec<u16> = arg.encode_wide().collect();
+    let needs = a.is_empty()
+        || a.iter()
+            .any(|&c| c == b' ' as u16 || c == b'\t' as u16 || c == b'"' as u16);
+    if !needs {
+        out.extend_from_slice(&a);
+        return;
+    }
+    out.push(b'"' as u16);
+    let mut backslashes = 0usize;
+    for &c in &a {
+        if c == b'\\' as u16 {
+            backslashes += 1;
+        } else {
+            if c == b'"' as u16 {
+                out.extend(std::iter::repeat_n(b'\\' as u16, backslashes * 2 + 1));
+            } else {
+                out.extend(std::iter::repeat_n(b'\\' as u16, backslashes));
+            }
+            backslashes = 0;
+            out.push(c);
+        }
+    }
+    out.extend(std::iter::repeat_n(b'\\' as u16, backslashes * 2));
+    out.push(b'"' as u16);
+}
+
+struct Sid(PSID);
+impl Drop for Sid {
+    fn drop(&mut self) {
+        // SAFETY: von CreateAppContainerProfile/Derive... geliefert.
+        unsafe {
+            FreeSid(self.0);
+        }
+    }
+}
+
+/// HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)
+const HR_ALREADY_EXISTS: i32 = 0x800700B7_u32 as i32;
+
+fn appcontainer_sid(profile: &str) -> io::Result<Sid> {
+    let name = wide(OsStr::new(profile));
+    let display = wide(OsStr::new("AXSafe Scanworker"));
+    let desc = wide(OsStr::new("AXSafe: isolierter Scanworker ohne Fähigkeiten"));
+    let mut sid: PSID = std::ptr::null_mut();
+    // SAFETY: gültige, nullterminierte Zeichenketten; sid wird von der API gesetzt.
+    unsafe {
+        let hr = CreateAppContainerProfile(
+            name.as_ptr(),
+            display.as_ptr(),
+            desc.as_ptr(),
+            std::ptr::null(),
+            0,
+            &mut sid,
+        );
+        if hr == HR_ALREADY_EXISTS {
+            let hr2 = DeriveAppContainerSidFromAppContainerName(name.as_ptr(), &mut sid);
+            if hr2 < 0 {
+                return Err(io::Error::other(format!(
+                    "DeriveAppContainerSidFromAppContainerName: HRESULT 0x{:08X}",
+                    hr2 as u32
+                )));
+            }
+        } else if hr < 0 {
+            return Err(io::Error::other(format!(
+                "CreateAppContainerProfile: HRESULT 0x{:08X}",
+                hr as u32
+            )));
+        }
+    }
+    Ok(Sid(sid))
+}
+
+/// Gibt dem AppContainer Lese-/Ausführrecht auf die Programmdatei (nötig,
+/// wenn das Programm nicht unter Program Files liegt). Fehler werden
+/// zurückgegeben; CreateProcess entscheidet danach endgültig.
+fn grant_read_execute(path: &OsStr, sid: &Sid) -> io::Result<()> {
+    let p = wide(path);
+    // SAFETY: dokumentierte Sicherheits-APIs; alle Zeiger lokal und gültig,
+    // zurückgegebene Puffer werden mit LocalFree freigegeben.
+    unsafe {
+        let mut old: *mut ACL = std::ptr::null_mut();
+        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let rc = GetNamedSecurityInfoW(
+            p.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut old,
+            std::ptr::null_mut(),
+            &mut sd,
+        );
+        if rc != 0 {
+            return Err(io::Error::from_raw_os_error(rc as i32));
+        }
+        let ea = EXPLICIT_ACCESS_W {
+            grfAccessPermissions: FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+            grfAccessMode: GRANT_ACCESS,
+            grfInheritance: NO_INHERITANCE,
+            Trustee: TRUSTEE_W {
+                pMultipleTrustee: std::ptr::null_mut(),
+                MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
+                TrusteeForm: TRUSTEE_IS_SID,
+                TrusteeType: TRUSTEE_IS_WELL_KNOWN_GROUP,
+                ptstrName: sid.0 as *mut u16,
+            },
+        };
+        let mut new: *mut ACL = std::ptr::null_mut();
+        let rc = SetEntriesInAclW(1, &ea, old, &mut new);
+        if rc != 0 {
+            LocalFree(sd as _);
+            return Err(io::Error::from_raw_os_error(rc as i32));
+        }
+        let rc = SetNamedSecurityInfoW(
+            p.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            new,
+            std::ptr::null(),
+        );
+        LocalFree(new as _);
+        LocalFree(sd as _);
+        if rc != 0 {
+            return Err(io::Error::from_raw_os_error(rc as i32));
+        }
+    }
+    Ok(())
+}
+
+/// Anonyme Pipe; `child_end_is_read` bestimmt, welches Ende vererbt wird.
+fn pipe(child_end_is_read: bool) -> io::Result<(HANDLE, HANDLE)> {
+    let sa = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: std::ptr::null_mut(),
+        bInheritHandle: 1,
+    };
+    let (mut r, mut w): (HANDLE, HANDLE) = (std::ptr::null_mut(), std::ptr::null_mut());
+    // SAFETY: gültige Ausgabezeiger; Handles werden vom Aufrufer verwaltet.
+    unsafe {
+        if CreatePipe(&mut r, &mut w, &sa, 0) == 0 {
+            return Err(last_err("CreatePipe"));
+        }
+        let (child, parent) = if child_end_is_read { (r, w) } else { (w, r) };
+        // Elternende nicht vererben.
+        if SetHandleInformation(parent, HANDLE_FLAG_INHERIT, 0) == 0 {
+            let e = last_err("SetHandleInformation");
+            CloseHandle(r);
+            CloseHandle(w);
+            return Err(e);
+        }
+        Ok((child, parent))
+    }
+}
+
+fn spawn_appcontainer(cmd: &Command, limits: &Limits, profile: &str) -> io::Result<Contained> {
+    let program = cmd.get_program().to_os_string();
+    let sid = appcontainer_sid(profile)?;
+    let grant = grant_read_execute(&program, &sid);
+
+    let mut cmdline: Vec<u16> = Vec::new();
+    quote_arg(&program, &mut cmdline);
+    for a in cmd.get_args() {
+        cmdline.push(b' ' as u16);
+        quote_arg(a, &mut cmdline);
+    }
+    cmdline.push(0);
+    let app = wide(&program);
+    let sysdir = std::env::var_os("SystemRoot")
+        .map(|r| {
+            let mut p = std::path::PathBuf::from(r);
+            p.push("System32");
+            p.into_os_string()
+        })
+        .unwrap_or_else(|| "C:\\Windows\\System32".into());
+    let cwd = wide(&sysdir);
+
+    let job = create_job(limits)?;
+    let mut owned: Vec<HANDLE> = Vec::new();
+    let cleanup = |owned: &mut Vec<HANDLE>| {
+        for h in owned.drain(..) {
+            // SAFETY: eigene, noch offene Handles.
+            unsafe {
+                CloseHandle(h);
+            }
+        }
+    };
+    let result = (|| -> io::Result<Contained> {
+        let (in_child, in_parent) = pipe(true)?;
+        owned.push(in_child);
+        owned.push(in_parent);
+        let (out_child, out_parent) = pipe(false)?;
+        owned.push(out_child);
+        owned.push(out_parent);
+        let (err_child, err_parent) = pipe(false)?;
+        owned.push(err_child);
+        owned.push(err_parent);
+
+        // SAFETY: dokumentierter Ablauf für STARTUPINFOEX mit Attributliste;
+        // Puffer und Strukturen leben bis nach CreateProcessW.
+        unsafe {
+            let mut size = 0usize;
+            InitializeProcThreadAttributeList(std::ptr::null_mut(), 2, 0, &mut size);
+            let mut buf = vec![0u8; size];
+            let list = buf.as_mut_ptr() as *mut core::ffi::c_void;
+            if InitializeProcThreadAttributeList(list, 2, 0, &mut size) == 0 {
+                return Err(last_err("InitializeProcThreadAttributeList"));
+            }
+            struct List(*mut core::ffi::c_void);
+            impl Drop for List {
+                fn drop(&mut self) {
+                    // SAFETY: initialisierte Attributliste.
+                    unsafe { DeleteProcThreadAttributeList(self.0) }
+                }
+            }
+            let _list_guard = List(list);
+            let caps = SECURITY_CAPABILITIES {
+                AppContainerSid: sid.0,
+                Capabilities: std::ptr::null_mut(),
+                CapabilityCount: 0,
+                Reserved: 0,
+            };
+            if UpdateProcThreadAttribute(
+                list,
+                0,
+                PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
+                &caps as *const _ as *const core::ffi::c_void,
+                std::mem::size_of::<SECURITY_CAPABILITIES>(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            ) == 0
+            {
+                return Err(last_err("UpdateProcThreadAttribute(SECURITY_CAPABILITIES)"));
+            }
+            // Nur genau die drei Pipe-Enden vererben.
+            let inherit = [in_child, out_child, err_child];
+            if UpdateProcThreadAttribute(
+                list,
+                0,
+                PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                inherit.as_ptr() as *const core::ffi::c_void,
+                std::mem::size_of_val(&inherit),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            ) == 0
+            {
+                return Err(last_err("UpdateProcThreadAttribute(HANDLE_LIST)"));
+            }
+            let mut si: STARTUPINFOEXW = std::mem::zeroed();
+            si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+            si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+            si.StartupInfo.hStdInput = in_child;
+            si.StartupInfo.hStdOutput = out_child;
+            si.StartupInfo.hStdError = err_child;
+            si.lpAttributeList = list;
+            let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
+            if CreateProcessW(
+                app.as_ptr(),
+                cmdline.as_mut_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                1,
+                EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | DETACHED_PROCESS,
+                std::ptr::null(),
+                cwd.as_ptr(),
+                &si.StartupInfo,
+                &mut pi,
+            ) == 0
+            {
+                let e = last_err("CreateProcessW (AppContainer)");
+                return Err(match &grant {
+                    Err(g) => io::Error::new(
+                        e.kind(),
+                        format!("{e}; Rechtevergabe an den AppContainer scheiterte vorher: {g}"),
+                    ),
+                    Ok(()) => e,
+                });
+            }
+            if AssignProcessToJobObject(job, pi.hProcess) == 0 {
+                let e = last_err("AssignProcessToJobObject");
+                TerminateJobObject(job, 1);
+                windows_sys::Win32::System::Threading::TerminateProcess(pi.hProcess, 1);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+                return Err(e);
+            }
+            ResumeThread(pi.hThread);
+            CloseHandle(pi.hThread);
+            // Kindenden schließen; Elternenden an File übergeben.
+            CloseHandle(in_child);
+            CloseHandle(out_child);
+            CloseHandle(err_child);
+            owned.clear();
+            let stdio = (
+                File::from_raw_handle(in_parent as _),
+                File::from_raw_handle(out_parent as _),
+                File::from_raw_handle(err_parent as _),
+            );
+            Ok(Contained {
+                proc: Proc::Raw {
+                    process: pi.hProcess,
+                    pid: pi.dwProcessId,
+                    stdio: Some(stdio),
+                },
+                job,
+                status: None,
+            })
+        }
+    })();
+    if result.is_err() {
+        cleanup(&mut owned);
+        // SAFETY: eigenes Job-Handle.
+        unsafe {
+            CloseHandle(job);
+        }
+    }
+    result
 }
 
 /// Setzt alle Threads des angehaltenen Prozesses fort (dokumentierte

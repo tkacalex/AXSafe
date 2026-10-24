@@ -12,6 +12,7 @@ axsafe-core = { path = "../axsafe-core" }
 yara-x = { workspace = true, features = ["constant-folding", "exact-atoms", "fast-regexp"] }
 sha2.workspace = true
 hex.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
