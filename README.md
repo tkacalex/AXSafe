@@ -143,8 +143,8 @@ docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 | Status | Anzahl |
 | --- | ---: |
 | ✅ erfüllt | 0 |
-| 🟢 teilweise belegt | 7 |
-| 🔵 begonnen | 16 |
+| 🟢 teilweise belegt | 9 |
+| 🔵 begonnen | 14 |
 | 📝 Entwurf | 5 |
 | ⛔ blockiert | 1 |
 | ⚪ geplant | 71 |

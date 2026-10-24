@@ -92,8 +92,30 @@ public partial class MainWindow : Window
 
     private Brush B(string key) => (Brush)FindResource(key);
 
+    private bool _clamavDecided;
+
+    private async void UseClamav_Click(object sender, RoutedEventArgs e)
+    {
+        _clamavDecided = true;
+        await RefreshEnginesAsync();
+    }
+
     private async Task RefreshEnginesAsync()
     {
+        // Beim ersten Start prüfen, ob ClamAV überhaupt vorhanden ist. Fehlt es,
+        // wird es abgewählt und der kleinere Prüfumfang sichtbar erklärt,
+        // statt jeden Scan mit „Fehler“ enden zu lassen.
+        if (!_clamavDecided && _cli.Available)
+        {
+            var probe = await _cli.GetEnginesAsync(true, CancellationToken.None);
+            var clamProbe = probe.FirstOrDefault(e => e.Name == "clamav");
+            if (clamProbe is not null && clamProbe.Health.State != "ready")
+            {
+                UseClamav.IsChecked = false;
+                ClamavHint.Visibility = Visibility.Visible;
+            }
+            _clamavDecided = true;
+        }
         var engines = _cli.Available
             ? await _cli.GetEnginesAsync(UseClamav.IsChecked == true, CancellationToken.None)
             : new List<EngineInfo>();
@@ -102,7 +124,9 @@ public partial class MainWindow : Window
 
         var yara = engines.FirstOrDefault(e => e.Name == "yara-x");
         var clam = engines.FirstOrDefault(e => e.Name == "clamav");
-        string EngState(EngineInfo? e) => e is null ? "nicht gefunden" : e.Health.State == "ready" ? "bereit" : "Fehler";
+        string EngState(EngineInfo? e) => e is null
+            ? (UseClamav.IsChecked == true ? "nicht gefunden" : "abgewählt")
+            : e.Health.State == "ready" ? "bereit" : "Fehler";
         Brush EngBrush(EngineInfo? e) => e?.Health.State == "ready" ? B("Green") : B("Red");
 
         ModuleList.ItemsSource = new List<ModuleState>

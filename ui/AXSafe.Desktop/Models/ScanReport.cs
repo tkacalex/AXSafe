@@ -49,6 +49,9 @@ public sealed class EngineHealth
 {
     [JsonPropertyName("state")] public string State { get; set; } = "unavailable";
     [JsonPropertyName("reason")] public string? Reason { get; set; }
+
+    [JsonIgnore]
+    public string StateLabel => State == "ready" ? "bereit" : "nicht verfügbar";
 }
 
 public sealed class FileResult

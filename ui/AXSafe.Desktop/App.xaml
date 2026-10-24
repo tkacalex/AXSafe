@@ -43,8 +43,10 @@
         <Geometry x:Key="ShieldGeometry">M 50,2 L 92,16 C 92,58 76,84 50,98 C 24,84 8,58 8,16 Z</Geometry>
         <Geometry x:Key="CheckGeometry">M 30,52 L 45,67 L 72,38</Geometry>
 
+        <!-- Kein Foreground im impliziten Stil: sonst überschreibt er auch Text in
+             Schaltflächen (z. B. den grauen Zustand deaktivierter Buttons). Die
+             Grundfarbe erbt sich vom Fenster. -->
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource Text}"/>
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
