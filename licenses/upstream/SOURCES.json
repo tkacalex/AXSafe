@@ -1,0 +1,29 @@
+{
+  "_hinweis": "Lizenzdateien für Crates, die im veröffentlichten Crate keine Lizenzdatei enthalten. Versionsgenau aus dem Upstream-Repository bezogen am 2026-10-24.",
+  "files": {
+    "yara-x-1.22.0-LICENSE": "https://raw.githubusercontent.com/VirusTotal/yara-x/v1.22.0/LICENSE",
+    "wasmtime-48.0.7-LICENSE": "https://raw.githubusercontent.com/bytecodealliance/wasmtime/v48.0.7/LICENSE",
+    "wasm-tools-1.245.1-LICENSE-Apache-2.0_WITH_LLVM-exception": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/v1.245.1/LICENSE-Apache-2.0_WITH_LLVM-exception",
+    "wasm-tools-1.245.1-LICENSE-APACHE": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/v1.245.1/LICENSE-APACHE",
+    "wasm-tools-1.245.1-LICENSE-MIT": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/v1.245.1/LICENSE-MIT"
+  },
+  "crates": {
+    "yara-x": ["yara-x-1.22.0-LICENSE"],
+    "yara-x-macros": ["yara-x-1.22.0-LICENSE"],
+    "yara-x-parser": ["yara-x-1.22.0-LICENSE"],
+    "cranelift-assembler-x64": ["wasmtime-48.0.7-LICENSE"],
+    "cranelift-bitset": ["wasmtime-48.0.7-LICENSE"],
+    "pulley-interpreter": ["wasmtime-48.0.7-LICENSE"],
+    "pulley-macros": ["wasmtime-48.0.7-LICENSE"],
+    "wasmtime-internal-component-util": ["wasmtime-48.0.7-LICENSE"],
+    "wasmtime-internal-core": ["wasmtime-48.0.7-LICENSE"],
+    "wasmtime-internal-jit-debug": ["wasmtime-48.0.7-LICENSE"],
+    "wasmtime-internal-jit-icache-coherence": ["wasmtime-48.0.7-LICENSE"],
+    "wasmtime-internal-versioned-export-macros": ["wasmtime-48.0.7-LICENSE"],
+    "wasm-encoder": ["wasm-tools-1.245.1-LICENSE-Apache-2.0_WITH_LLVM-exception", "wasm-tools-1.245.1-LICENSE-APACHE", "wasm-tools-1.245.1-LICENSE-MIT"],
+    "wasmparser": ["wasm-tools-1.245.1-LICENSE-Apache-2.0_WITH_LLVM-exception", "wasm-tools-1.245.1-LICENSE-APACHE", "wasm-tools-1.245.1-LICENSE-MIT"]
+  },
+  "no_upstream_notice": {
+    "ascii_tree": "Upstream (github.com/bpressure/ascii_tree) enthält keine Lizenzdatei; Crate-Metadaten: license = MIT, Autor d.maetzke@bpressure.net. MIT-Standardtext wird mitgeliefert; Copyright-Vermerk fehlt upstream (Blocker B-14)."
+  }
+}

@@ -56,3 +56,23 @@ if python3 "$ROOT/scripts/check_release_inventory.py" "$TMP/pkg-bad" >/dev/null;
 fi
 python3 "$ROOT/scripts/check_release_inventory.py" "$TMP/pkg-ok" >/dev/null || { echo "FEHLER: sauberes Paket abgelehnt"; exit 1; }
 echo "OK: Inventarprüfung unterscheidet sauberes und belastetes Paket"
+
+echo "== Selbsttest 4: Releaseinventar erkennt künstliches Schlüsselmaterial (Inhalt und Dateiname)"
+mkdir -p "$TMP/pkg-key" "$TMP/pkg-keyname"
+# Künstliches, ungültiges Schlüsselmaterial; Kopfzeile zur Laufzeit zusammengesetzt.
+python3 -c "import sys; h='-----BEGIN '+'PRIVATE '+'KEY-----'; open(sys.argv[1],'w').write(h+'\nTUlJQ2tnSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbWd3Z2dKa0FnRUFBb0dCQUxNTnVsbFRlc3Q=\n'+h.replace('BEGIN','END')+'\n')" "$TMP/pkg-key/config.txt"
+echo "kein schluessel" > "$TMP/pkg-keyname/signing.pem"
+for d in pkg-key pkg-keyname; do
+  if python3 "$ROOT/scripts/check_release_inventory.py" "$TMP/$d" >"$TMP/$d.txt"; then
+    echo "FEHLER: Inventarprüfung hat Schlüsselmaterial in $d NICHT erkannt"; exit 1
+  fi
+  grep -q "Schlüssel" "$TMP/$d.txt" || { echo "FEHLER: $d aus anderem Grund abgelehnt"; cat "$TMP/$d.txt"; exit 1; }
+done
+echo "OK: Schlüsselmaterial wird über Inhalt und Dateiendung erkannt"
+
+echo "== Selbsttest 5: Release-Prüfung verlangt Lizenzhinweise"
+if python3 "$ROOT/scripts/check_release_inventory.py" "$TMP/pkg-ok" --require-notices >"$TMP/n.txt"; then
+  echo "FEHLER: Paket ohne Lizenzhinweise wurde akzeptiert"; exit 1
+fi
+grep -q "Pflicht-Lizenzhinweis" "$TMP/n.txt" || { echo "FEHLER: unerwarteter Grund"; cat "$TMP/n.txt"; exit 1; }
+echo "OK: fehlende Lizenzhinweise werden abgelehnt"

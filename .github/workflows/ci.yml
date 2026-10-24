@@ -2,10 +2,17 @@ name: CI
 
 # AXS-007, AXS-010, AXS-011, AXS-012: reproduzierbar bauen, prüfen, testen.
 # Dieser Workflow hat KEINEN Zugriff auf Signierschlüssel oder Schreibrechte.
+#
+# Ehrliche Testzählung (Befund 8): Tests mit externer Vorbedingung tragen
+# #[ignore = "Grund"]. Unter Linux sind ALLE Vorbedingungen (ClamAV,
+# Nicht-root-Benutzer) Pflicht: Die Tests laufen mit --include-ignored, und
+# die Zusammenfassung scheitert, wenn trotzdem ein Test ausgelassen wurde.
+# Unter Windows werden ausgelassene Tests mit Grund separat ausgewiesen.
+# Hinweis: windows-latest ist Windows Server – KEIN Nachweis für Windows 10 LTSC.
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
@@ -24,26 +31,126 @@ env:
 
 jobs:
   linux:
-    name: Linux · Build, Tests, Lint
+    name: Linux · Build, Tests (inkl. ClamAV), Lint
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Rust-Toolchain aus rust-toolchain.toml
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - name: ClamAV installieren (für echte Integrationstests)
-        run: sudo apt-get update -q && sudo apt-get install -y -q clamav
+      - name: ClamAV installieren (Pflicht für echte Integrationstests)
+        run: sudo apt-get update -q && sudo apt-get install -y -q clamav && clamscan --version
+      - name: Testlauf ist nicht root (Pflicht für Zugriffsrechte-Test)
+        run: test "$(id -u)" != "0"
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy (Warnungen sind Fehler)
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Tests
-        run: cargo test --workspace --locked
+      - name: Tests (alle, auch mit externer Vorbedingung)
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --workspace --locked -- --include-ignored 2>&1 | tee cargo-test.log
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ui/global.json
+      - name: Oberflächen-Client gegen die echte CLI testen (xUnit)
+        run: |
+          cargo build --locked -p axsafe-cli
+          AXSAFE_CLI="$PWD/target/debug/axsafe" dotnet test ui/AXSafe.Client.Tests -p:RestoreLockedMode=true \
+            --logger "trx;LogFileName=client.trx" --results-directory trx
+      - name: Testzusammenfassung (bestanden / fehlgeschlagen / ausgelassen getrennt)
+        if: always()
+        run: |
+          python3 scripts/ci/test_summary.py --cargo cargo-test.log --dotnet trx \
+            --platform "Linux ubuntu-24.04, $(clamscan --version | cut -d/ -f1)" \
+            --require-none-ignored --markdown "$GITHUB_STEP_SUMMARY"
+      - name: WPF-Projekt baut (Windows-Ziel, ohne Ausführung)
+        run: dotnet build ui/AXSafe.Desktop -c Release -p:EnableWindowsTargeting=true
+      - name: Reproduktion der Befunde 2026-10-24 (Beleg)
+        run: |
+          bash scripts/repro/befunde_2026-10-24.sh "$PWD/target/debug/axsafe" "$PWD/rules" | tee repro-befunde.txt
+          grep -q "exit=3" repro-befunde.txt
+          grep -q "outcome=detection_incomplete" repro-befunde.txt
+          grep -q "outcome=nothing_scanned" repro-befunde.txt
       - name: Dokumentation synchron (Requirements, Quellen, Fortschritt)
         run: python3 scripts/gen_docs.py --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: belege-linux
+          path: |
+            cargo-test.log
+            trx/
+            repro-befunde.txt
+
+  clamav-signatures:
+    name: ClamAV · offizielle Signaturen und Updatepfad (eigener Nachweis)
+    # Befund 7: Signatur- und Updatepfad getrennt von den Testsignaturen belegen.
+    # Ist database.clamav.net vom Runner aus nicht erreichbar, wird das als
+    # „nicht ausführbar“ ausgewiesen (kein Bestehen); alle folgenden Prüfungen
+    # laufen nur mit echter offizieller Datenbank und sind dann Pflicht.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust-Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: ClamAV und FreshClam installieren
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q clamav clamav-freshclam
+          sudo systemctl stop clamav-freshclam || true
+      - name: Signaturen über FreshClam laden (Updatepfad)
+        id: fresh
+        continue-on-error: true
+        run: sudo freshclam --stdout 2>&1 | tee freshclam.log; test "${PIPESTATUS[0]}" = 0
+      - name: Ergebnis des Updatepfads festhalten
+        run: |
+          if [ "${{ steps.fresh.outcome }}" = "success" ]; then
+            echo "FreshClam: erfolgreich – offizielle Datenbank geladen" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "FreshClam: NICHT AUSFÜHRBAR (Netz/Spiegel) – offizieller Signaturpfad in diesem Lauf nicht belegt" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          ls -la /var/lib/clamav | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: AXSafe meldet offizielle Signaturen und erkennt Laufzeit-EICAR
+        if: steps.fresh.outcome == 'success'
+        run: |
+          cargo build --locked -p axsafe-cli
+          B=target/debug/axsafe
+          $B engines --json --rules rules > engines.json
+          python3 - <<'PY'
+          import json
+          e = {x["name"]: x for x in json.load(open("engines.json"))}
+          c = e["clamav"]
+          assert c["health"]["state"] == "ready", c["health"]
+          assert c["content_kind"] == "official_signatures", c["content_kind"]
+          print("ClamAV:", c["engine_version"], c["content_version"], "-", c["content_note"])
+          PY
+          D=$(mktemp -d)
+          python3 -c "import sys; open(sys.argv[1],'w').write('X5O!P%@AP[4\\\\PZX54(P^)7CC)7}\$'+'EICAR-STANDARD-ANTIVIRUS-TEST-FILE!\$H+H*')" "$D/probe.com"
+          echo "harmloser Brief" > "$D/brief.txt"
+          set +e; $B scan --timeout-ms 120000 --rules rules --json "$D.json" -- "$D"; rc=$?; set -e
+          python3 - "$D.json" "$rc" <<'PY'
+          import json, sys
+          r = json.load(open(sys.argv[1])); rc = int(sys.argv[2])
+          by = {f["path"].rsplit("/", 1)[-1]: f for f in r["files"]}
+          clam = lambda f: next(x for x in f["engines"] if x["engine"] == "clamav")
+          assert clam(by["probe.com"])["detections"], "offizielle Signatur erkennt EICAR nicht"
+          assert not clam(by["brief.txt"])["detections"], "Fehlalarm auf harmloser Datei"
+          print("Ergebnis:", r["outcome"], "Exit", rc, "– ClamAV-Fund:", clam(by["probe.com"])["detections"][0]["name"])
+          assert rc == 1 and r["outcome"] == "detection", (rc, r["outcome"])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beleg-clamav-signaturen
+          path: |
+            freshclam.log
+            engines.json
+          if-no-files-found: ignore
 
   supply-chain:
-    name: Lieferkette · cargo-deny, Gitleaks, SBOM
+    name: Lieferkette · cargo-deny, Gitleaks, SBOM, Lizenzhinweise
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -61,44 +168,63 @@ jobs:
         run: cargo deny --locked check
       - name: Geheimnissuche im gesamten Verlauf
         run: gitleaks detect --no-banner --source . --redact
-      - name: Selbsttest – Testgeheimnis und manipulierte Abhängigkeit müssen scheitern (T-010)
+      - name: Selbsttests – Testgeheimnis, manipulierte Abhängigkeit, EICAR, Schlüsselmaterial, fehlende Hinweise
         run: bash scripts/ci/selftest_supply_chain.sh
+      - name: Drittanbieter-Lizenzhinweise für die Windows-CLI (vollständig?)
+        run: python3 scripts/gen_third_party_notices.py x86_64-pc-windows-msvc THIRD-PARTY-NOTICES.txt
       - name: SBOM (CycloneDX)
         run: |
-          cargo cyclonedx --format json --all-features
+          cargo cyclonedx --format json --all-features --spec-version 1.5 --target x86_64-pc-windows-msvc
           mkdir -p sbom && find crates -name '*.cdx.json' -exec cp {} sbom/ \;
       - uses: actions/upload-artifact@v4
         with:
-          name: sbom
-          path: sbom/
+          name: sbom-und-hinweise
+          path: |
+            sbom/
+            THIRD-PARTY-NOTICES.txt
 
   windows:
-    name: Windows · Build, Tests, Paket, Screenshots
+    name: Windows Server · Build, Tests, Paket, UI-Prüfung
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - name: Rust-Toolchain
         run: rustup show active-toolchain; if ($LASTEXITCODE -ne 0) { rustup toolchain install }
       - uses: Swatinem/rust-cache@v2
-      - name: Tests (Windows-API-Pfade wie GetFileInformationByHandle)
-        run: cargo test --workspace --locked
+      - name: Tests (Job Objects, Datei-IDs, Junctions)
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --workspace --locked 2>&1 | tee cargo-test.log
+      - name: Windows-Symlink-Test (benötigt Administrator; Runner läuft als Administrator)
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test -p axsafe-cli --test cli --locked -- --ignored report_target_windows_symlink_is_refused --exact 2>&1 | tee cargo-test-symlink.log
+          grep -q "1 passed" cargo-test-symlink.log
       - name: CLI bauen (Release)
         run: cargo build --release --locked -p axsafe-cli
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: ui/global.json
+      - name: Oberflächen-Client gegen die echte CLI testen (xUnit)
+        shell: bash
+        run: |
+          cargo build --locked -p axsafe-cli
+          AXSAFE_CLI="$PWD/target/debug/axsafe.exe" dotnet test ui/AXSafe.Client.Tests -p:RestoreLockedMode=true \
+            --logger "trx;LogFileName=client.trx" --results-directory trx
+      - name: Testzusammenfassung (ausgelassene Tests mit Grund)
+        if: always()
+        shell: bash
+        run: |
+          cat cargo-test.log cargo-test-symlink.log > cargo-all.log 2>/dev/null || true
+          python scripts/ci/test_summary.py --cargo cargo-all.log --dotnet trx \
+            --platform "Windows Server (windows-latest) – kein LTSC-Nachweis" --markdown "$GITHUB_STEP_SUMMARY"
       - name: Oberfläche bauen (.NET 10 WPF)
         run: dotnet publish ui/AXSafe.Desktop/AXSafe.Desktop.csproj -c Release -r win-x64 --self-contained true -o dist/AXSafe
-      - name: Paket zusammenstellen
+      - name: Paket zusammenstellen (mit Lizenzhinweisen)
         shell: pwsh
-        run: |
-          # CLI in Unterordner: Windows unterscheidet axsafe.exe und AXSafe.exe nicht.
-          New-Item -ItemType Directory dist/AXSafe/cli/rules -Force | Out-Null
-          Copy-Item target/release/axsafe.exe dist/AXSafe/cli/
-          Copy-Item -Recurse rules/* dist/AXSafe/cli/rules/
-          if (-not (Test-Path dist/AXSafe/AXSafe.dll)) { throw "Oberfläche fehlt im Paket" }
-          Copy-Item README.md, CHANGELOG.md, SECURITY.md dist/AXSafe/
-          Get-ChildItem *.pdb -Path dist/AXSafe -Recurse | Remove-Item
+        run: ./scripts/ci/package.ps1 -Dist dist/AXSafe
       - name: CLI-Rauchtest auf Windows
         shell: pwsh
         run: |
@@ -106,8 +232,8 @@ jobs:
           dist/AXSafe/cli/axsafe.exe engines --no-clamav --rules dist/AXSafe/cli/rules
           if ($LASTEXITCODE -ne 0) { throw "Engines nicht bereit" }
       - name: Releaseinventar prüfen (T-012; Testregel bewusst freigegeben für Vorversion)
-        run: python scripts/check_release_inventory.py dist/AXSafe --allow-test-rules --inventory dist/inventory.json
-      - name: Bildschirmauflösung für Screenshots
+        run: python scripts/check_release_inventory.py dist/AXSafe --allow-test-rules --require-notices --inventory dist/inventory.json
+      - name: Bildschirmauflösung für UI-Prüfung und Screenshots
         shell: pwsh
         continue-on-error: true
         run: Set-DisplayResolution -Width 1600 -Height 1000 -Force
@@ -120,7 +246,14 @@ jobs:
           Set-Content "$d\rechnung.pdf.exe" "%PDF-1.7 harmloses Beispiel"
           [IO.File]::WriteAllBytes("$d\leer.bin", [byte[]]@())
           New-Item -ItemType SymbolicLink -Path "$d\verknuepfung" -Target "$d\brief.txt" | Out-Null
-      - name: Screenshots der Oberfläche
+      - name: UI-Prüfung (UI Automation; Assertions gegen CLI-Ergebnis)
+        shell: pwsh
+        run: |
+          ./scripts/ci/ui_check.ps1 -Exe dist/AXSafe/AXSafe.exe -Cli dist/AXSafe/cli/axsafe.exe -Rules dist/AXSafe/cli/rules
+          if ($LASTEXITCODE -ne 0) { throw "UI-Prüfung Übersicht fehlgeschlagen" }
+          ./scripts/ci/ui_check.ps1 -Exe dist/AXSafe/AXSafe.exe -Cli dist/AXSafe/cli/axsafe.exe -Rules dist/AXSafe/cli/rules -ScanFolder "$env:RUNNER_TEMP\AXSafe-Demo"
+          if ($LASTEXITCODE -ne 0) { throw "UI-Prüfung Scan fehlgeschlagen" }
+      - name: Screenshots der Oberfläche (nur Dokumentation)
         shell: pwsh
         continue-on-error: true
         run: |
@@ -136,6 +269,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: screenshots
-          path: screenshots/
+          name: belege-windows
+          path: |
+            cargo-test.log
+            cargo-test-symlink.log
+            trx/
+            screenshots/
           if-no-files-found: ignore

@@ -28,6 +28,7 @@ FORBIDDEN_PATH = [
     (re.compile(r"\.(pem|key|pfx|p12|snk)$", re.I), "Schlüsselmaterial"),
     (re.compile(r"(^|/)rules/test(/|$)", re.I), "Funktions-Testregeln (nur bewusst freigegeben)"),
     (re.compile(r"fake-clamscan", re.I), "Testdoppel"),
+    (re.compile(r"testhelper", re.I), "Testhelfer (nur für Tests)"),
     (re.compile(r"\.hdb$", re.I), "Test-Signaturdatenbank"),
 ]
 # PEM-Kopfzeilen werden zusammengesetzt, damit dieses Prüfskript selbst
@@ -39,6 +40,16 @@ FORBIDDEN_CONTENT = [
     (_PEM.format("RSA ").encode(), "privater RSA-Schlüssel"),
     (_PEM.format("EC ").encode(), "privater EC-Schlüssel"),
     (_PEM.format("OPENSSH ").encode(), "privater SSH-Schlüssel"),
+]
+
+
+# Pflicht-Hinweisdateien im ausgelieferten Paket (Befund 8): Präfixe, deren
+# Datei mindestens einmal mit Inhalt vorhanden sein muss.
+REQUIRED_NOTICES = [
+    "THIRD-PARTY-NOTICES.txt",
+    "licenses/dotnet/Microsoft.NETCore.App/LICENSE",
+    "licenses/dotnet/Microsoft.NETCore.App/THIRD-PARTY-NOTICES",
+    "licenses/dotnet/Microsoft.WindowsDesktop.App/LICENSE",
 ]
 
 
@@ -67,6 +78,11 @@ def main() -> int:
         action="store_true",
         help="Funktions-Testregeln (rules/test) bewusst für eine Vorversion freigeben",
     )
+    ap.add_argument(
+        "--require-notices",
+        action="store_true",
+        help="Drittanbieter-Lizenzhinweise müssen im Paket liegen (Release)",
+    )
     a = ap.parse_args()
     target, inv_path, allow_test_rules = a.package, a.inventory, a.allow_test_rules
     if not target.exists():
@@ -74,7 +90,9 @@ def main() -> int:
         return 2
 
     inventory, problems = [], []
+    present: dict[str, bytes] = {}
     for name, data in entries(target):
+        present[name] = data
         inventory.append({"path": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()})
         for rx, why in FORBIDDEN_PATH:
             if rx.search(name) and not (allow_test_rules and "Testregeln" in why):
@@ -82,6 +100,14 @@ def main() -> int:
         for needle, why in FORBIDDEN_CONTENT:
             if needle in data:
                 problems.append(f"{name}: enthält {why}")
+    if a.require_notices:
+        for req in REQUIRED_NOTICES:
+            hits = [d for n, d in present.items() if n.upper().startswith(req.upper()) and len(d) >= 200]
+            if not hits:
+                problems.append(f"{req}: Pflicht-Lizenzhinweis fehlt oder ist leer")
+        tp = present.get("THIRD-PARTY-NOTICES.txt", b"")
+        if tp and b"Drittpaketen" not in tp[:2000]:
+            problems.append("THIRD-PARTY-NOTICES.txt: unerwartetes Format (nicht vom Generator)")
     if inv_path:
         inv_path.write_text(json.dumps({"package": target.name, "files": inventory}, indent=2), encoding="utf-8")
     print(f"{len(inventory)} Dateien geprüft.")
