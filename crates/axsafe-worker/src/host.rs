@@ -38,6 +38,12 @@ pub struct WorkerConfig {
     pub sandbox: Sandbox,
 }
 
+/// Speichergrenze des Workers: Grundbedarf plus zweimal die größte Nutzlast
+/// (Rahmenpuffer und Kopie beim Scan).
+pub fn memory_for(max_scan_bytes: u64) -> u64 {
+    (512 * 1024 * 1024u64).saturating_add(max_scan_bytes.saturating_mul(2))
+}
+
 /// AppContainer-Profil des Scanworkers.
 pub const APPCONTAINER_PROFILE: &str = "AXSafe.ScanWorker.v1";
 
@@ -48,13 +54,9 @@ impl WorkerConfig {
             args: Vec::new(),
             rules,
             max_scan_bytes: 256 * 1024 * 1024,
-            // Linux: wasmtime (YARA-X) reserviert viel virtuellen Adressraum;
-            // RLIMIT_AS begrenzt nur grob. Windows: Commit-Grenze im Job.
-            memory_bytes: Some(if cfg!(windows) {
-                1024 * 1024 * 1024
-            } else {
-                64 * 1024 * 1024 * 1024
-            }),
+            // Windows: Commit-Grenze im Job; Linux: Adressraum (RLIMIT_AS).
+            // Gemessen: der Worker arbeitet mit den Repo-Regeln ab 128 MiB.
+            memory_bytes: Some(memory_for(256 * 1024 * 1024)),
             startup_timeout: Duration::from_secs(60),
             request_grace: Duration::from_secs(5),
             max_restarts: 3,
@@ -303,7 +305,23 @@ impl WorkerEngine {
                 };
             }
         };
-        match start_session(&cfg, &rules) {
+        // Ein Wiederholungsversuch bei Startfehlern (z. B. parallele
+        // AppContainer-Profilanlage); beide Fehler bleiben sichtbar.
+        let first = start_session(&cfg, &rules);
+        let started = match first {
+            Ok(x) => Ok(x),
+            Err(e1) => {
+                std::thread::sleep(Duration::from_millis(250));
+                start_session(&cfg, &rules).map_err(|e2| {
+                    if e1 == e2 {
+                        e2
+                    } else {
+                        format!("{e2} (erster Versuch: {e1})")
+                    }
+                })
+            }
+        };
+        match started {
             Err(e) => unavailable(&mut info, e),
             Ok((mut s, ready)) => {
                 info.engine_version = ready.engine_version.clone();

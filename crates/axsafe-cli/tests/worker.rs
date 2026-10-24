@@ -163,6 +163,23 @@ fn hanging_worker_is_timeout_and_killed_within_budget() {
     assert_eq!(e.restarts(), 1);
 }
 
+/// T-022/B-12: Ein Worker, der zu viel Speicher anfordert, wird durch die
+/// Speichergrenze gestoppt (Windows: Job Object, Linux: RLIMIT_AS); das
+/// Objekt gilt als Fehler, der Host läuft weiter.
+#[test]
+fn memory_hungry_worker_is_stopped_by_limit() {
+    let mut cfg = helper_cfg("alloc", None);
+    cfg.memory_bytes = Some(512 * 1024 * 1024);
+    let e = WorkerEngine::start(cfg);
+    assert_eq!(e.info().health, EngineHealth::Ready, "{:?}", e.info());
+    let o = scan(&e, b"x", 5000);
+    assert_eq!(o.verdict, Verdict::Error, "{o:?}");
+    assert!(
+        o.gaps[0].detail.contains("Worker ausgefallen"),
+        "Speichergrenze griff nicht: {o:?}"
+    );
+}
+
 #[test]
 fn protocol_violations_are_errors() {
     for mode in ["garbage", "oversized"] {

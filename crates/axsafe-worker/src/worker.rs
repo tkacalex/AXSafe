@@ -38,6 +38,8 @@ pub enum Fault {
     GarbageOnScan,
     /// Beim Scan eine übergroße Antwortlänge ankündigen.
     OversizedOnScan,
+    /// Beim Scan 2 GiB anfordern und beschreiben (Speichergrenze prüfen).
+    AllocOnScan,
     /// Nur abstürzen, wenn die Nutzdaten genau [`CRASH_PAYLOAD`] sind
     /// (Wiederanlauf prüfen: danach arbeitet ein neuer Worker normal).
     CrashOnPayload,
@@ -147,6 +149,21 @@ fn inject(fault: Fault, payload: &[u8], out: &mut dyn Write) -> bool {
                 std::process::abort()
             }
             false
+        }
+        Fault::AllocOnScan => {
+            let mut v: Vec<u8> = Vec::new();
+            if v.try_reserve_exact(2 << 30).is_err() {
+                // Grenze greift schon bei der Anforderung.
+                std::process::abort();
+            }
+            v.resize(2 << 30, 1);
+            let _ = write_frame(
+                out,
+                T_ERROR,
+                b"{\"message\":\"Speichergrenze griff nicht\"}",
+            );
+            std::hint::black_box(&v);
+            true
         }
         Fault::HangOnScan => loop {
             std::thread::sleep(Duration::from_secs(3600));

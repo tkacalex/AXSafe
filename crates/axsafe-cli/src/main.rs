@@ -142,6 +142,7 @@ fn build_engines(a: &EngineArgs, max_scan_bytes: Option<u64>) -> Vec<Box<dyn Eng
         let mut cfg = WorkerConfig::new(a.worker.clone().unwrap_or_else(default_worker), rules);
         if let Some(m) = max_scan_bytes {
             cfg.max_scan_bytes = m;
+            cfg.memory_bytes = Some(axsafe_worker::host::memory_for(m));
         }
         v.push(Box::new(WorkerEngine::start(cfg)));
     }

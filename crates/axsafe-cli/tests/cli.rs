@@ -475,7 +475,13 @@ fn engines_json_reports_health_content_and_capabilities() {
         .arg(rules())
         .output()
         .unwrap();
-    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stdout: {}\nstderr: {}",
+        stdout(&out),
+        stderr(&out)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v[0]["name"], "yara-x");
     assert_eq!(v[0]["health"]["state"], "ready");

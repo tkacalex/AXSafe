@@ -383,19 +383,24 @@ fn appcontainer_sid(profile: &str) -> io::Result<Sid> {
             0,
             &mut sid,
         );
-        if hr == HR_ALREADY_EXISTS {
+        // Profil existiert schon oder wird gerade parallel angelegt: Die SID
+        // ist aus dem Namen ableitbar, ein Profil ist dafür nicht nötig.
+        if hr == HR_ALREADY_EXISTS || hr < 0 {
+            let first = hr;
+            sid = std::ptr::null_mut();
             let hr2 = DeriveAppContainerSidFromAppContainerName(name.as_ptr(), &mut sid);
+            if hr2 < 0 && first != HR_ALREADY_EXISTS {
+                return Err(io::Error::other(format!(
+                    "CreateAppContainerProfile: HRESULT 0x{:08X}, Derive...: 0x{:08X}",
+                    first as u32, hr2 as u32
+                )));
+            }
             if hr2 < 0 {
                 return Err(io::Error::other(format!(
                     "DeriveAppContainerSidFromAppContainerName: HRESULT 0x{:08X}",
                     hr2 as u32
                 )));
             }
-        } else if hr < 0 {
-            return Err(io::Error::other(format!(
-                "CreateAppContainerProfile: HRESULT 0x{:08X}",
-                hr as u32
-            )));
         }
     }
     Ok(Sid(sid))
