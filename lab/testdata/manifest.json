@@ -1,0 +1,58 @@
+{
+  "schema": "axsafe.testdata-manifest/1",
+  "requirement": "AXS-009",
+  "test": "T-009",
+  "updated": "2026-10-24",
+  "note": "Kein Eintrag dieses Manifests liegt als Datei im Repository. Alle Testdaten werden zur Laufzeit in temporären Ordnern erzeugt und danach gelöscht.",
+  "entries": [
+    {
+      "id": "TD-0001",
+      "name": "EICAR Standard Anti-Virus Test File",
+      "kind": "Funktionstest (ungefährlich)",
+      "origin": "https://www.eicar.org/download-anti-malware-testfile/ (Q15); zur Laufzeit aus zwei Teilstrings zusammengesetzt",
+      "sha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+      "size": 68,
+      "license": "frei für Testzwecke laut EICAR",
+      "created_at": "zur Laufzeit",
+      "expected": {
+        "yara-x": "Malicious via AXSafe.Test.EICAR (test_signature=true)",
+        "clamav": "Malicious via AXSafe.Test.EICAR.HDB.UNOFFICIAL mit Test-hdb; mit offiziellen Signaturen Eicar-Signature"
+      },
+      "used_by": ["crates/axsafe-engine-yarax", "crates/axsafe-engine-clamav", "crates/axsafe-cli/tests/cli.rs"],
+      "host_execution": false
+    },
+    {
+      "id": "TD-0002",
+      "name": "EICAR-String nicht am Dateianfang (gutartiger Gegenfall)",
+      "kind": "Gegenfall",
+      "origin": "zur Laufzeit erzeugt",
+      "expected": { "yara-x": "NoDetection" },
+      "host_execution": false
+    },
+    {
+      "id": "TD-0003",
+      "name": "Gutartige Datei mit verdächtigem Namen (eicar.com)",
+      "kind": "Gegenfall",
+      "origin": "zur Laufzeit erzeugt",
+      "expected": { "yara-x": "NoDetection", "clamav": "NoDetection" },
+      "host_execution": false
+    },
+    {
+      "id": "TD-0004",
+      "name": "Passwortgeschütztes ZIP",
+      "kind": "Prüflücke",
+      "origin": "zur Laufzeit mit zip -P erzeugt (Demo)",
+      "expected": { "clamav": "Encrypted via Heuristics.Encrypted.Zip" },
+      "host_execution": false
+    },
+    {
+      "id": "TD-0005",
+      "name": "Minimaler PE-Header (nicht ausführbar)",
+      "kind": "Parsertest",
+      "origin": "im Test synthetisch erzeugt (filetype.rs)",
+      "expected": { "filetype": "PE32/PE64/DLL/.NET je Variante; jede Kürzung ohne Panic" },
+      "host_execution": false
+    }
+  ],
+  "real_samples": "keine – erst im Labor nach lab/LAB-RULES.md"
+}

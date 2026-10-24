@@ -1,0 +1,51 @@
+name: Release (Vorversion)
+
+# Getrennter Release-Job (AXS-010): läuft nur bei Tags v*, nie für Pull Requests.
+# Es gibt noch KEINE Signierschlüssel; Pakete sind unsigniert und als Vorversion markiert.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-package:
+    runs-on: windows-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust-Toolchain
+        run: rustup show active-toolchain; if ($LASTEXITCODE -ne 0) { rustup toolchain install }
+      - name: Tests
+        run: cargo test --workspace --locked
+      - name: CLI bauen
+        run: cargo build --release --locked -p axsafe-cli
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ui/global.json
+      - name: Oberfläche bauen
+        run: dotnet publish ui/AXSafe.Desktop/AXSafe.Desktop.csproj -c Release -r win-x64 --self-contained true -o dist/AXSafe
+      - name: Paket
+        shell: pwsh
+        run: |
+          Copy-Item target/release/axsafe.exe dist/AXSafe/
+          New-Item -ItemType Directory dist/AXSafe/rules | Out-Null
+          Copy-Item -Recurse rules/* dist/AXSafe/rules/
+          Copy-Item README.md, CHANGELOG.md, SECURITY.md dist/AXSafe/
+          Get-ChildItem *.pdb -Path dist/AXSafe -Recurse | Remove-Item
+          python scripts/check_release_inventory.py dist/AXSafe --allow-test-rules --inventory dist/inventory.json
+          if ($LASTEXITCODE -ne 0) { throw "Inventarprüfung fehlgeschlagen" }
+          $zip = "AXSafe-${{ github.ref_name }}-windows-x64-vorversion.zip"
+          Compress-Archive -Path dist/AXSafe/* -DestinationPath $zip
+          (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + $zip | Out-File -Encoding ascii SHA256SUMS.txt
+      - name: Release-Entwurf anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "${{ github.ref_name }}" --draft --prerelease `
+            --title "AXSafe ${{ github.ref_name }} (Vorversion, kein Echtzeitschutz)" `
+            --notes-file CHANGELOG.md `
+            (Get-ChildItem AXSafe-*.zip).FullName SHA256SUMS.txt dist/inventory.json

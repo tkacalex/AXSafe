@@ -1,0 +1,25 @@
+[package]
+name = "axsafe-cli"
+description = "AXSafe Kommandozeile: Dateien und Ordner prüfen, ehrlicher JSON-Bericht"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "axsafe"
+path = "src/main.rs"
+
+[dependencies]
+axsafe-core = { path = "../axsafe-core" }
+axsafe-engine-yarax = { path = "../axsafe-engine-yarax" }
+axsafe-engine-clamav = { path = "../axsafe-engine-clamav" }
+clap.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+serde_json.workspace = true
+md-5.workspace = true
+hex.workspace = true

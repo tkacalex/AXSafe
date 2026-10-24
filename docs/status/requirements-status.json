@@ -1,0 +1,51 @@
+{
+  "_hinweis": "Einzige Quelle für den Umsetzungsstand. Nicht aufgeführte Anforderungen haben den Status 'geplant'. Nach Änderung: python3 scripts/gen_docs.py",
+  "status_values": {
+    "geplant": "noch nicht begonnen",
+    "begonnen": "Code oder Dokument vorhanden, Abnahme nicht erfüllt",
+    "entwurf": "Dokument erstellt, Review durch Produktverantwortung offen",
+    "teilweise": "Teile der Abnahme mit echten Testbelegen erfüllt",
+    "blockiert": "externe Voraussetzung fehlt (siehe BLOCKERS.md)",
+    "erfuellt": "Abnahme vollständig mit echten Belegen bestanden"
+  },
+  "requirements": {
+    "AXS-001": {"status": "teilweise", "where": "docs/platform-matrix.json, docs/PLATFORM.md", "evidence": "msinfo32 am 24.10.2026: Windows 10 Enterprise LTSC, 10.0.19044, x64-based PC, UEFI, Secure Boot aus", "rest": "Windows 11 separat testen; Patchstand vor Release erneut prüfen"},
+    "AXS-002": {"status": "entwurf", "where": "docs/THREAT-COVERAGE.md", "evidence": "33 Klassen mit Schicht, Test und Grenze", "rest": "Review"},
+    "AXS-003": {"status": "entwurf", "where": "docs/adr/ADR-0001-engine-strategie.md, docs/adr/ADR-0003-lizenzen.md", "evidence": "ADR Eigenentwicklung/OEM; Lizenzinventar 209 Rust-Pakete", "rest": "Projektlizenz D-01"},
+    "AXS-004": {"status": "entwurf", "where": "docs/THREAT-MODEL.md", "evidence": "Parser, IPC, Quarantäne, Updater, Treiber, Cloud, UI als Angriffsflächen", "rest": "Review"},
+    "AXS-005": {"status": "entwurf", "where": "docs/LEGAL-REVIEW.md", "evidence": "Prüfakte mit Fundstellen und offenen Entscheidungen", "rest": "juristische Prüfung"},
+    "AXS-006": {"status": "entwurf", "where": "docs/BUDGET.md", "evidence": "einmalig/laufend getrennt, keine erfundenen Preise", "rest": "Angebote einholen"},
+    "AXS-007": {"status": "teilweise", "where": "Cargo.toml, Cargo.lock, rust-toolchain.toml, ui/global.json, .github/workflows/ci.yml", "evidence": "Rust-Workspace und WPF bauen mit gepinnten Versionen (lokal + CI)", "rest": "WDK-, Backend- und Forschungsteile nur als Platzhalter; Offline-Build dokumentieren"},
+    "AXS-008": {"status": "blockiert", "where": "lab/LAB-RULES.md", "evidence": "Laborregeln festgelegt", "rest": "B-02 Laborhost"},
+    "AXS-009": {"status": "begonnen", "where": "lab/testdata/manifest.json", "evidence": "Manifest mit Herkunft, Hash, Lizenz, Erwartung; EICAR nur zur Laufzeit", "rest": "gutartiger Korpus"},
+    "AXS-010": {"status": "begonnen", "where": ".github/workflows/ci.yml, deny.toml", "evidence": "Build, fmt, clippy, cargo-deny, Gitleaks, SBOM; Release-Job getrennt", "rest": "Negativtest manipulierte Abhängigkeit/Testgeheimnis"},
+    "AXS-011": {"status": "teilweise", "where": "crates/*/src, crates/axsafe-cli/tests", "evidence": "Jeder Scanpfad hat Positiv-, Gutartig- und Ausfalltest", "rest": "Windows-Integrationstests"},
+    "AXS-012": {"status": "begonnen", "where": "scripts/check_release_inventory.py", "evidence": "Paketinventar prüft auf Proben, Testschlüssel, EICAR", "rest": "Paketvergleich zwischen Releases"},
+    "AXS-013": {"status": "begonnen", "where": "ui/AXSafe.Desktop/app.manifest", "evidence": "UI asInvoker; ClamAV als getrennter Prozess", "rest": "B-05 Worker mit eingeschränktem Token"},
+    "AXS-015": {"status": "teilweise", "where": "crates/axsafe-core/src/verdict.rs, report.rs", "evidence": "10 Zustände, Aggregation getestet, UI ohne grünen Status", "rest": "UI-Tests auf Windows"},
+    "AXS-016": {"status": "begonnen", "where": "crates/axsafe-core/src/report.rs", "evidence": "UTC-Zeit, Job-ID, Engine-/Regelversion je Befund", "rest": "Korrelations-ID, Prozessidentität"},
+    "AXS-018": {"status": "begonnen", "where": "crates/axsafe-core/src/identity.rs, scan.rs", "evidence": "Identität über Handle; Austausch/Änderung erkannt (Linux)", "rest": "Windows-Test, ADS, 128-Bit-IDs"},
+    "AXS-019": {"status": "begonnen", "where": "crates/axsafe-core/src/engine.rs, ui", "evidence": "Engine-Gesundheit; Ausfall ergibt nie sauber", "rest": "Dienst-/Sensorstatus"},
+    "AXS-021": {"status": "teilweise", "where": "crates/axsafe-engine-clamav", "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; Absturz/Hänger → Error/Timeout", "rest": "B-05, Windows-Test"},
+    "AXS-022": {"status": "teilweise", "where": "crates/axsafe-engine-yarax, rules/", "evidence": "Pflichtmetadaten, Mindestversion, Zeitlimit; Positiv/Gutartig/Timeout getestet", "rest": "Regelsignatur (P04), Speicherlimit"},
+    "AXS-023": {"status": "teilweise", "where": "crates/axsafe-core/src/filetype.rs, docs/CAPABILITY-MATRIX.md", "evidence": "Typ nach Inhalt; Umbenennen ändert nichts", "rest": "Skriptsprachen, MSI vs. Office"},
+    "AXS-024": {"status": "begonnen", "where": "crates/axsafe-engine-clamav", "evidence": "ClamAV-Limits; Passwort-ZIP → Encrypted (Demo)", "rest": "Archivbomben-/Pfadausbruchtests"},
+    "AXS-026": {"status": "begonnen", "where": "crates/axsafe-core/src/scan.rs, crates/axsafe-cli", "evidence": "Eigener Scan mit Abbruch; Zählungen aus Manifest", "rest": "Schnell-/Vollscan, Zeitplan, Fortsetzen"},
+    "AXS-028": {"status": "begonnen", "where": "crates/axsafe-core", "evidence": "Scanner liest nur; PE-Parser übersteht jede Kürzung", "rest": "Fuzzing"},
+    "AXS-085": {"status": "begonnen", "where": "ui/AXSafe.Desktop", "evidence": "Dunkelblaue WPF-Oberfläche mit Schild, Navigation, Modulen", "rest": "B-10 Lauf auf LTSC, Skalierungstest"},
+    "AXS-086": {"status": "begonnen", "where": "ui/AXSafe.Desktop/MainWindow.xaml", "evidence": "Alle Navigationsziele öffnen Inhalte oder erklären Fehlen", "rest": "Bedientest"},
+    "AXS-087": {"status": "begonnen", "where": "ui/AXSafe.Desktop", "evidence": "Keine Beispielzähler; Werte nur aus echtem Bericht", "rest": "Dienstanbindung"},
+    "AXS-088": {"status": "begonnen", "where": "ui/AXSafe.Desktop", "evidence": "Start, Abbruch, Fehler, Teilresultat sichtbar", "rest": "Quarantäne/Restore"},
+    "AXS-089": {"status": "begonnen", "where": "ui/AXSafe.Desktop", "evidence": "Nicht vorhandene Funktionen deaktiviert und erklärt", "rest": "echte Schalter"},
+    "AXS-090": {"status": "begonnen", "where": "ui/AXSafe.Desktop", "evidence": "Deutsch, Status als Text, kein Konto, keine Uploads", "rest": "Screenreader-/Tastaturtest"}
+  },
+  "tests": {
+    "T-015": ["axsafe-core verdict::tests::no_incomplete_state_becomes_clean", "verdict::tests::empty_is_error_not_clean", "scan::tests::unavailable_engine_never_yields_clean", "cli::clean_scan_exit_zero_and_broken_rules_exit_two"],
+    "T-018": ["identity::tests::swapped_file_with_same_name_is_detected", "identity::tests::appended_file_is_changed", "scan::tests::symlink_is_not_followed"],
+    "T-021": ["clamav tests::real_clamav_positive_and_benign", "tests::engine_crash_is_error_not_clean", "tests::hanging_engine_is_timeout", "tests::real_clamav_without_database_is_unavailable"],
+    "T-022": ["yarax tests::eicar_positive", "tests::benign_counterexamples", "tests::timeout_is_reported_as_timeout", "tests::rule_without_required_meta_is_rejected"],
+    "T-023": ["filetype::tests::renaming_does_not_change_type", "cli::filetype_uses_content_not_extension", "filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic"],
+    "T-026": ["scan::tests::positive_benign_and_counts", "scan::tests::cancel_marks_incomplete"],
+    "T-028": ["filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic", "scan::tests::fifo_does_not_block_and_is_unsupported"]
+  }
+}

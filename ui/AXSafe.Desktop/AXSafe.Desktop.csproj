@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>AXSafe.Desktop</RootNamespace>
+    <AssemblyName>AXSafe</AssemblyName>
+    <Product>AXSafe</Product>
+    <Version>0.1.0</Version>
+    <Description>AXSafe Vorversion – deutsche Desktopoberfläche (kein Echtzeitschutz)</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Erlaubt das Bauen auf Linux-CI; ausgeführt wird nur auf Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>de</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+</Project>

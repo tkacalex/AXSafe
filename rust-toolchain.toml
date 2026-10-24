@@ -1,0 +1,5 @@
+[toolchain]
+# Gepinnt (AXS-007). Änderungen nur per Pull Request mit Begründung im CHANGELOG.
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

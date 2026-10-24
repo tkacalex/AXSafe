@@ -1,0 +1,25 @@
+# Entscheidungsprotokoll
+
+## Getroffen
+
+| Datum | ID | Entscheidung | Beleg |
+| --- | --- | --- | --- |
+| 2026-10-24 | E-01 | Hauptziel Windows 10 Enterprise LTSC 2021, x64 (gemessen bestätigt) | [PLATFORM.md](PLATFORM.md) |
+| 2026-10-24 | E-02 | Eigener Kern + Engineadapter, Start mit YARA-X und ClamAV | [ADR-0001](adr/ADR-0001-engine-strategie.md) |
+| 2026-10-24 | E-03 | Stack Rust 1.97.0 / .NET 10 WPF, exakte Pins | [ADR-0002](adr/ADR-0002-technologie-stack.md) |
+| 2026-10-24 | E-04 | Zehn ehrliche Ergebniszustände | [ADR-0004](adr/ADR-0004-ergebnismodell.md) |
+| 2026-10-24 | E-05 | Keine Schadsoftware/EICAR-Datei im Repo, Tests erzeugen Daten zur Laufzeit | [ADR-0005](adr/ADR-0005-testdaten.md) |
+| 2026-10-24 | E-06 | Code öffentlich auf GitHub `tkacalex/AXSafe` (Wunsch des Inhabers) | Auftrag vom 24.10.2026 |
+| 2026-10-24 | E-07 | Defender bleibt aktiv; AXSafe ist bis zur geprüften Primärschutzfreigabe ein ergänzender Scanner | Spezifikation AXS-076 |
+
+## Offen (Entscheidung durch Alex)
+
+| ID | Frage | Optionen | Blockiert |
+| --- | --- | --- | --- |
+| D-01 | Welche Projektlizenz? | Apache-2.0 · MIT · GPL · keine | Beiträge Dritter, Paketierung (B-08) |
+| D-02 | Privatprojekt oder öffentliche/kommerzielle Bereitstellung? | privat · kostenlos öffentlich · kommerziell | CRA-Pfad, Signierung, Budget |
+| D-03 | Laborhost? | zweites Gerät · VMs auf dem Alltagsrechner (nur ohne reale Proben) · Cloud-VM | AXS-008 (B-02) |
+| D-04 | Secure Boot auf dem Alltagsrechner aktivieren? | ja · nein | nur Empfehlung, AXSafe ändert nichts selbst |
+| D-05 | Akzeptierte Cloudstufen? | keine · nur Hash-Reputation · Upload nach Einzelfreigabe | P12 |
+| D-06 | Leistungsbudgets (CPU/RAM/IO)? | nach Baseline-Messung festlegen | T-094 |
+| D-07 | ClamAV später mitliefern? | ja (GPL-Pflichten) · nein (separat installieren) | Paketierung |

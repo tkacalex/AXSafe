@@ -1,0 +1,14 @@
+name: Idee oder Wunsch
+description: Vorschlag für eine Funktion oder Verbesserung.
+labels: [idee]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Was wünschst du dir?
+    validations:
+      required: true
+  - type: input
+    id: req
+    attributes:
+      label: Passende Anforderung (falls bekannt), z. B. AXS-026

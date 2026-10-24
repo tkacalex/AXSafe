@@ -1,0 +1,20 @@
+flowchart LR
+  U([Du]) --> UI["AXSafe Desktop<br/>WPF · Benutzerrechte"]
+  U --> CLI["axsafe CLI<br/>Rust"]
+  UI -- "startet heute" --> CLI
+  CLI --> CORE["axsafe-core<br/>Ergebnismodell · Identität<br/>Typerkennung · Bericht"]
+  CORE --> YX["YARA-X Adapter<br/>eigene Regeln"]
+  CORE --> CA["ClamAV Adapter<br/>Kindprozess · stdin · kein TCP"]
+  CLI --> REP[("JSON-Bericht<br/>lokal")]
+  UI -. "P02: Named Pipe + ACL" .-> SVC["Broker-Dienst<br/>minimal privilegiert"]
+  SVC -.-> WK["Scanworker<br/>eingeschränkt · ohne Netz"]
+  SVC -.-> Q["Quarantäne P05"]
+  SVC -.-> UPD["TUF-Updates P04"]
+  MF["Minifilter P08<br/>nur Entscheidung"] -.-> SVC
+  AMSI["AMSI-Provider P07"] -.-> SVC
+  classDef now fill:#11203D,stroke:#22D3EE,color:#E8EEF8
+  classDef plan fill:#0C1830,stroke:#2A3B5E,color:#94A7C6,stroke-dasharray:5 4
+  classDef user fill:#3B82F6,stroke:#3B82F6,color:#fff
+  class UI,CLI,CORE,YX,CA,REP now
+  class SVC,WK,Q,UPD,MF,AMSI plan
+  class U user

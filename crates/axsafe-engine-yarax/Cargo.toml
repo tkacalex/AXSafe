@@ -1,0 +1,17 @@
+[package]
+name = "axsafe-engine-yarax"
+description = "AXSafe Engineadapter für YARA-X (eigene, versionierte Regeln)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+axsafe-core = { path = "../axsafe-core" }
+yara-x = { workspace = true, features = ["constant-folding", "exact-atoms", "fast-regexp"] }
+sha2.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

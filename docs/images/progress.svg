@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="642" viewBox="0 0 920 642" role="img" aria-label="AXSafe V1 Fortschritt je Phase">
+<style>text{font-family:"Segoe UI",Helvetica,Arial,sans-serif;fill:#E8EEF8}.m{fill:#94A7C6}</style>
+<rect width="920" height="642" rx="16" fill="#0A1426"/>
+<text x="28" y="40" font-size="20" font-weight="600">AXSafe V1 – Fortschritt der 100 Anforderungen</text>
+<text x="28" y="64" font-size="13" class="m">Nur belegter Stand. Erzeugt aus docs/status/requirements-status.json · 0 erfüllt, 7 teilweise belegt, 21 begonnen/Entwurf, 71 geplant</text>
+<text x="28" y="107" font-size="13">P00  Ziel und Voraussetzungen klären</text>
+<rect x="300.0" y="94" width="91.3" height="18" rx="4" fill="#22D3EE"><title>1 teilweise belegt</title></rect>
+<rect x="393.3" y="94" width="464.7" height="18" rx="4" fill="#818CF8"><title>5 Entwurf</title></rect>
+<text x="874" y="107" font-size="12" class="m">6</text>
+<text x="28" y="137" font-size="13">P01  Entwicklungsumgebung und Labor aufbauen</text>
+<rect x="300.0" y="124" width="184.7" height="18" rx="4" fill="#22D3EE"><title>2 teilweise belegt</title></rect>
+<rect x="486.7" y="124" width="278.0" height="18" rx="4" fill="#3B82F6"><title>3 begonnen</title></rect>
+<rect x="766.7" y="124" width="91.3" height="18" rx="4" fill="#F87171"><title>1 blockiert</title></rect>
+<text x="874" y="137" font-size="12" class="m">6</text>
+<text x="28" y="167" font-size="13">P02  Sicheres Grundsystem und Verträge entwickeln</text>
+<rect x="300.0" y="154" width="68.0" height="18" rx="4" fill="#22D3EE"><title>1 teilweise belegt</title></rect>
+<rect x="370.0" y="154" width="278.0" height="18" rx="4" fill="#3B82F6"><title>4 begonnen</title></rect>
+<rect x="650.0" y="154" width="208.0" height="18" rx="4" fill="#2A3B5E"><title>3 geplant</title></rect>
+<text x="874" y="167" font-size="12" class="m">8</text>
+<text x="28" y="197" font-size="13">P03  Dateiprüfung und Erkennungskern umsetzen</text>
+<rect x="300.0" y="184" width="208.0" height="18" rx="4" fill="#22D3EE"><title>3 teilweise belegt</title></rect>
+<rect x="510.0" y="184" width="208.0" height="18" rx="4" fill="#3B82F6"><title>3 begonnen</title></rect>
+<rect x="720.0" y="184" width="138.0" height="18" rx="4" fill="#2A3B5E"><title>2 geplant</title></rect>
+<text x="874" y="197" font-size="12" class="m">8</text>
+<text x="28" y="227" font-size="13">P04  Sichere Updates und Regelpflege bauen</text>
+<rect x="300.0" y="214" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>6 geplant</title></rect>
+<text x="874" y="227" font-size="12" class="m">6</text>
+<text x="28" y="257" font-size="13">P05  Quarantäne und Wiederherstellung absichern</text>
+<rect x="300.0" y="244" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>6 geplant</title></rect>
+<text x="874" y="257" font-size="12" class="m">6</text>
+<text x="28" y="287" font-size="13">P06  Sensoren und Verhaltenserkennung verbinden</text>
+<rect x="300.0" y="274" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>6 geplant</title></rect>
+<text x="874" y="287" font-size="12" class="m">6</text>
+<text x="28" y="317" font-size="13">P07  Skripte und Speicher prüfen</text>
+<rect x="300.0" y="304" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>6 geplant</title></rect>
+<text x="874" y="317" font-size="12" class="m">6</text>
+<text x="28" y="347" font-size="13">P08  Echtzeitschutz im Dateipfad entwickeln</text>
+<rect x="300.0" y="334" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>8 geplant</title></rect>
+<text x="874" y="347" font-size="12" class="m">8</text>
+<text x="28" y="377" font-size="13">P09  Ransomware und Reparatur behandeln</text>
+<rect x="300.0" y="364" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>6 geplant</title></rect>
+<text x="874" y="377" font-size="12" class="m">6</text>
+<text x="28" y="407" font-size="13">P10  Web Netzwerk E Mail und Wechselmedien ergänzen</text>
+<rect x="300.0" y="394" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>6 geplant</title></rect>
+<text x="874" y="407" font-size="12" class="m">6</text>
+<text x="28" y="437" font-size="13">P11  Selbstschutz und Windows Integration abschließen</text>
+<rect x="300.0" y="424" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>6 geplant</title></rect>
+<text x="874" y="437" font-size="12" class="m">6</text>
+<text x="28" y="467" font-size="13">P12  Cloud Sandbox und Modellforschung validieren</text>
+<rect x="300.0" y="454" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>6 geplant</title></rect>
+<text x="874" y="467" font-size="12" class="m">6</text>
+<text x="28" y="497" font-size="13">P13  Benutzeroberfläche nach Referenz fertigstellen</text>
+<rect x="300.0" y="484" width="558.0" height="18" rx="4" fill="#3B82F6"><title>6 begonnen</title></rect>
+<text x="874" y="497" font-size="12" class="m">6</text>
+<text x="28" y="527" font-size="13">P14  Gesamtschutz und Zuverlässigkeit nachweisen</text>
+<rect x="300.0" y="514" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>6 geplant</title></rect>
+<text x="874" y="527" font-size="12" class="m">6</text>
+<text x="28" y="557" font-size="13">P15  Veröffentlichen und dauerhaft betreiben</text>
+<rect x="300.0" y="544" width="558.0" height="18" rx="4" fill="#2A3B5E"><title>4 geplant</title></rect>
+<text x="874" y="557" font-size="12" class="m">4</text>
+<rect x="28" y="591" width="14" height="14" rx="3" fill="#34D399"/>
+<text x="48" y="602" font-size="12">erfüllt</text>
+<rect x="173" y="591" width="14" height="14" rx="3" fill="#22D3EE"/>
+<text x="193" y="602" font-size="12">teilweise belegt</text>
+<rect x="318" y="591" width="14" height="14" rx="3" fill="#3B82F6"/>
+<text x="338" y="602" font-size="12">begonnen</text>
+<rect x="463" y="591" width="14" height="14" rx="3" fill="#818CF8"/>
+<text x="483" y="602" font-size="12">Entwurf</text>
+<rect x="608" y="591" width="14" height="14" rx="3" fill="#F87171"/>
+<text x="628" y="602" font-size="12">blockiert</text>
+<rect x="753" y="591" width="14" height="14" rx="3" fill="#2A3B5E"/>
+<text x="773" y="602" font-size="12">geplant</text>
+</svg>

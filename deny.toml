@@ -1,0 +1,44 @@
+# cargo-deny Konfiguration (AXS-010): Lizenzen, Quellen, Verbote, Schwachstellen.
+# Lauf: cargo deny check
+
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+# Jede Ausnahme braucht Begründung, Ablaufdatum und Eintrag im CHANGELOG.
+ignore = [
+    # bincode ist laut RustSec nicht mehr gepflegt (keine bekannte Schwachstelle).
+    # Eingebunden transitiv über yara-x 1.22.0 (Regel-Serialisierung, von AXSafe nicht genutzt).
+    # Kein sicheres Upgrade verfügbar. Erneut prüfen bei jedem yara-x-Update, spätestens 2027-01-31.
+    { id = "RUSTSEC-2025-0141", reason = "transitiv über yara-x, nicht gepflegt aber ohne bekannte Lücke; Review bis 2027-01-31" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.93
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+]
+# Eigene Crates sind nicht veröffentlicht (publish = false); Projektlizenz offen (ADR-0003).
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

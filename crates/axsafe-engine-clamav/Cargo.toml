@@ -1,0 +1,18 @@
+[package]
+name = "axsafe-engine-clamav"
+description = "AXSafe Engineadapter für ClamAV (clamscan als getrennter Prozess, ohne TCP)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+axsafe-core = { path = "../axsafe-core" }
+wait-timeout.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+md-5.workspace = true

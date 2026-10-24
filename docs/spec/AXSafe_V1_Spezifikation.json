@@ -1,0 +1,1654 @@
+{
+  "product": "AXSafe",
+  "version": "V1",
+  "revision": "1.0",
+  "date": "2026-10-24",
+  "platform": "Windows 10 Enterprise LTSC 2021 21H2 Buildfamilie 19044",
+  "architecture": "x64 geplant und vor Implementierung auf Zielgerät zu bestätigen",
+  "phases": [
+    {
+      "id": "P00",
+      "title": "Ziel und Voraussetzungen klären",
+      "deps": [],
+      "goal": "Den Umfang für Windows 10 LTSC festlegen und die technische sowie organisatorische Ausgangslage belegen.",
+      "deliver": "Produktauftrag, Plattformmatrix, Lizenzliste, Quellenregister, Budgetmodell und Entscheidungsprotokolle",
+      "gate": "Ausgangslage und V1 Abnahme sind schriftlich festgelegt; fehlende Informationen stehen als offene Punkte im Register.",
+      "requirements": [
+        "AXS-001",
+        "AXS-002",
+        "AXS-003",
+        "AXS-004",
+        "AXS-005",
+        "AXS-006"
+      ]
+    },
+    {
+      "id": "P01",
+      "title": "Entwicklungsumgebung und Labor aufbauen",
+      "deps": [
+        "P00"
+      ],
+      "goal": "Reproduzierbare Entwicklung und ein getrenntes Testlabor bereitstellen.",
+      "deliver": "Repository, Buildskripte, Windows VM Images, Testdatensätze und Laborregeln",
+      "gate": "Ein frischer Checkout baut reproduzierbar; ein Testlauf kann ohne private Daten und ohne Zugriff auf das Alltagsnetz durchgeführt werden.",
+      "requirements": [
+        "AXS-007",
+        "AXS-008",
+        "AXS-009",
+        "AXS-010",
+        "AXS-011",
+        "AXS-012"
+      ]
+    },
+    {
+      "id": "P02",
+      "title": "Sicheres Grundsystem und Verträge entwickeln",
+      "deps": [
+        "P01"
+      ],
+      "goal": "Benutzeroberfläche, privilegierten Broker und Scanprozesse mit klaren Rechten und Datentypen trennen.",
+      "deliver": "Dienst, CLI, authentifizierte lokale IPC, Ereignisvertrag, Policy und Ergebnismodell",
+      "gate": "Ein normaler Benutzer kann den Dienst weder als beliebigen Dateileser noch als Löschdienst missbrauchen; Ausfälle werden korrekt gemeldet.",
+      "requirements": [
+        "AXS-013",
+        "AXS-014",
+        "AXS-015",
+        "AXS-016",
+        "AXS-017",
+        "AXS-018",
+        "AXS-019",
+        "AXS-020"
+      ]
+    },
+    {
+      "id": "P03",
+      "title": "Dateiprüfung und Erkennungskern umsetzen",
+      "deps": [
+        "P02"
+      ],
+      "goal": "Reale lokale Dateiprüfung mit Engines, eigenen Regeln und ehrlichen Teilresultaten implementieren.",
+      "deliver": "ClamAV Adapter, YARA X Adapter, Typenerkennung, Archivbehandlung und sicherer Scancache",
+      "gate": "Erkennung, Negativfälle, verschachtelte Container und alle Scanfehler sind nachvollziehbar getestet; keine Probe wird auf dem Host ausgeführt.",
+      "requirements": [
+        "AXS-021",
+        "AXS-022",
+        "AXS-023",
+        "AXS-024",
+        "AXS-025",
+        "AXS-026",
+        "AXS-027",
+        "AXS-028"
+      ]
+    },
+    {
+      "id": "P04",
+      "title": "Sichere Updates und Regelpflege bauen",
+      "deps": [
+        "P02",
+        "P03"
+      ],
+      "goal": "Programm, Signaturen, Regeln und Modelle manipulationsgeschützt und wiederherstellbar aktualisieren.",
+      "deliver": "TUF gestützter Updatepfad, Signierschema, Staging, Rollout und Rückfallverfahren",
+      "gate": "Manipulierte, abgelaufene und unzulässig alte Updates werden abgewiesen; Stromausfall und Schlüsselwechsel sind getestet.",
+      "requirements": [
+        "AXS-029",
+        "AXS-030",
+        "AXS-031",
+        "AXS-032",
+        "AXS-033",
+        "AXS-034"
+      ]
+    },
+    {
+      "id": "P05",
+      "title": "Quarantäne und Wiederherstellung absichern",
+      "deps": [
+        "P03",
+        "P04"
+      ],
+      "goal": "Funde sicher isolieren und nachvollziehbar wiederherstellen, ohne Systemdateien zu beschädigen.",
+      "deliver": "Verschlüsselte Quarantäne, Journal, Bereinigungsvorschläge und Wiederherstellungsdialog",
+      "gate": "Dateiverwechslung, Rechteausweitung und Datenverlust werden in den definierten Fehlerfällen verhindert; Restore ist bytegenau geprüft.",
+      "requirements": [
+        "AXS-035",
+        "AXS-036",
+        "AXS-037",
+        "AXS-038",
+        "AXS-039",
+        "AXS-040"
+      ]
+    },
+    {
+      "id": "P06",
+      "title": "Sensoren und Verhaltenserkennung verbinden",
+      "deps": [
+        "P02",
+        "P03"
+      ],
+      "goal": "Prozess, Datei, Persistenz und Netzwerkereignisse zu überprüfbaren Verhaltensbefunden korrelieren.",
+      "deliver": "Windows Sensoren, Prozessbaum, Ereignisjournal und versionierte Verhaltensregeln",
+      "gate": "Gutartige Gegenbeispiele und simulierte Angriffsketten unterscheiden sich zuverlässig; Sensorverluste sind sichtbar.",
+      "requirements": [
+        "AXS-041",
+        "AXS-042",
+        "AXS-043",
+        "AXS-044",
+        "AXS-045",
+        "AXS-046"
+      ]
+    },
+    {
+      "id": "P07",
+      "title": "Skripte und Speicher prüfen",
+      "deps": [
+        "P03",
+        "P06"
+      ],
+      "goal": "AMSI Provider und begrenzte Speicheranalyse als echte zusätzliche Schutzschichten anbinden.",
+      "deliver": "Signierter AMSI Provider, Sitzungsanalyse, Speicherworker und Rechtekonzept",
+      "gate": "AXSafe eigene AMSI Befunde sind vom Aufruf fremder Scanner getrennt; nicht zugänglicher Speicher wird als solcher ausgewiesen.",
+      "requirements": [
+        "AXS-047",
+        "AXS-048",
+        "AXS-049",
+        "AXS-050",
+        "AXS-051",
+        "AXS-052"
+      ]
+    },
+    {
+      "id": "P08",
+      "title": "Echtzeitschutz im Dateipfad entwickeln",
+      "deps": [
+        "P03",
+        "P04",
+        "P06"
+      ],
+      "goal": "Zugriffe auf unterstützten Dateipfaden vor der Freigabe prüfen und gefährliche I O sicher verhindern.",
+      "deliver": "Minimaler Minifilter, User Mode Scanpfad, Cache Invalidierung, Timeout und Recovery",
+      "gate": "Reale Zugriffsblockierung ist auf der LTSC Testmatrix belegt; kein Dauerwarten, keine selbst verursachte Bootschleife und keine ungetesteten Treiber im Produkt.",
+      "requirements": [
+        "AXS-053",
+        "AXS-054",
+        "AXS-055",
+        "AXS-056",
+        "AXS-057",
+        "AXS-058",
+        "AXS-059",
+        "AXS-060"
+      ]
+    },
+    {
+      "id": "P09",
+      "title": "Ransomware und Reparatur behandeln",
+      "deps": [
+        "P05",
+        "P06",
+        "P08"
+      ],
+      "goal": "Schädliche Dateiänderungen begrenzen und unterstützte Änderungen kontrolliert rückgängig machen.",
+      "deliver": "Korrelationsregeln, Schreibschutzpolicy, begrenzter Versionsspeicher und Reparaturplan",
+      "gate": "Simulierte Massenschreibvorgänge werden in der vereinbarten Schadensgrenze gestoppt; Wiederherstellung und ihre Grenzen sind bewiesen.",
+      "requirements": [
+        "AXS-061",
+        "AXS-062",
+        "AXS-063",
+        "AXS-064",
+        "AXS-065",
+        "AXS-066"
+      ]
+    },
+    {
+      "id": "P10",
+      "title": "Web Netzwerk E Mail und Wechselmedien ergänzen",
+      "deps": [
+        "P03",
+        "P04",
+        "P06",
+        "P08"
+      ],
+      "goal": "Weitere Einfallstore durch getrennte und benannte Schutzfunktionen abdecken.",
+      "deliver": "Browseranbindung, Reputation, WFP Policies, USB Dateiscans und Attachment Prüfung",
+      "gate": "IPv4 IPv6, Browser, Netzlaufwerke und Wechselmedien sind getestet; HTTPS und E Mail Grenzen werden korrekt angezeigt.",
+      "requirements": [
+        "AXS-067",
+        "AXS-068",
+        "AXS-069",
+        "AXS-070",
+        "AXS-071",
+        "AXS-072"
+      ]
+    },
+    {
+      "id": "P11",
+      "title": "Selbstschutz und Windows Integration abschließen",
+      "deps": [
+        "P04",
+        "P07",
+        "P08",
+        "P09",
+        "P10"
+      ],
+      "goal": "Manipulation begrenzen und AXSafe nur mit belegter Funktion als primären Schutz integrieren.",
+      "deliver": "Selbstschutz, ELAM PPL Prüfung, Signiernachweise, WSC Integrationsweg und Notfallausbau",
+      "gate": "Alle beanspruchten Schutzstufen sind technisch und organisatorisch belegt; fremder Schutz wird nicht vorzeitig deaktiviert.",
+      "requirements": [
+        "AXS-073",
+        "AXS-074",
+        "AXS-075",
+        "AXS-076",
+        "AXS-077",
+        "AXS-078"
+      ]
+    },
+    {
+      "id": "P12",
+      "title": "Cloud Sandbox und Modellforschung validieren",
+      "deps": [
+        "P03",
+        "P04",
+        "P06"
+      ],
+      "goal": "Optionale Cloudfunktionen und vertiefte Analysen mit getrennten Vertrauensgrenzen aufbauen.",
+      "deliver": "Hash Reputation, explizite Sample Freigabe, isolierte Sandbox und reproduzierbare Modellbewertung",
+      "gate": "Lokaler Schutz läuft ohne Cloud weiter; kein Dateiinhalt verlässt den Rechner ohne Freigabe; Modelle bleiben ohne Eignungsnachweis im Forschungsmodus.",
+      "requirements": [
+        "AXS-079",
+        "AXS-080",
+        "AXS-081",
+        "AXS-082",
+        "AXS-083",
+        "AXS-084"
+      ]
+    },
+    {
+      "id": "P13",
+      "title": "Benutzeroberfläche nach Referenz fertigstellen",
+      "deps": [
+        "P02",
+        "P05",
+        "P06"
+      ],
+      "goal": "Die dunkle AXSafe Oberfläche mit echten Daten und verständlichen Zuständen vervollständigen.",
+      "deliver": "WPF Desktop App, Navigation, Dashboard, Scanansichten, Quarantäne und Fehlerzustände",
+      "gate": "Jeder aktive Schalter hat eine getestete Wirkung; UI und Dienst stimmen bei Ausfall, Neustart und veralteten Daten überein.",
+      "requirements": [
+        "AXS-085",
+        "AXS-086",
+        "AXS-087",
+        "AXS-088",
+        "AXS-089",
+        "AXS-090"
+      ]
+    },
+    {
+      "id": "P14",
+      "title": "Gesamtschutz und Zuverlässigkeit nachweisen",
+      "deps": [
+        "P04",
+        "P05",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "goal": "Schutzwirkung, Fehlalarme, Systemverträglichkeit und Betriebsstabilität getrennt bewerten.",
+      "deliver": "Funktions und Schutzberichte, Leistungsdaten, Fuzzing Befunde, externer Review und Abdeckungsmatrix",
+      "gate": "Alle V1 Pflichtnachweise liegen vor; kritische Fehler und nicht belegte Schutzversprechen blockieren die Freigabe.",
+      "requirements": [
+        "AXS-091",
+        "AXS-092",
+        "AXS-093",
+        "AXS-094",
+        "AXS-095",
+        "AXS-096"
+      ]
+    },
+    {
+      "id": "P15",
+      "title": "Veröffentlichen und dauerhaft betreiben",
+      "deps": [
+        "P00",
+        "P04",
+        "P11",
+        "P14"
+      ],
+      "goal": "Ein betreubares Produkt mit signierter Auslieferung, Support und Schwachstellenmanagement freigeben.",
+      "deliver": "Releasepaket, Betriebsanleitung, Supportprozess, Notfallplan und dokumentierter Supportzeitraum",
+      "gate": "Releasecheckliste vollständig, Rollback geprobt, Meldewege einsatzbereit, rechtliche und lizenzbezogene Prüfungen abgeschlossen.",
+      "requirements": [
+        "AXS-097",
+        "AXS-098",
+        "AXS-099",
+        "AXS-100"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "AXS-001",
+      "phase": "P00",
+      "title": "Zielplattform belegen",
+      "task": "Windows 10 Enterprise LTSC 2021 21H2 Buildfamilie 19044 als Hauptziel; Screenshot Build 19044.7807 dokumentieren. x64 vor Ort bestätigen, Windows 11 separat testen.",
+      "acceptance": "Edition Architektur Patchstand und unterstützte Funktionen sind in einer maschinenlesbaren Plattformmatrix erfasst.",
+      "test": "T-001",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-002",
+      "phase": "P00",
+      "title": "Schutzumfang festlegen",
+      "task": "V1 als mehrschichtiger Windows Endpoint Schutz definieren; Dateiviren Trojaner Ransomware Skripte Speicherangriffe und weitere Familien über eine Bedrohungsmatrix behandeln.",
+      "acceptance": "Jede Bedrohungsklasse hat Schutzschicht Test und benannte Grenze; keine universelle Erkennungsgarantie.",
+      "test": "T-002",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-003",
+      "phase": "P00",
+      "title": "Betriebs und Lizenzmodell entscheiden",
+      "task": "Eigener AXSafe Kern mit austauschbaren Engine Adaptern; Open Source zuerst, ClamAV GPL Pflichten vor Verteilung prüfen. Kommerzielle SDKs bleiben eine bewertete Option.",
+      "acceptance": "ADR zu Eigenentwicklung OEM und Lizenzen liegt vor; fremder Code Regeln Daten Modelle und Marken sind getrennt erfasst.",
+      "test": "T-003",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-004",
+      "phase": "P00",
+      "title": "Bedrohungsmodell erstellen",
+      "task": "Angreifer mit normalen Rechten Adminrechten Kernelzugriff und kompromittierter Updateinfrastruktur getrennt modellieren; Schutzgüter und Vertrauensgrenzen benennen.",
+      "acceptance": "Review dokumentiert mindestens Dateiparser IPC Quarantäne Updater Treiber Cloud und UI als Angriffsflächen.",
+      "test": "T-004",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-005",
+      "phase": "P00",
+      "title": "Rechtliche Markteinführung prüfen",
+      "task": "DSGVO CRA Produktklassifizierung Haftung Vertrieb Supportdauer sowie Name und Marke AXSafe prüfen; keine Zertifizierung behaupten.",
+      "acceptance": "Prüfakte enthält zuständige Rolle Fundstellen Stand und offene Entscheidungen; rechtsrelevante Unklarheiten blockieren den betroffenen Vertrieb.",
+      "test": "T-005",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-006",
+      "phase": "P00",
+      "title": "Ressourcen und Freigaben planen",
+      "task": "Kompetenzen Windows Kernelentwicklung Malwareanalyse Tests Signierung Datenschutz und Betrieb zuordnen; Kosten ohne erfundene Angebote modellieren.",
+      "acceptance": "Budgetmatrix trennt einmalige und laufende Ausgaben; Zertifikate Hardware Testlabore und SDK Preise bleiben ohne Angebot offen.",
+      "test": "T-006",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-007",
+      "phase": "P01",
+      "title": "Reproduzierbar bauen",
+      "task": "Repository mit Rust Dienst und Core C Sharp WPF .NET 10 C oder C Plus Plus WDK Komponenten sowie getrennten Backend und Forschungsteilen anlegen.",
+      "acceptance": "Frischer Checkout baut mit gepinnten Versionen Lockfiles und dokumentierten Offlinegrenzen; Versionsänderungen werden geprüft.",
+      "test": "T-007",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-008",
+      "phase": "P01",
+      "title": "Getrenntes Labor erstellen",
+      "task": "Saubere LTSC und Windows 11 VMs mit Snapshots ohne private Konten geteilte Ordner oder Zwischenablage bereitstellen; separates Netz verwenden.",
+      "acceptance": "Ein Isolationstest belegt fehlenden Zugriff auf Alltagsdaten und Produktivnetz; Wiederherstellung aus sauberem Ausgangspunkt funktioniert.",
+      "test": "T-008",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-009",
+      "phase": "P01",
+      "title": "Prüfdaten verwalten",
+      "task": "Gutartige Dateien lizenzgeprüfte Testdaten EICAR und kontrollierte Simulatoren erfassen; reale Schadsoftware ausschließlich in freigegebenem Labor verwenden.",
+      "acceptance": "Manifest mit Herkunft Hash Lizenz Zeitstempel und erwarteter Beobachtung ist vorhanden; kein unbeabsichtigter Download oder Hoststart.",
+      "test": "T-009",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-010",
+      "phase": "P01",
+      "title": "Sicherheitsprüfungen automatisieren",
+      "task": "Build Lint statische Analyse Abhängigkeitsprüfung Geheimnissuche und SBOM integrieren; untrusted Pull Requests haben keinen Zugriff auf Signierschlüssel.",
+      "acceptance": "Manipulierte Abhängigkeit und absichtlich eingefügtes Testgeheimnis lassen die Pipeline fehlschlagen; Releasejob ist getrennt.",
+      "test": "T-010",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-011",
+      "phase": "P01",
+      "title": "Modulprüfungen sofort betreiben",
+      "task": "Unit Integration Fehler und Negativtests ab dem ersten Modul ausführen; Gesamtphase P14 ersetzt diese frühen Prüfungen nicht.",
+      "acceptance": "Jeder neue Schutzpfad besitzt positive und gutartige Gegenfälle sowie einen dokumentierten Ausfallfall.",
+      "test": "T-011",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-012",
+      "phase": "P01",
+      "title": "Forschungs und Produktcode trennen",
+      "task": "Experimentelle Sensoren Modelle Simulationen und Testsignaturen dürfen ohne bewusste Freigabe nicht in ein Produktpaket gelangen.",
+      "acceptance": "Releaseinventar und automatischer Paketvergleich weisen nach dass keine Laborprobe und kein Testschlüssel enthalten sind.",
+      "test": "T-012",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-013",
+      "phase": "P02",
+      "title": "Rechte trennen",
+      "task": "UI unter Benutzerrechten starten; privilegierten Broker minimal halten; Parser und Engineworker mit reduzierten Rechten ohne Internetzugriff betreiben.",
+      "acceptance": "Ein kompromittierter Testworker kann keine beliebigen Systemdateien ändern und keine Verbindung ins Netz aufbauen.",
+      "test": "T-013",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-014",
+      "phase": "P02",
+      "title": "Lokale IPC absichern",
+      "task": "Versionierte Named Pipes mit restriktiven ACLs überprüfter Clientidentität Rollen und Nachrichtenlimits verwenden; keine offen erreichbare lokale Admin HTTP API.",
+      "acceptance": "Fremde Sitzung falscher Benutzer oversized Nachricht und Replay einer mutierenden Anfrage werden abgewiesen und protokolliert.",
+      "test": "T-014",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-015",
+      "phase": "P02",
+      "title": "Scanergebnisse ehrlich modellieren",
+      "task": "Malicious Suspicious PUA NoDetection Unsupported Encrypted AccessDenied Timeout Error ChangedDuringScan getrennt modellieren; Abdeckung und Engineversion mitspeichern.",
+      "acceptance": "Keiner der Fehler und Teilzustände wird in UI oder Bericht zu sauber oder vollständig geprüft umgewandelt.",
+      "test": "T-015",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-016",
+      "phase": "P02",
+      "title": "Ereignisse nachvollziehbar machen",
+      "task": "Schema mit UTC Zeit lokaler Anzeige Korrelations ID Prozessstartidentität Dateiidentität Regel und Engineversion implementieren; Datenmenge begrenzen.",
+      "acceptance": "Ein Befund lässt sich vom Ereignis bis zur Aktion nachvollziehen; PID Wiederverwendung vermischt keine Prozesse.",
+      "test": "T-016",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-017",
+      "phase": "P02",
+      "title": "Policies und Ausnahmen begrenzen",
+      "task": "Versionierte Policies mit Rollen Ausnahmen auf genaue Objekte oder eng begrenzte Bereiche Audit und Ablaufzeit unterstützen.",
+      "acceptance": "Standardbenutzer kann keinen globalen Ausschluss setzen; ausgeschlossene Bereiche erscheinen als verringerte Abdeckung.",
+      "test": "T-017",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-018",
+      "phase": "P02",
+      "title": "Dateiidentität sicher behandeln",
+      "task": "Handle Volume Datei ID Stream und Änderungszustand statt nur Pfad verwenden; Reparsepoints Junctions Hardlinks ADS lange und Unicode Pfade berücksichtigen.",
+      "acceptance": "Parallel umbenannte und ausgetauschte Testdateien werden nicht verwechselt; mutierende Aktionen treffen ausschließlich das validierte Objekt.",
+      "test": "T-018",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-019",
+      "phase": "P02",
+      "title": "Betriebszustand aus Gesundheit ableiten",
+      "task": "ScannerReady SensorReady PolicyReady DefinitionsFresh und PrimaryProtection getrennt erfassen; Zustand unknown oder degraded bei Unsicherheit.",
+      "acceptance": "Dienstabsturz Sensorverlust und kaputte Engine ändern den UI Status; fehlende Antwort erzeugt niemals einen grünen Schutzstatus.",
+      "test": "T-019",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-020",
+      "phase": "P02",
+      "title": "Lokale Daten sichern",
+      "task": "Konfiguration Ereignisse Schlüssel und Quarantänemetadaten mit Dienstrechten ACLs Rotation und Recovery versehen; geheime Daten nicht in Logs schreiben.",
+      "acceptance": "Unprivilegierter Zugriff scheitert; beschädigte Datenbank wird kontrolliert behandelt und erzeugt keinen Schutzstillstand ohne Meldung.",
+      "test": "T-020",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-021",
+      "phase": "P03",
+      "title": "Engineadapter real anbinden",
+      "task": "ClamAV über einen isolierten Worker anbinden und Engine Vertrag für weitere Anbieter definieren; keine frei erreichbare clamd TCP Schnittstelle eröffnen.",
+      "acceptance": "Reale Scanresultate Versionsinfos und Fehler sind geprüft; Engineabsturz bleibt im Worker und erzeugt einen Fehlerstatus.",
+      "test": "T-021",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-022",
+      "phase": "P03",
+      "title": "Eigene Regeln mit YARA X integrieren",
+      "task": "Signierte versionierte Regeln mit Herkunft Lizenz Schweregrad Konfidenz und Mindestengineversion laden; Laufzeit und Speicher begrenzen.",
+      "acceptance": "Positive gutartige und Timeout Tests pro Regel bestehen; bloßer Regelname oder Dateiname führt nicht zum Fund.",
+      "test": "T-022",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-023",
+      "phase": "P03",
+      "title": "Dateitypen erkennen",
+      "task": "Typ nach Inhalt erkennen und PE32 PE64 .NET Skripte LNK MSI Office PDF Archive und Datenträgercontainer in einer Fähigkeitsmatrix führen.",
+      "acceptance": "Umbenennen einer Datei umgeht die Typbestimmung nicht; nicht unterstützte Formate erhalten einen sichtbaren Teilstatus.",
+      "test": "T-023",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-024",
+      "phase": "P03",
+      "title": "Container sicher prüfen",
+      "task": "Archive rekursiv mit Ressourcenlimits prüfen; Passwörter eingebettete Objekte mehrfach verschachtelte Archive und fehlerhafte Parserdaten behandeln.",
+      "acceptance": "Archivbomben Pfadausbruch und Grenzwertüberschreitung verursachen keinen Hostschaden; unprüfbarer Inhalt wird ausdrücklich gemeldet.",
+      "test": "T-024",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-025",
+      "phase": "P03",
+      "title": "Statische Merkmale auswerten",
+      "task": "Hash Authenticode Herkunft Mark of the Web Struktur Importe und nachvollziehbare Heuristiken kombinieren; Signatur und hohe Entropie allein entscheiden nicht.",
+      "acceptance": "Gutartige gepackte signierte und unsignierte Programme haben Gegenfälle; jeder Heuristikbefund nennt seine Belege.",
+      "test": "T-025",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-026",
+      "phase": "P03",
+      "title": "Scanarten implementieren",
+      "task": "Schnellscan Vollscan eigener Scan Kontextmenü Zeitplan und Wechselmedienscan mit Abbruch Fortsetzung und Fortschritt bereitstellen.",
+      "acceptance": "Dateien Bytes Dauer übersprungene Objekte und Fehler stimmen mit dem Scanmanifest überein; Abbruch und Neustart verlieren keine Quarantäneaktion.",
+      "test": "T-026",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-027",
+      "phase": "P03",
+      "title": "Cache invalidieren",
+      "task": "Befunde an Inhalt beziehungsweise stabilen Dateizustand Engine Regel Modell und Policyversion binden; neue Threat Intelligence invalidiert passende Einträge.",
+      "acceptance": "Geänderte Datei neue Regel andere Policy und erneutes Mounten erzeugen eine neue Bewertung statt eines veralteten Freigabecaches.",
+      "test": "T-027",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-028",
+      "phase": "P03",
+      "title": "Schadcode sicher verarbeiten",
+      "task": "Scannen bleibt Lesen und isoliertes Analysieren; Parser temporäre Dateien native Bibliotheken und Dateizugriffe werden begrenzt und fuzzbar gestaltet.",
+      "acceptance": "Fehlerhafte Eingaben verletzen keine Broker oder Kernelgrenze; ausführbare Proben starten nicht auf dem Endgerät.",
+      "test": "T-028",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-029",
+      "phase": "P04",
+      "title": "Updatevertrauen etablieren",
+      "task": "TUF mit getrennten Rollen und Offline Root Vertrauen verwenden; Artefaktsignaturen Authenticode und TLS erfüllen unterschiedliche Aufgaben.",
+      "acceptance": "Tests für Fremdschlüssel manipulierte Pakete Metadatenablauf Rollback Freeze und Mix and Match bestehen.",
+      "test": "T-029",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-030",
+      "phase": "P04",
+      "title": "Signaturen und Regeln pflegen",
+      "task": "FreshClam mit geprüfter Konfiguration für ClamAV Daten verwenden; AXSafe Regeln getrennt veröffentlichen; Upstream Lizenz Last und Verteilregeln beachten.",
+      "acceptance": "Defekte oder unpassende Daten bleiben in Staging; produktive Engine behält den letzten funktionierenden Satz.",
+      "test": "T-030",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-031",
+      "phase": "P04",
+      "title": "Atomar aktualisieren",
+      "task": "Programm Engine Regeln Modelle und Treiber mit Kompatibilitätsvertrag und atomarer Aktivierung installieren; laufende Scans behalten eine konsistente Version.",
+      "acceptance": "Abbruch Stromausfall Datenträger voll und Neustart während Update führen zu altem oder neuem gültigem Zustand ohne Mischversion.",
+      "test": "T-031",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-032",
+      "phase": "P04",
+      "title": "Gestuft ausrollen",
+      "task": "Interne VMs Pilotgruppen und kontrollierte Verteilringe mit Gesundheitsdaten Stopkriterien und authentifizierter Rücknahme definieren.",
+      "acceptance": "Eine fehlerhafte Pilotregel erreicht den nächsten Ring nicht; Ausfall einzelner Cloudsysteme deaktiviert keinen lokalen Basisschutz.",
+      "test": "T-032",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-033",
+      "phase": "P04",
+      "title": "Rollback und Antirollback vereinbaren",
+      "task": "Fehlerhafte Releases nur durch neue autorisierte Metadaten auf freigegebene bekannte Artefakte zurücksetzen; Mindestversion und gesperrte Versionen beachten.",
+      "acceptance": "Berechtigtes Recovery funktioniert; ein Angreifer kann keinen beliebigen alten verwundbaren Stand als Wiederherstellung einschleusen.",
+      "test": "T-033",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-034",
+      "phase": "P04",
+      "title": "Schlüssel und Offlinefälle behandeln",
+      "task": "Schlüssel in HSM oder geeignetem geschütztem Signierdienst halten; Rotation Widerruf Uhrfehler Proxy und Offlineupdate vorsehen.",
+      "acceptance": "Verlust eines Online Signierschlüssels führt zu geprobter Rotation; abgelaufene Metadaten und veraltete Definitionen werden sichtbar.",
+      "test": "T-034",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-035",
+      "phase": "P05",
+      "title": "Quarantäne verschlüsseln",
+      "task": "Payload authentifiziert verschlüsseln etwa mit AES GCM und zufälligen Nonces; Schlüssel über Windows Schutzmechanismen und Dienst ACLs sichern.",
+      "acceptance": "Quarantänedatei kann nicht direkt ausgeführt oder unprivilegiert entschlüsselt werden; Manipulation wird erkannt.",
+      "test": "T-035",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-036",
+      "phase": "P05",
+      "title": "Quarantäne transaktional ausführen",
+      "task": "Identität Hash Streams Metadaten und Wiederherstellungsdaten sichern; erst nach haltbarer Sicherung Originalzugriff entfernen; Journal und Neustart fortsetzen.",
+      "acceptance": "Crash zwischen jedem Transaktionsschritt verursacht weder stille Datenlöschung noch falschen Erfolg; gesperrte Dateien haben einen expliziten Zustand.",
+      "test": "T-036",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-037",
+      "phase": "P05",
+      "title": "Restore kontrollieren",
+      "task": "Rückgabe nur nach Berechtigungsprüfung aktuellem Rescan Zielprüfung und sichtbarer Warnung; Ausnahmen eng begrenzen.",
+      "acceptance": "Originalhash und freigegebene Metadaten stimmen; belegte Zieldateien und gefährliche Pfade werden nicht unbemerkt überschrieben.",
+      "test": "T-037",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-038",
+      "phase": "P05",
+      "title": "Systemreparatur vorsichtig planen",
+      "task": "Persistenz und Dateifunde zu einer Reparaturvorschau bündeln; Systemdateien und unbekannte Abhängigkeiten nicht blind löschen.",
+      "acceptance": "Gutartige Autostarts Dienste und Systemdateien bleiben erhalten; Reparaturfehler und Neustartbedarf sind nachvollziehbar.",
+      "test": "T-038",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-039",
+      "phase": "P05",
+      "title": "Quarantänelimits verwalten",
+      "task": "Speicherlimit Aufbewahrung Export und autorisierte endgültige Löschung definieren; keine automatische riskante Wiederherstellung bei Platzmangel.",
+      "acceptance": "Volle Quarantäne und erschöpfter Datenträger erzeugen verständliche Aktionen ohne Verlust ungeklärter Fälle.",
+      "test": "T-039",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-040",
+      "phase": "P05",
+      "title": "Befunde überprüfen können",
+      "task": "Fehlalarm melden Regel zurücknehmen und Objekte nach Korrektur erneut prüfen; Meldung übermittelt nur freigegebene Daten.",
+      "acceptance": "Ein absichtlich erzeugter Fehlalarm lässt sich begründet korrigieren und bytegenau rückgängig machen.",
+      "test": "T-040",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-041",
+      "phase": "P06",
+      "title": "Windows Sensoren anbinden",
+      "task": "Dokumentierte ETW Ereignisse und geeignete APIs für Prozess Datei Registry Dienst Task und Netzwerk nutzen; Fähigkeiten pro Build prüfen.",
+      "acceptance": "Jeder Sensor hat einen echten Integrationstest auf LTSC; nicht verfügbare oder verlorene Ereignisse sind messbar und sichtbar.",
+      "test": "T-041",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-042",
+      "phase": "P06",
+      "title": "Ereignisverlust beherrschen",
+      "task": "Queues begrenzen Backpressure Reihenfolge Duplikate und Überlauf behandeln; Dateiwatcher nur als Nachscanner nutzen.",
+      "acceptance": "Überlasttest provoziert Verluste und Rescan; kein Watcher wird als garantierte Ausführungsblockierung ausgegeben.",
+      "test": "T-042",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-043",
+      "phase": "P06",
+      "title": "Prozesszusammenhang bilden",
+      "task": "Prozessstartidentität Eltern Kind Beziehungen Signer Token Dateiobjekte und Netzverbindungen zu einer lokalen Zeitleiste verknüpfen.",
+      "acceptance": "PID Wiederverwendung Neustarts und manipulierte Namen erzeugen keine falschen Prozessketten.",
+      "test": "T-043",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-044",
+      "phase": "P06",
+      "title": "Verhaltensregeln validieren",
+      "task": "Mehrere Signale für Dropper Persistenz Credential Diebstahl verdächtige Skripte Injection und Fernsteuerung korrelieren; Konfidenz Aktion und ATTACK Bezug angeben.",
+      "acceptance": "Für jede Regel bestehen kontrollierte Angriffssimulation und mehrere legitime Gegenbeispiele; Einzelindikatoren bewirken kein pauschales Löschen.",
+      "test": "T-044",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-045",
+      "phase": "P06",
+      "title": "Reaktionen begrenzen",
+      "task": "Warnen erneutes Prüfen Zugriff blockieren isolieren und definierte Prozessbeendigung nach belegter Policy staffeln; Prozessidentität vor Aktion neu prüfen.",
+      "acceptance": "Gutartige Verwaltungswerkzeuge Debugger und Installer werden nicht allein wegen ihrer Funktion beendet.",
+      "test": "T-045",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-046",
+      "phase": "P06",
+      "title": "Nachvollziehbares Journal führen",
+      "task": "Sicherheitsrelevante Entscheidung Eingangsereignisse Aktion Ergebnis Version und Datenverlust protokollieren; Datenschutz und begrenzte Aufbewahrung einhalten.",
+      "acceptance": "Eine reproduzierte Testkette kann vollständig erklärt werden; Logs sind exportierbar ohne unnötige Geheimnisse.",
+      "test": "T-046",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-047",
+      "phase": "P07",
+      "title": "AMSI Provider implementieren",
+      "task": "Eigenen IAntimalwareProvider für die Zielarchitekturen registrieren signieren und mit Engines verbinden; in Skripthosts nur minimalen Code laden.",
+      "acceptance": "Testhost und passende PowerShell Hosts erhalten einen AXSafe eigenen Befund; AmsiScanBuffer Aufruf zu fremdem Provider zählt nicht als Eigenentwicklung.",
+      "test": "T-047",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-048",
+      "phase": "P07",
+      "title": "Skriptsitzungen korrelieren",
+      "task": "AMSI Streams Fragmente und Sitzungen begrenzt auswerten; Skriptinhalt als vertraulich behandeln; fehlende AMSI Einbindung kenntlich machen.",
+      "acceptance": "Fragmentierter gutartiger und kontrolliert verdächtiger Inhalt wird wie spezifiziert bewertet; Standardlogs enthalten keine vollständigen Skripte.",
+      "test": "T-048",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-049",
+      "phase": "P07",
+      "title": "Speicherscan begrenzen",
+      "task": "Gezielt verdächtige Prozesse und lesbare Bereiche mit dokumentierten APIs prüfen; keine Schutzmechanismen umgehen und keine Vollabbild Sammlung als Standard.",
+      "acceptance": "Zugriffsfehler geschützte Prozesse 32 Bit und 64 Bit werden korrekt behandelt; Worker bleibt innerhalb des Zeit und Speicherbudgets.",
+      "test": "T-049",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-050",
+      "phase": "P07",
+      "title": "Speicherbefunde belegen",
+      "task": "Signaturmuster ungewöhnliche ausführbare Bereiche Herkunft und Verhalten gemeinsam bewerten; JIT Browser Spiele und Debugger als Gegenfälle einbeziehen.",
+      "acceptance": "Gutartiger dynamischer Code löst keine pauschale Blockade aus; jeder Befund nennt beobachtete Daten und Grenzen.",
+      "test": "T-050",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-051",
+      "phase": "P07",
+      "title": "Sensorintegrität überwachen",
+      "task": "Ausfall oder mögliche Manipulation von AMSI ETW und eigenen Komponenten als eigene Gesundheitssignale melden.",
+      "acceptance": "Simulierter Ausfall führt zu degraded und prüfbarer Meldung; kein Umgehungscode ist Teil des Produkts.",
+      "test": "T-051",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-052",
+      "phase": "P07",
+      "title": "Skript und Makroformate dokumentieren",
+      "task": "PowerShell JS VBS VBA und unterstützte Dokumentversionen getrennt prüfen; nicht kooperierende Hosts bleiben als Lücke erfasst.",
+      "acceptance": "Fähigkeitsmatrix nennt Host Architektur Office Version und Test; unbekannte Kombinationen erscheinen nicht als garantiert geschützt.",
+      "test": "T-052",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-053",
+      "phase": "P08",
+      "title": "Minimalen Minifilter entwickeln",
+      "task": "Dokumentierten Windows Filter Manager mit User Mode Scanworker einsetzen; Dateiparser Modelle und Regelinterpreter nicht im Kernel ausführen.",
+      "acceptance": "Treiber enthält nur notwendige Sensor und Durchsetzungslogik; Code Review und reale I O Tests liegen vor.",
+      "test": "T-053",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-054",
+      "phase": "P08",
+      "title": "Zugriffszeitpunkte absichern",
+      "task": "Öffnen Schreiben Umbenennen Ausführen und Section Erstellung einschließlich Memory Mapping bewerten; erlaubte Abläufe und Sperrzeitpunkte präzise definieren.",
+      "acceptance": "Eine erkannte Testdatei kann auf unterstützten Pfaden nicht vor der vorgesehenen Entscheidung ausgeführt oder erneut verändert werden.",
+      "test": "T-054",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-055",
+      "phase": "P08",
+      "title": "Dateirennen verhindern",
+      "task": "Datei Stream Identität Änderungszustand stabile Lesesicht und Cache Invalidierung mit Filter Manager Mechanismen verbinden; transaktionale I O beachten.",
+      "acceptance": "Austausch Änderung Hardlink und Reparsepoint Tests zwischen Scan und Aktion erzeugen keine veraltete Freigabe oder falsche Löschung.",
+      "test": "T-055",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-056",
+      "phase": "P08",
+      "title": "Deadlocks und Überlast ausschließen",
+      "task": "Begrenzte Wartezeiten cancelbare Anfragen IRQL Regeln Reentrancy Paging I O und Verlust der User Mode Verbindung beherrschen.",
+      "acceptance": "Workerabsturz niedriger Speicher und parallele Last halten den Rechner bedienbar; Fehlerzustand ist sichtbar.",
+      "test": "T-056",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-057",
+      "phase": "P08",
+      "title": "Fehlerpolicy explizit machen",
+      "task": "Bekannt schädliche Objekte bleiben blockiert; bei unbekannten Inhalten und Scannerfehlern verfügbarkeitsorientierten oder strengeren Modus ausdrücklich definieren.",
+      "acceptance": "Timeout ergibt nie sauber; Modus und Ausnahme sind testbar und werden protokolliert; kritischer Systemstart darf nicht endlos blockieren.",
+      "test": "T-057",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-058",
+      "phase": "P08",
+      "title": "Treiber regulär ausliefern",
+      "task": "Passende WDK Toolchain Altitude Hardware Dashboard Signierung und erforderliche Tests beschaffen; Testsignierung nur im Labor.",
+      "acceptance": "Produktionstreiber lädt auf normal konfigurierten Zielsystemen; Secure Boot oder Speicherintegrität müssen dafür nicht abgeschaltet werden.",
+      "test": "T-058",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-059",
+      "phase": "P08",
+      "title": "Dateisysteme und Fremdfilter prüfen",
+      "task": "NTFS exFAT unterstützte ReFS SMB OneDrive Platzhalter ZIP ISO USB lange Pfade und fremde Filter nach definierter Matrix testen.",
+      "acceptance": "Nicht geprüfte Kombinationen sind als solche benannt; Cloud Platzhalter werden nicht unbemerkt massenhaft heruntergeladen.",
+      "test": "T-059",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-060",
+      "phase": "P08",
+      "title": "Boot und Treiber Recovery beweisen",
+      "task": "Installation Upgrade Abbruch Safe Mode und autorisierten Notfallausbau mit Offlinezugriff planen und prüfen.",
+      "acceptance": "Ein defektes Testrelease lässt sich auf einer separaten VM aus einer Bootstörung zurückholen; kein Bootloop wird als akzeptabler Restfehler freigegeben.",
+      "test": "T-060",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-061",
+      "phase": "P09",
+      "title": "Ransomware Muster korrelieren",
+      "task": "Prozess Herkunft ungewöhnliche Änderungsraten Dateiversionen und weitere Signale kombinieren; Entropie oder Canary alleine reicht nicht.",
+      "acceptance": "Gutartige Komprimierung Backup Sync und Entwicklung sind Gegenfälle; Simulator verändert ausschließlich wegwerfbare Testdateien.",
+      "test": "T-061",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-062",
+      "phase": "P09",
+      "title": "Schreibvorgänge begrenzen",
+      "task": "Definierte geschützte Ordner und unterstützte Dateioperationen über getestete Durchsetzung sperren; Remote SMB Verursachung gesondert behandeln.",
+      "acceptance": "Vorab festgelegtes Schadensbudget für Testdateien wird gemessen; lokal und remote ausgelöste Fälle sind getrennt ausgewiesen.",
+      "test": "T-062",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-063",
+      "phase": "P09",
+      "title": "Wiederherstellung begrenzt zusagen",
+      "task": "Für unterstützte Änderungen vorhandene Originalversionen vorhalten; Kapazität Konsistenz Verschlüsselung und geschützte Ablage planen.",
+      "acceptance": "Wiederherstellung der Testdateien ist bytegenau; ohne Originalkopie erscheint keine garantierte Entschlüsselung.",
+      "test": "T-063",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-064",
+      "phase": "P09",
+      "title": "Wiper und Erpressung unterscheiden",
+      "task": "Datenzerstörung Massenlöschung Verschlüsselung und Datenabfluss getrennt melden; kein Rollback als Schutz vor bereits erfolgter Exfiltration darstellen.",
+      "acceptance": "Simulationen erzeugen unterschiedliche Befunde und korrekte Handlungshinweise; bestehende Backups bleiben unabhängig erforderlich.",
+      "test": "T-064",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-065",
+      "phase": "P09",
+      "title": "Persistenz kontrolliert beseitigen",
+      "task": "Run Keys Dienste Tasks WMI relevante Browserkomponenten und Startup Ordner prüfen; Beziehungsnachweise für Reparatur verlangen.",
+      "acceptance": "Legitime Verwaltungs und Autostartfälle bleiben funktionsfähig; Reparaturvorschau und Wiederherstellung sind getestet.",
+      "test": "T-065",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-066",
+      "phase": "P09",
+      "title": "Offlineprüfung spezifizieren und erproben",
+      "task": "Externes bootfähiges Rettungsmedium oder WinPE Pfad mit eigenen Lizenz und Signierprüfungen bereitstellen; BitLocker und verschlüsselte Datenträger beachten.",
+      "acceptance": "Offlineablauf funktioniert auf Laborgerät mit freigegebenem Schlüsselzugriff; gesperrte Datenträger bleiben als nicht geprüft sichtbar.",
+      "test": "T-066",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-067",
+      "phase": "P10",
+      "title": "Web und Phishing trennen",
+      "task": "Browsererweiterung mit minimalen Berechtigungen und lizenzierter URL Reputation einsetzen; Punycode Weiterleitungen Downloads und unbekannte URLs berücksichtigen.",
+      "acceptance": "Getrennte Tests für schädliche Testseite legitime Seite Datenminimierung und Ausfall bestehen; unbekannt gilt nicht als vertrauenswürdig.",
+      "test": "T-067",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-068",
+      "phase": "P10",
+      "title": "Netzwerkpolicy implementieren",
+      "task": "Windows Firewall und gezielte WFP Filter für Prozess Ziel und Verbindungsblockaden nutzen; IPv4 IPv6 VPN Proxy und DNS Wege prüfen.",
+      "acceptance": "Gezielte Testverbindung wird blockiert erlaubte bleibt nutzbar; Isolation hält benötigte Recoverykanäle nach ausdrücklicher Policy offen.",
+      "test": "T-068",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-069",
+      "phase": "P10",
+      "title": "Verschlüsselungsgrenzen einhalten",
+      "task": "Ohne eigenen legitimierten Entschlüsselungspfad keinen vollständigen HTTPS Mail oder QUIC Inhaltsscan behaupten; keinen Root CA Eingriff als Standard.",
+      "acceptance": "UI erklärt die tatsächlich geprüften Datenquellen; Tests mit HTTPS QUIC DoH und VPN zeigen erwartete Sichtbarkeit und Grenzen.",
+      "test": "T-069",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-070",
+      "phase": "P10",
+      "title": "E Mail Schutz ehrlich umsetzen",
+      "task": "Zunächst lokal gespeicherte Anhänge und unterstützte Downloadpfade prüfen; Client oder Gateway Integration mit eigener Rechte und Protokollmatrix ausweisen.",
+      "acceptance": "Ohne echte Integration steht Anhangprüfung statt vollständiger Postfachschutz; E Mail Kennwörter und Inhalte werden nicht heimlich gesammelt.",
+      "test": "T-070",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-071",
+      "phase": "P10",
+      "title": "Wechselmedien prüfen",
+      "task": "Neue Datenträger und deren Dateien scannen Autoausführung beachten und Scanaufträge begrenzen; BadUSB nicht mit Dateivirenschutz gleichsetzen.",
+      "acceptance": "USB Datei und Ausführungsfälle sind getestet; Tastatur und Firmware Angriffe erscheinen als eigene Grenze.",
+      "test": "T-071",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-072",
+      "phase": "P10",
+      "title": "Netz und Kommunikationsindikatoren bewerten",
+      "task": "C2 bekannte Schadziele und Reputation mit Kontext Ablaufzeit und Gegenfällen verwenden; keine globale Sperre auf gemeinsam genutzte Infrastruktur ohne Beleg.",
+      "acceptance": "Benigne Cloud und CDN Ziele bleiben erreichbar; veraltete und fehlerhafte Indikatoren können kontrolliert zurückgenommen werden.",
+      "test": "T-072",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-073",
+      "phase": "P11",
+      "title": "Selbstschutz stufenweise umsetzen",
+      "task": "ACLs signierte Konfiguration Servicezugriff und Integritätskontrollen gegen Standardbenutzer absichern; Admin und Kernelgrenzen benennen.",
+      "acceptance": "Manipulation aus Standardbenutzerkontext scheitert; verlorene Schutzfähigkeit wird erkannt und gemeldet.",
+      "test": "T-073",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-074",
+      "phase": "P11",
+      "title": "ELAM und PPL Pfad prüfen",
+      "task": "Für starken Dienstschutz ELAM zertifizierten Treiber Zertifikatsressourcen signierte DLLs und Wartungsweg technisch erproben.",
+      "acceptance": "Bei beanspruchtem PPL Schutz liegt ein realer Nachweis vor; ohne externe Voraussetzungen bleibt dieser Punkt offen und blockiert das entsprechende Versprechen.",
+      "test": "T-074",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-075",
+      "phase": "P11",
+      "title": "Windows Sicherheitscenter regulär anbinden",
+      "task": "Unterstützten Registrierungs und Statuspfad mit Microsoft beziehungsweise geeignetem OEM klären; keine erfundenen API oder WMI Produktmeldungen.",
+      "acceptance": "Windows zeigt den realen Zustand; Aufnahme Voraussetzungen und Zugang sind dokumentiert statt simuliert.",
+      "test": "T-075",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-076",
+      "phase": "P11",
+      "title": "Koexistenz nachweisen",
+      "task": "Bis zur geprüften Primärschutzfreigabe vorhandenen Defender aktiv lassen; keine breiten Ausschlüsse oder pauschal erzwungenen Betriebsmodi setzen.",
+      "acceptance": "Companion Tests und kontrollierter Primärschutzwechsel beweisen dass kein ungeschütztes Zeitfenster entsteht.",
+      "test": "T-076",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-077",
+      "phase": "P11",
+      "title": "Rootkit und Treiberrisiken behandeln",
+      "task": "Treiber und Bootintegrität unterstützte Blocklisten Secure Boot und HVCI Status prüfen; tiefe Kernel oder Firmwarekompromittierung als Eskalationsfall behandeln.",
+      "acceptance": "Bekannte Testindikatoren und fehlende Voraussetzungen werden gemeldet; kein vollständiger Firmware Reinheitsnachweis wird aus einem Live Scan abgeleitet.",
+      "test": "T-077",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-078",
+      "phase": "P11",
+      "title": "Autorisierten Ausbau erlauben",
+      "task": "Pausieren Reparatur und Deinstallation mit Rechten Zeitbegrenzung Audit und Recovery verbinden; Nutzer darf nicht ausgesperrt werden.",
+      "acceptance": "Legitime Deinstallation und Notfallwiederherstellung funktionieren; beliebige unprivilegierte Schutzabschaltung gelingt nicht.",
+      "test": "T-078",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-079",
+      "phase": "P12",
+      "title": "Optionale Reputation betreiben",
+      "task": "Eigenen authentifizierten Backendvertrag mit Hash Abfragen TTL Limits Quoten Ausfallcache und getrennten Datenschutzstufen entwickeln.",
+      "acceptance": "Cloud aus offline und langsames Netz lassen lokale Erkennung weiterlaufen; kein unbekannter Hash wird automatisch als sicher eingestuft.",
+      "test": "T-079",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-080",
+      "phase": "P12",
+      "title": "Sample Upload ausdrücklich freigeben",
+      "task": "Vor jedem nicht bereits konkret freigegebenen Inhaltsupload Zweck Empfänger Daten und Aufbewahrung erklären; keine Bank oder Arbeitgeberdaten als Testmaterial.",
+      "acceptance": "Abgelehnter Upload übermittelt keine Datei; Freigabe Audit Löschung Zugriffskontrolle und getrennte Ablage sind getestet.",
+      "test": "T-080",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-081",
+      "phase": "P12",
+      "title": "Sandbox isoliert integrieren",
+      "task": "Verdächtige Dateien nur in separaten zurücksetzbaren Analyse VMs ausführen; Kontrollpfad und Ausgabeparser absichern; niemals auf dem Alltagsgerät detonieren.",
+      "acceptance": "Isolation Rücksetzung Limits und fehlerhafte Analysedaten bestehen Tests; unauffälliger Sandboxlauf bedeutet keine Freigabegarantie.",
+      "test": "T-081",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-082",
+      "phase": "P12",
+      "title": "Modellforschung reproduzieren",
+      "task": "Lizenzgeprüfte Datensätze mit zeitlicher und Familien Trennung verwenden; aktuelle gutartige Dateien ergänzen; einfache Baseline vor komplexen Netzen bewerten.",
+      "acceptance": "Versionierte Daten und Features liefern reproduzierbare Ergebnisse ohne Train Test Überschneidung; alte Datensätze begründen keine aktuelle Schutzquote.",
+      "test": "T-082",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-083",
+      "phase": "P12",
+      "title": "Modelle sicher freigeben",
+      "task": "Fehlalarme Kalibrierung unbekannte Typen Drift Poisoning und manipulierte Merkmale prüfen; Modell Featurevertrag und Inferenzruntime signieren.",
+      "acceptance": "Modell bleibt ohne belegten Mehrwert im Forschungsmodus; optionaler Produktbetrieb hat Grenzwerte Rücknahme und nachvollziehbare Befunde.",
+      "test": "T-083",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-084",
+      "phase": "P12",
+      "title": "Forschungsbetrieb begrenzen",
+      "task": "Threat Intel Quellen STIX TAXII Analystenfreigaben Kosten und Missbrauchsschutz planen; kein öffentliches Malware Ausführungs API als Nebenprodukt bauen.",
+      "acceptance": "Untrusted Daten erhalten weder Produktionssignierschlüssel noch direkten Zugriff auf Analysehosts; LLM Vorschläge führen nie selbstständig zu Löschung oder Blockade.",
+      "test": "T-084",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-085",
+      "phase": "P13",
+      "title": "Referenzdesign aufnehmen",
+      "task": "Dunkelblaue Desktopoberfläche mit cyanblauen Akzenten linker Navigation Dashboard Mitte Schutzmodulen rechts und eigenem AXSafe Schild gestalten.",
+      "acceptance": "Ansicht orientiert sich an Nutzerbild vom 24 Oktober 2026 und bleibt bei 125 bis 200 Prozent Skalierung bedienbar.",
+      "test": "T-085",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-086",
+      "phase": "P13",
+      "title": "Navigation vollständig anbinden",
+      "task": "Übersicht Virenscan Echtzeitschutz Ransomware Firewall und Netzwerk Web und Phishing Quarantäne Datenschutz Berichte Einstellungen und Hilfe als echte Ansichten umsetzen.",
+      "acceptance": "Alle Ziele öffnen passende Inhalte; kein sichtbarer Hauptbutton endet ohne Aktion oder Erklärung.",
+      "test": "T-086",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-087",
+      "phase": "P13",
+      "title": "Dashboard mit echten Daten füllen",
+      "task": "Schutzbanner Module Scanstatistik Updatezeit Aktivitätsdiagramm Scan Center letzte Funde und Live Ereignisse aus dem Dienst beziehen.",
+      "acceptance": "Keine festen Beispielzähler in Produktion; Sensor oder Cloudausfall veraltete Regeln und fehlender Primärschutz ändern Banner und Modulzustände.",
+      "test": "T-087",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-088",
+      "phase": "P13",
+      "title": "Scan und Fundabläufe gestalten",
+      "task": "Fortschritt Abbruch Teilresultate Erkennungsdetails Quarantäne Restore Fehlalarm und Neustartbedarf verständlich darstellen.",
+      "acceptance": "Nutzer kann einen Scan starten einen Fehler verstehen und einen Fund kontrolliert behandeln ohne unbeabsichtigte destructive Aktion.",
+      "test": "T-088",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-089",
+      "phase": "P13",
+      "title": "Modulschalter ehrlich machen",
+      "task": "Schalter benötigen Capability Prüfung Berechtigungen Rückmeldung und bestätigten Dienstzustand; nicht vorhandene Funktion sichtbar deaktivieren.",
+      "acceptance": "Fehlgeschlagene Umschaltung springt zum tatsächlichen Zustand zurück; Demo oder Laborbetrieb bleibt dauerhaft markiert.",
+      "test": "T-089",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-090",
+      "phase": "P13",
+      "title": "Bedienbarkeit und Datenschutz sichern",
+      "task": "Deutsch Tastaturbedienung Screenreader Kontrast Status ohne reine Farbcodes ruhige Benachrichtigungen und minimale Diagnoseexporte vorsehen.",
+      "acceptance": "Bedientest mit Tastatur Skalierung und Fehlerzuständen besteht; keine überflüssigen Konten oder Uploads sind zum lokalen Scan nötig.",
+      "test": "T-090",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-091",
+      "phase": "P14",
+      "title": "Funktionsnachweise getrennt führen",
+      "task": "EICAR AMTSO Integrationstests und echte Schutztests getrennt auswerten; Simulationsbelege nicht als Malware Wirksamkeitsquote ausgeben.",
+      "acceptance": "Bericht nennt Testart Korpus Datum Version OS Einstellung Onlinezustand und Zuordnung zur konkreten AXSafe Komponente.",
+      "test": "T-091",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-092",
+      "phase": "P14",
+      "title": "Schutzwirkung messen",
+      "task": "Prävention Erkennung Eindämmung Reparatur und Schaden getrennt anhand zeitlich aktueller rechtmäßig beschaffter Fälle testen; unabhängigen Testweg planen.",
+      "acceptance": "Recall Fehlalarme verpasste Fälle Latenzen und Schadensumfang sind transparent; keine Bestenliste aus unterschiedlichen Testbedingungen.",
+      "test": "T-092",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-093",
+      "phase": "P14",
+      "title": "Fehlalarme ernst nehmen",
+      "task": "Großen repräsentativen sauberen Korpus mit Windows Office Browsern Spielen Entwicklertools Backups und eigener Zielsoftware testen.",
+      "acceptance": "Kein destruktiver Fehlalarm auf kritischen Systemdateien; Regeln und Modelle mit unvertretbarer Fehlalarmrate werden zurückgenommen.",
+      "test": "T-093",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-094",
+      "phase": "P14",
+      "title": "Leistung und Kompatibilität messen",
+      "task": "Leerlauf Scan Boot Dateioperationen Programminstallationen Spiele VM Betrieb SMB OneDrive und Updates gegen dokumentierte Baseline vergleichen.",
+      "acceptance": "Perzentile CPU RAM Datenträgerlast und Ausreißer sind berichtet; vorab vereinbarte Budgets sind erfüllt oder Freigabe bleibt offen.",
+      "test": "T-094",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-095",
+      "phase": "P14",
+      "title": "Ausfälle und Angriffe gegen AXSafe testen",
+      "task": "Parser IPC Updateformate Quarantäne und Treiber fuzzingorientiert prüfen; Stromausfall voller Datenträger Offlinezustand Überlast und Schlüsselkompromittierung erproben.",
+      "acceptance": "Keine offenen kritischen Sicherheits oder Datenverlustfehler; Treiberprüfung Langzeittest und Recoverybericht liegen vor.",
+      "test": "T-095",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-096",
+      "phase": "P14",
+      "title": "Externen Review und Abdeckung abschließen",
+      "task": "Unabhängige Sicherheitsprüfung und geeignete Labortests vorbereiten; Anforderungen mit Code Test Ergebnis offenen Punkten und Produktversprechen verknüpfen.",
+      "acceptance": "Alle verpflichtenden Anforderungen sind mit echten Belegen bestanden; externe fehlende Freigaben werden nicht durch interne Mocks ersetzt.",
+      "test": "T-096",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-097",
+      "phase": "P15",
+      "title": "Signiertes Release paketieren",
+      "task": "Installations Upgrade und Deinstallationspakete Signaturen SBOM Lizenztexte Prüfsummen bekannte Grenzen und Wiederherstellungsanleitung bereitstellen.",
+      "acceptance": "Saubere Installation Upgrade und autorisierter Ausbau auf der Zielmatrix bestehen; Produktpaket enthält keine Forschungssamples.",
+      "test": "T-097",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-098",
+      "phase": "P15",
+      "title": "Verantwortlichen Betrieb etablieren",
+      "task": "Support Fehlalarmannahme Schwachstellenkoordination Security Kontakt Incident Verfahren Backup Restore Monitoring und Updatebereitschaft organisieren.",
+      "acceptance": "Probe eines kritischen Fehlalarms und kompromittierten Updates erreicht zuständige Personen und funktioniert auch bei Cloudausfall.",
+      "test": "T-098",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-099",
+      "phase": "P15",
+      "title": "Markt und Datenschutzfreigabe abschließen",
+      "task": "CRA Pflichten Konformitätsweg Datenschutzinformationen Auftragsverarbeitung Drittlandtransfers Supportdauer Namensrechte und Open Source Pflichten vor Vertrieb prüfen.",
+      "acceptance": "Freigabeakte und gültige Unterlagen liegen vor; öffentlich genutzte Siegel entsprechen tatsächlich erlangten Prüfungen.",
+      "test": "T-099",
+      "status": "geplant"
+    },
+    {
+      "id": "AXS-100",
+      "phase": "P15",
+      "title": "V1 nur mit Abnahme freigeben",
+      "task": "V1 bleibt bei fehlenden Pflichtnachweisen unveröffentlicht oder eindeutig als begrenzte Vorversion gekennzeichnet; Umfang nicht stillschweigend reduzieren.",
+      "acceptance": "Releasecheckliste nennt erfüllte Ziele Grenzen offene Risiken Versionen und Freigabeverantwortung; kein geplanter Punkt wird als implementiert verkauft.",
+      "test": "T-100",
+      "status": "geplant"
+    }
+  ],
+  "sources": [
+    {
+      "id": "Q01",
+      "ref": "turn7search3",
+      "title": "Windows 10 release information",
+      "url": "https://learn.microsoft.com/en-us/windows/release-health/release-information",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q02",
+      "ref": "turn7search6",
+      "title": "LTSC 2021 Supportende",
+      "url": "https://techcommunity.microsoft.com/blog/windows-itpro-blog/plan-for-windows-10-enterprise-ltsc-2021-end-of-support/4539866",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q03",
+      "ref": "turn12search4",
+      "title": ".NET 10 unterstützte Betriebssysteme",
+      "url": "https://github.com/dotnet/core/blob/main/release-notes/10.0/supported-os.md",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q04",
+      "ref": "turn13view0",
+      "title": "Microsoft Defender Erkennungsschichten",
+      "url": "https://learn.microsoft.com/en-us/defender-endpoint/adv-tech-of-mdav",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q05",
+      "ref": "turn13view1",
+      "title": "Bitdefender OEM und Endpoint SDKs",
+      "url": "https://www.bitdefender.com/en-us/oem/endpoint-protection",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q06",
+      "ref": "turn13view2",
+      "title": "ESET Schutztechnologien",
+      "url": "https://www.eset.com/me/about/technology/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q07",
+      "ref": "turn13view3",
+      "title": "Sophos technische Schutzrichtlinie",
+      "url": "https://docs.sophos.com/central/customer/help/en-us/ManageYourProducts/EndpointProtection/ThreatProtectionPolicy/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q08",
+      "ref": "turn5search4",
+      "title": "SentinelOne statische und Verhaltensmodelle",
+      "url": "https://www.sentinelone.com/platform/singularity-complete/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q09",
+      "ref": "turn13view4",
+      "title": "SentinelOne Ereigniskorrelation",
+      "url": "https://www.sentinelone.com/platform/endpoint-protection-platform/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q10",
+      "ref": "turn4search0",
+      "title": "Kaspersky System Watcher und Grenzen des Rollbacks",
+      "url": "https://support.kaspersky.com/help/Kaspersky/Win21.7/en-US/68174.htm",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q11",
+      "ref": "turn4search1",
+      "title": "AV Comparatives Malware Protection Methodik",
+      "url": "https://av-comparatives.org/tests/malware-protection-test-september-2026/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q12",
+      "ref": "turn4search5",
+      "title": "AV Comparatives Real World Protection Methodik",
+      "url": "https://av-comparatives.org/tests/real-world-protection-test-february-may-2026/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q13",
+      "ref": "turn15view3",
+      "title": "AV TEST Testverfahren",
+      "url": "https://www.av-test.org/en/about-the-institute/test-procedures/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q14",
+      "ref": "turn15view2",
+      "title": "AMTSO Funktionsprüfungen",
+      "url": "https://www.amtso.org/security-features-check/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q15",
+      "ref": "turn10search3",
+      "title": "EICAR Testdatei",
+      "url": "https://www.eicar.org/download-anti-malware-testfile/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q16",
+      "ref": "turn0search2",
+      "title": "MITRE ATTACK Enterprise Matrix",
+      "url": "https://attack.mitre.org/matrices/enterprise/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q17",
+      "ref": "turn0search1",
+      "title": "ClamAV Fähigkeiten und Plattformgrenzen",
+      "url": "https://docs.clamav.net/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q18",
+      "ref": "turn0search22",
+      "title": "ClamAV Quellcode und Lizenz",
+      "url": "https://github.com/Cisco-Talos/clamav",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q19",
+      "ref": "turn17search3",
+      "title": "ClamAV Scannen und fehlende TCP Authentifizierung",
+      "url": "https://docs.clamav.net/manual/Usage/Scanning.html",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q20",
+      "ref": "turn7view1",
+      "title": "ClamAV Signaturdatenbanken",
+      "url": "https://docs.clamav.net/faq/faq-cvd.html",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q21",
+      "ref": "turn17view0",
+      "title": "ClamAV Konfiguration und FreshClam",
+      "url": "https://docs.clamav.net/manual/Usage/Configuration.html",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q22",
+      "ref": "turn15view5",
+      "title": "YARA X Funktionen und Lizenz",
+      "url": "https://github.com/VirusTotal/yara-x",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q23",
+      "ref": "turn5search10",
+      "title": "VirusTotal API Nutzungsgrenzen",
+      "url": "https://docs.virustotal.com/reference/getting-started",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q24",
+      "ref": "turn5search14",
+      "title": "VirusTotal Weitergabe hochgeladener Dateien",
+      "url": "https://docs.virustotal.com/docs/how-it-works",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q25",
+      "ref": "turn3search13",
+      "title": "Windows Dateisystem Minifilter",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/about-file-system-filter-drivers",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q26",
+      "ref": "turn18search1",
+      "title": "Microsoft Minifilter Beispiele",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/samples/file-system-driver-samples",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q27",
+      "ref": "turn18search0",
+      "title": "Dateiscan und Synchronisierung im Minifilter",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcreatesectionfordatascan",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q28",
+      "ref": "turn3search25",
+      "title": "Minifilter Altitude beantragen",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/minifilter-altitude-request",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q29",
+      "ref": "turn3search12",
+      "title": "Windows Treibersignierung Voraussetzungen",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/code-signing-reqs",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q30",
+      "ref": "turn16search5",
+      "title": "AMSI Aufrufer und Provider",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/amsi/antimalware-scan-interface-portal?WT.mc_id=DT-MVP-5003978",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q31",
+      "ref": "turn1search0",
+      "title": "Geschützte Antimalware Dienste und ELAM",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/services/protecting-anti-malware-services-",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q32",
+      "ref": "turn0search6",
+      "title": "Microsoft Defender Betriebsmodi",
+      "url": "https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-antivirus-windows",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q33",
+      "ref": "turn3search6",
+      "title": "Windows Filtering Platform",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/fwp/about-windows-filtering-platform",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q34",
+      "ref": "turn14search6",
+      "title": "Microsoft Regeln gegen verwundbare Treiber",
+      "url": "https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/design/microsoft-recommended-driver-block-rules",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q35",
+      "ref": "turn14search2",
+      "title": "Treiber Blockliste und Unterschiede Windows 10 und 11",
+      "url": "https://support.microsoft.com/en-us/servicing/os/windows/2022/10/kb5020779-the-vulnerable-driver-blocklist-after-the-october-2022-preview-release",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q36",
+      "ref": "turn9view3",
+      "title": "The Update Framework",
+      "url": "https://theupdateframework.io/overview/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q37",
+      "ref": "turn9view4",
+      "title": "NIST Secure Software Development Framework",
+      "url": "https://csrc.nist.gov/pubs/sp/800/218/final",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q38",
+      "ref": "turn15view4",
+      "title": "SLSA Lieferkettensicherheit",
+      "url": "https://slsa.dev/spec/v1.2/about",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q39",
+      "ref": "turn11search0",
+      "title": "NIST Adversarial Machine Learning",
+      "url": "https://csrc.nist.gov/pubs/ai/100/2/e2025/final",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q40",
+      "ref": "turn14view0",
+      "title": "EMBER2024 Datensatz und zeitliche Aufteilung",
+      "url": "https://github.com/FutureComputing4AI/EMBER2024",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q41",
+      "ref": "turn11search3",
+      "title": "SOREL 20M Datensatz und Nutzungsbedingungen",
+      "url": "https://registry.opendata.aws/sorel-20m/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q42",
+      "ref": "turn14search3",
+      "title": "NIST Firmware Resilienz",
+      "url": "https://csrc.nist.gov/pubs/sp/800/193/final",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q43",
+      "ref": "turn12search3",
+      "title": "Apple System Extensions und Endpoint Security",
+      "url": "https://developer.apple.com/system-extensions/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q44",
+      "ref": "turn12search47",
+      "title": "Apple Platform Security und iOS Sandbox",
+      "url": "https://help.apple.com/pdf/security/en_US/apple-platform-security-guide.pdf",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q45",
+      "ref": "turn14search0",
+      "title": "Android Scoped Storage",
+      "url": "https://developer.android.com/about/versions/11/privacy/storage",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q46",
+      "ref": "turn14search1",
+      "title": "Linux fanotify",
+      "url": "https://man7.org/linux/man-pages/man7/fanotify.7.html",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q47",
+      "ref": "turn9view2",
+      "title": "EU Kommission Cyber Resilience Act",
+      "url": "https://digital-strategy.ec.europa.eu/en/policies/cyber-resilience-act",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q48",
+      "ref": "turn10view0",
+      "title": "EU Kommission Konformitätsbewertung für Antivirus",
+      "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-conformity-assessment",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q49",
+      "ref": "turn10search0",
+      "title": "CRA Rechtsakt und Anhang III Fundstelle",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ%3AL_202402847",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q50",
+      "ref": "turn10search18",
+      "title": "BfDI Empfehlungen für Telemetrie",
+      "url": "https://www.bfdi.bund.de/SharedDocs/Pressemitteilungen/DE/2023/17-Berlin-Group-Telemetrie.html",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q51",
+      "ref": "turn10search22",
+      "title": "BfDI Grundlagen des Datenschutzrechts",
+      "url": "https://www.bfdi.bund.de/DE/Buerger/Inhalte/Allgemein/Datenschutz/GrundlagenDatenschutzrecht.html",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q52",
+      "ref": "turn18search7",
+      "title": "OASIS STIX und TAXII",
+      "url": "https://oasis-open.github.io/cti-documentation/faq.html",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q53",
+      "ref": "turn18search10",
+      "title": "CAPE Sandbox Architektur",
+      "url": "https://capev2.readthedocs.io/en/latest/installation/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q54",
+      "ref": "turn18search4",
+      "title": "CAPE isoliertes Labornetz",
+      "url": "https://capev2.readthedocs.io/en/latest/installation/guest/network.html",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q55",
+      "ref": "turn15view6",
+      "title": "Microsoft Virus Initiative Aufnahmebedingungen",
+      "url": "https://learn.microsoft.com/en-us/unified-secops/virus-initiative-criteria",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q56",
+      "ref": "turn4search4",
+      "title": "Windows Endpoint Security Platform Vorschau",
+      "url": "https://news.microsoft.com/ignite-2025-book-of-news/",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q57",
+      "ref": "turn16search0",
+      "title": "ReadDirectoryChangesW Ereignisverlust",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-readdirectorychangesw",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q58",
+      "ref": "turn3search21",
+      "title": "Google Project Zero Minifilter Fehleranalyse",
+      "url": "https://projectzero.google/2021/01/hunting-for-bugs-in-windows-mini-filter.html",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q59",
+      "ref": "turn13view5",
+      "title": "CrowdStrike Root Cause Analysis Channel File 291",
+      "url": "https://www.crowdstrike.com/wp-content/uploads/2024/08/Channel-File-291-Incident-Root-Cause-Analysis-08.06.2024.pdf",
+      "accessed": "2026-10-24"
+    },
+    {
+      "id": "Q60",
+      "ref": "turn19search1",
+      "title": "ENISA Single Reporting Platform und CRA Meldepflichten",
+      "url": "https://www.enisa.europa.eu/topics/product-security/vulnerability-services/eu-incident-response-and-cyber-crisis-management/single-reporting-platform-srp",
+      "accessed": "2026-10-24"
+    }
+  ]
+}

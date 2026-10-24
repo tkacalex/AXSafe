@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sicherheitslücke in AXSafe melden (nicht öffentlich!)
+    url: https://github.com/tkacalex/AXSafe/security/advisories/new
+    about: Bitte Schwachstellen privat über GitHub Security Advisories melden.

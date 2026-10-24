@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="AXSafe – ehrlicher, mehrschichtiger Windows-Schutz, offen entwickelt">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A1426"/><stop offset=".6" stop-color="#0E1D3A"/><stop offset="1" stop-color="#10264A"/>
+    </linearGradient>
+    <linearGradient id="sh" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity=".35"/><stop offset="1" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0 L0 0 0 40" fill="none" stroke="#22396A" stroke-opacity=".35" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="400" rx="24" fill="url(#bg)"/>
+  <rect width="1280" height="400" rx="24" fill="url(#grid)"/>
+  <circle cx="1040" cy="200" r="230" fill="url(#glow)"/>
+  <g transform="translate(905 60) scale(2.7)">
+    <path d="M50 2 L92 16 C92 58 76 84 50 98 C24 84 8 58 8 16 Z" fill="url(#sh)"/>
+    <path d="M50 12 L83 23 C83 57 70 77 50 88 C30 77 17 57 17 23 Z" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="1.5"/>
+    <path d="M30 52 L45 67 L72 38" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif">
+    <text x="72" y="150" font-size="84" font-weight="700" fill="#E8EEF8">AXSafe</text>
+    <text x="74" y="200" font-size="28" fill="#22D3EE">Ehrlicher, mehrschichtiger Windows-Schutz.</text>
+    <text x="74" y="238" font-size="22" fill="#94A7C6">Offen entwickelt · jeder Status belegt · keine Fake-Schalter</text>
+    <g font-size="17" font-weight="600">
+      <rect x="74" y="280" width="92" height="38" rx="19" fill="#11203D" stroke="#22396A"/><text x="98" y="305" fill="#E8EEF8">Rust</text>
+      <rect x="178" y="280" width="140" height="38" rx="19" fill="#11203D" stroke="#22396A"/><text x="200" y="305" fill="#E8EEF8">.NET 10 WPF</text>
+      <rect x="330" y="280" width="104" height="38" rx="19" fill="#11203D" stroke="#22396A"/><text x="352" y="305" fill="#E8EEF8">YARA-X</text>
+      <rect x="446" y="280" width="104" height="38" rx="19" fill="#11203D" stroke="#22396A"/><text x="469" y="305" fill="#E8EEF8">ClamAV</text>
+      <rect x="562" y="280" width="190" height="38" rx="19" fill="#3A2A0A" stroke="#FBBF24"/><text x="584" y="305" fill="#FBBF24">Vorversion 0.1</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,37 @@
+name: Fehler melden
+description: Etwas funktioniert nicht wie beschrieben.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke! Bitte **keine Schadsoftware, keine privaten Dateien und keine Zugangsdaten** anhängen.
+  - type: input
+    id: version
+    attributes:
+      label: AXSafe-Version
+      placeholder: "axsafe --version"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows-Version und Build
+      placeholder: "z. B. Windows 10 Enterprise LTSC 21H2, 19044.7807, x64"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Was ist passiert, was hast du erwartet?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zum Nachstellen
+  - type: textarea
+    id: output
+    attributes:
+      label: Ausgabe von `axsafe engines` und relevante Teile des Berichts (ohne private Pfade)
+      render: text

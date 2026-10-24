@@ -1,0 +1,139 @@
+name: CI
+
+# AXS-007, AXS-010, AXS-011, AXS-012: reproduzierbar bauen, prüfen, testen.
+# Dieser Workflow hat KEINEN Zugriff auf Signierschlüssel oder Schreibrechte.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  GITLEAKS_VERSION: "8.28.0"
+
+jobs:
+  linux:
+    name: Linux · Build, Tests, Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust-Toolchain aus rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: ClamAV installieren (für echte Integrationstests)
+        run: sudo apt-get update -q && sudo apt-get install -y -q clamav
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy (Warnungen sind Fehler)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --locked
+      - name: Dokumentation synchron (Requirements, Quellen, Fortschritt)
+        run: python3 scripts/gen_docs.py --check
+
+  supply-chain:
+    name: Lieferkette · cargo-deny, Gitleaks, SBOM
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rust-Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Werkzeuge installieren (gepinnte Versionen)
+        run: |
+          cargo install --locked cargo-deny@0.20.2 cargo-cyclonedx@0.5.9
+          curl -sSfL -o gl.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gl.tgz gitleaks && sudo mv gitleaks /usr/local/bin/ && rm gl.tgz
+      - name: cargo-deny (Lizenzen, Quellen, Verbote, Schwachstellen)
+        run: cargo deny --locked check
+      - name: Geheimnissuche im gesamten Verlauf
+        run: gitleaks detect --no-banner --source . --redact
+      - name: Selbsttest – Testgeheimnis und manipulierte Abhängigkeit müssen scheitern (T-010)
+        run: bash scripts/ci/selftest_supply_chain.sh
+      - name: SBOM (CycloneDX)
+        run: |
+          cargo cyclonedx --format json --all-features
+          mkdir -p sbom && find crates -name '*.cdx.json' -exec cp {} sbom/ \;
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom/
+
+  windows:
+    name: Windows · Build, Tests, Paket, Screenshots
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust-Toolchain
+        run: rustup show active-toolchain; if ($LASTEXITCODE -ne 0) { rustup toolchain install }
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests (Windows-API-Pfade wie GetFileInformationByHandle)
+        run: cargo test --workspace --locked
+      - name: CLI bauen (Release)
+        run: cargo build --release --locked -p axsafe-cli
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ui/global.json
+      - name: Oberfläche bauen (.NET 10 WPF)
+        run: dotnet publish ui/AXSafe.Desktop/AXSafe.Desktop.csproj -c Release -r win-x64 --self-contained true -o dist/AXSafe
+      - name: Paket zusammenstellen
+        shell: pwsh
+        run: |
+          Copy-Item target/release/axsafe.exe dist/AXSafe/
+          New-Item -ItemType Directory dist/AXSafe/rules | Out-Null
+          Copy-Item -Recurse rules/* dist/AXSafe/rules/
+          Copy-Item README.md, CHANGELOG.md, SECURITY.md dist/AXSafe/
+          Get-ChildItem *.pdb -Path dist/AXSafe -Recurse | Remove-Item
+      - name: CLI-Rauchtest auf Windows
+        shell: pwsh
+        run: |
+          dist/AXSafe/axsafe.exe --version
+          dist/AXSafe/axsafe.exe engines --no-clamav --rules dist/AXSafe/rules
+          if ($LASTEXITCODE -ne 0) { throw "Engines nicht bereit" }
+      - name: Releaseinventar prüfen (T-012; Testregel bewusst freigegeben für Vorversion)
+        run: python scripts/check_release_inventory.py dist/AXSafe --allow-test-rules --inventory dist/inventory.json
+      - name: Bildschirmauflösung für Screenshots
+        shell: pwsh
+        continue-on-error: true
+        run: Set-DisplayResolution -Width 1600 -Height 1000 -Force
+      - name: Demo-Ordner (nur gutartige Dateien)
+        shell: pwsh
+        run: |
+          $d = "$env:RUNNER_TEMP\AXSafe-Demo"
+          New-Item -ItemType Directory $d | Out-Null
+          Set-Content "$d\brief.txt" "Sehr geehrte Damen und Herren, ..."
+          Set-Content "$d\rechnung.pdf.exe" "%PDF-1.7 harmloses Beispiel"
+          [IO.File]::WriteAllBytes("$d\leer.bin", [byte[]]@())
+          New-Item -ItemType SymbolicLink -Path "$d\verknuepfung" -Target "$d\brief.txt" | Out-Null
+      - name: Screenshots der Oberfläche
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory screenshots | Out-Null
+          ./scripts/ci/screenshot.ps1 -Exe dist/AXSafe/AXSafe.exe -Out screenshots/ui-overview.png
+          ./scripts/ci/screenshot.ps1 -Exe dist/AXSafe/AXSafe.exe -Out screenshots/ui-scan.png -AppArgs @('--scan', "$env:RUNNER_TEMP\AXSafe-Demo") -WaitSeconds 15
+      - uses: actions/upload-artifact@v4
+        with:
+          name: axsafe-windows-x64-preview
+          path: |
+            dist/AXSafe/
+            dist/inventory.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots/
+          if-no-files-found: ignore

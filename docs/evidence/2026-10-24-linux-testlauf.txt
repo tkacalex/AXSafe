@@ -1,0 +1,67 @@
+AXSafe Testlauf – Beleg
+Datum (UTC): 2026-10-24T14:16:54Z
+Umgebung: Linux x86_64, Ubuntu 24.04.5 LTS
+Rust: rustc 1.97.0 (2d8144b78 2026-07-07)
+ClamAV: ClamAV 1.5.4
+Befehl: cargo test --workspace --locked
+
+     Running unittests src/main.rs (target/debug/deps/axsafe-dc9c615d7e062fba)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/cli.rs (target/debug/deps/cli-44ba7678fee335c2)
+test clean_scan_exit_zero_and_broken_rules_exit_two ... ok
+test both_engines_detect_eicar_when_clamav_present ... ok
+test filetype_uses_content_not_extension ... ok
+test engines_json_reports_health ... ok
+test missing_clamav_makes_scan_incomplete_not_clean ... ok
+test yara_only_detects_eicar_and_ignores_names ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+     Running unittests src/lib.rs (target/debug/deps/axsafe_core-f91345ae548f9477)
+test filetype::tests::pe_variants ... ok
+test filetype::tests::common_signatures ... ok
+test filetype::tests::renaming_does_not_change_type ... ok
+test filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic ... ok
+test identity::tests::same_file_is_same_object ... ok
+test identity::tests::appended_file_is_changed ... ok
+test identity::tests::unknown_ids_are_never_equal ... ok
+test scan::tests::access_denied_is_reported_when_enforced ... ok
+test identity::tests::swapped_file_with_same_name_is_detected ... ok
+test scan::tests::cancel_marks_incomplete ... ok
+test scan::tests::fifo_does_not_block_and_is_unsupported ... ok
+test scan::tests::missing_path_is_error ... ok
+test scan::tests::no_engine_is_error ... ok
+test scan::tests::positive_benign_and_counts ... ok
+test scan::tests::size_limit_is_reported_not_clean ... ok
+test scan::tests::symlink_is_not_followed ... ok
+test verdict::tests::classification_is_disjoint ... ok
+test verdict::tests::detection_beats_gap_but_change_beats_all ... ok
+test verdict::tests::empty_is_error_not_clean ... ok
+test verdict::tests::no_incomplete_state_becomes_clean ... ok
+test verdict::tests::only_all_clean_is_clean ... ok
+test verdict::tests::serde_names_are_stable ... ok
+test scan::tests::unavailable_engine_never_yields_clean ... ok
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/axsafe_engine_clamav-41b82b2fa8dafb08)
+test tests::classify_maps_gaps_and_detections ... ok
+test tests::engine_crash_is_error_not_clean ... ok
+test tests::missing_binary_is_unavailable ... ok
+test tests::real_clamav_positive_and_benign ... ok
+test tests::real_clamav_without_database_is_unavailable ... ok
+test tests::status_zero_without_ok_line_is_error ... ok
+test tests::hanging_engine_is_timeout ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+     Running unittests src/lib.rs (target/debug/deps/axsafe_engine_yarax-9e26f6a209a3363e)
+test tests::benign_counterexamples ... ok
+test tests::eicar_positive ... ok
+test tests::pinned_version_matches_lockfile ... ok
+test tests::eicar_with_trailing_whitespace_positive ... ok
+test tests::repo_rules_load_with_required_meta ... ok
+test tests::syntax_error_and_empty_dir_are_unavailable ... ok
+test tests::rule_without_required_meta_is_rejected ... ok
+test tests::too_new_min_engine_is_rejected ... ok
+test tests::timeout_is_reported_as_timeout ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.05s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Lieferkette (cargo deny --locked check): advisories ok, bans ok, licenses ok, sources ok

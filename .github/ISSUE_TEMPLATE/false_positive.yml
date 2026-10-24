@@ -1,0 +1,30 @@
+name: Fehlalarm melden
+description: AXSafe meldet eine harmlose Datei als Fund (AXS-040).
+labels: [fehlalarm]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bitte **lade die Datei nicht hoch**. Es reichen SHA-256, Erkennungsname und Engine aus dem Bericht.
+  - type: input
+    id: sha
+    attributes:
+      label: SHA-256 der Datei
+    validations:
+      required: true
+  - type: input
+    id: detection
+    attributes:
+      label: Erkennungsname und Engine (z. B. "AXSafe.Test.EICAR via yara-x")
+    validations:
+      required: true
+  - type: input
+    id: rules
+    attributes:
+      label: Inhaltsstand (content_version) aus dem Bericht
+  - type: textarea
+    id: why
+    attributes:
+      label: Warum ist die Datei harmlos? Herkunft (z. B. Hersteller, Download-Seite)?
+    validations:
+      required: true

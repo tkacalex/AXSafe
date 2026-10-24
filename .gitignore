@@ -1,0 +1,27 @@
+# Rust
+/target/
+**/*.rs.bk
+# .NET
+ui/**/bin/
+ui/**/obj/
+*.user
+.vs/
+# Pakete, Berichte, SBOM-Zwischenstände
+/dist/
+/sbom/
+*.cdx.json
+bericht*.json
+scan-*.json
+# Sicherheitsregel: niemals Proben, Schlüssel oder Testsignaturen einchecken
+*.pem
+*.key
+*.pfx
+*.p12
+*.snk
+*.hdb
+/samples/
+/lab/samples/
+# Betriebssystem
+.DS_Store
+Thumbs.db
+desktop.ini

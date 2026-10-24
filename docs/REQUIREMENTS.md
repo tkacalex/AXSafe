@@ -1,0 +1,237 @@
+# Anforderungen und Abnahmen
+
+> Automatisch erzeugt von `scripts/gen_docs.py` aus der Spezifikation (Revision 1.0) und `docs/status/requirements-status.json`. Nicht von Hand bearbeiten.
+
+Gesamtstand: ✅ erfüllt: **0** · 🟢 teilweise belegt: **7** · 🔵 begonnen: **16** · 📝 Entwurf: **5** · ⛔ blockiert: **1** · ⚪ geplant: **71**
+
+Statuswerte: `geplant` = noch nicht begonnen; `begonnen` = Code oder Dokument vorhanden, Abnahme nicht erfüllt; `entwurf` = Dokument erstellt, Review durch Produktverantwortung offen; `teilweise` = Teile der Abnahme mit echten Testbelegen erfüllt; `blockiert` = externe Voraussetzung fehlt (siehe BLOCKERS.md); `erfuellt` = Abnahme vollständig mit echten Belegen bestanden.
+
+![Fortschritt je Phase](images/progress.svg)
+
+## P00 Ziel und Voraussetzungen klären
+
+*Ziel:* Den Umfang für Windows 10 LTSC festlegen und die technische sowie organisatorische Ausgangslage belegen.  
+*Gate:* Ausgangslage und V1 Abnahme sind schriftlich festgelegt; fehlende Informationen stehen als offene Punkte im Register.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-001 | **Zielplattform belegen** – Windows 10 Enterprise LTSC 2021 21H2 Buildfamilie 19044 als Hauptziel; Screenshot Build 19044.7807 dokumentieren. x64 vor Ort bestätigen, Windows 11 separat testen. | 🟢 teilweise belegt | **T-001** Edition Architektur Patchstand und unterstützte Funktionen sind in einer maschinenlesbaren Plattformmatrix erfasst. | docs/platform-matrix.json, docs/PLATFORM.md<br>msinfo32 am 24.10.2026: Windows 10 Enterprise LTSC, 10.0.19044, x64-based PC, UEFI, Secure Boot aus | Windows 11 separat testen; Patchstand vor Release erneut prüfen |
+| AXS-002 | **Schutzumfang festlegen** – V1 als mehrschichtiger Windows Endpoint Schutz definieren; Dateiviren Trojaner Ransomware Skripte Speicherangriffe und weitere Familien über eine Bedrohungsmatrix behandeln. | 📝 Entwurf | **T-002** Jede Bedrohungsklasse hat Schutzschicht Test und benannte Grenze; keine universelle Erkennungsgarantie. | docs/THREAT-COVERAGE.md<br>33 Klassen mit Schicht, Test und Grenze | Review |
+| AXS-003 | **Betriebs und Lizenzmodell entscheiden** – Eigener AXSafe Kern mit austauschbaren Engine Adaptern; Open Source zuerst, ClamAV GPL Pflichten vor Verteilung prüfen. Kommerzielle SDKs bleiben eine bewertete Option. | 📝 Entwurf | **T-003** ADR zu Eigenentwicklung OEM und Lizenzen liegt vor; fremder Code Regeln Daten Modelle und Marken sind getrennt erfasst. | docs/adr/ADR-0001-engine-strategie.md, docs/adr/ADR-0003-lizenzen.md<br>ADR Eigenentwicklung/OEM; Lizenzinventar 209 Rust-Pakete | Projektlizenz D-01 |
+| AXS-004 | **Bedrohungsmodell erstellen** – Angreifer mit normalen Rechten Adminrechten Kernelzugriff und kompromittierter Updateinfrastruktur getrennt modellieren; Schutzgüter und Vertrauensgrenzen benennen. | 📝 Entwurf | **T-004** Review dokumentiert mindestens Dateiparser IPC Quarantäne Updater Treiber Cloud und UI als Angriffsflächen. | docs/THREAT-MODEL.md<br>Parser, IPC, Quarantäne, Updater, Treiber, Cloud, UI als Angriffsflächen | Review |
+| AXS-005 | **Rechtliche Markteinführung prüfen** – DSGVO CRA Produktklassifizierung Haftung Vertrieb Supportdauer sowie Name und Marke AXSafe prüfen; keine Zertifizierung behaupten. | 📝 Entwurf | **T-005** Prüfakte enthält zuständige Rolle Fundstellen Stand und offene Entscheidungen; rechtsrelevante Unklarheiten blockieren den betroffenen Vertrieb. | docs/LEGAL-REVIEW.md<br>Prüfakte mit Fundstellen und offenen Entscheidungen | juristische Prüfung |
+| AXS-006 | **Ressourcen und Freigaben planen** – Kompetenzen Windows Kernelentwicklung Malwareanalyse Tests Signierung Datenschutz und Betrieb zuordnen; Kosten ohne erfundene Angebote modellieren. | 📝 Entwurf | **T-006** Budgetmatrix trennt einmalige und laufende Ausgaben; Zertifikate Hardware Testlabore und SDK Preise bleiben ohne Angebot offen. | docs/BUDGET.md<br>einmalig/laufend getrennt, keine erfundenen Preise | Angebote einholen |
+
+## P01 Entwicklungsumgebung und Labor aufbauen
+
+*Ziel:* Reproduzierbare Entwicklung und ein getrenntes Testlabor bereitstellen.  
+*Gate:* Ein frischer Checkout baut reproduzierbar; ein Testlauf kann ohne private Daten und ohne Zugriff auf das Alltagsnetz durchgeführt werden.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-007 | **Reproduzierbar bauen** – Repository mit Rust Dienst und Core C Sharp WPF .NET 10 C oder C Plus Plus WDK Komponenten sowie getrennten Backend und Forschungsteilen anlegen. | 🟢 teilweise belegt | **T-007** Frischer Checkout baut mit gepinnten Versionen Lockfiles und dokumentierten Offlinegrenzen; Versionsänderungen werden geprüft. | Cargo.toml, Cargo.lock, rust-toolchain.toml, ui/global.json, .github/workflows/ci.yml<br>Rust-Workspace und WPF bauen mit gepinnten Versionen (lokal + CI) | WDK-, Backend- und Forschungsteile nur als Platzhalter; Offline-Build dokumentieren |
+| AXS-008 | **Getrenntes Labor erstellen** – Saubere LTSC und Windows 11 VMs mit Snapshots ohne private Konten geteilte Ordner oder Zwischenablage bereitstellen; separates Netz verwenden. | ⛔ blockiert | **T-008** Ein Isolationstest belegt fehlenden Zugriff auf Alltagsdaten und Produktivnetz; Wiederherstellung aus sauberem Ausgangspunkt funktioniert. | lab/LAB-RULES.md<br>Laborregeln festgelegt | B-02 Laborhost |
+| AXS-009 | **Prüfdaten verwalten** – Gutartige Dateien lizenzgeprüfte Testdaten EICAR und kontrollierte Simulatoren erfassen; reale Schadsoftware ausschließlich in freigegebenem Labor verwenden. | 🔵 begonnen | **T-009** Manifest mit Herkunft Hash Lizenz Zeitstempel und erwarteter Beobachtung ist vorhanden; kein unbeabsichtigter Download oder Hoststart. | lab/testdata/manifest.json<br>Manifest mit Herkunft, Hash, Lizenz, Erwartung; EICAR nur zur Laufzeit | gutartiger Korpus |
+| AXS-010 | **Sicherheitsprüfungen automatisieren** – Build Lint statische Analyse Abhängigkeitsprüfung Geheimnissuche und SBOM integrieren; untrusted Pull Requests haben keinen Zugriff auf Signierschlüssel. | 🔵 begonnen | **T-010** Manipulierte Abhängigkeit und absichtlich eingefügtes Testgeheimnis lassen die Pipeline fehlschlagen; Releasejob ist getrennt. | .github/workflows/ci.yml, deny.toml<br>Build, fmt, clippy, cargo-deny, Gitleaks, SBOM; Release-Job getrennt | Negativtest manipulierte Abhängigkeit/Testgeheimnis |
+| AXS-011 | **Modulprüfungen sofort betreiben** – Unit Integration Fehler und Negativtests ab dem ersten Modul ausführen; Gesamtphase P14 ersetzt diese frühen Prüfungen nicht. | 🟢 teilweise belegt | **T-011** Jeder neue Schutzpfad besitzt positive und gutartige Gegenfälle sowie einen dokumentierten Ausfallfall. | crates/*/src, crates/axsafe-cli/tests<br>Jeder Scanpfad hat Positiv-, Gutartig- und Ausfalltest | Windows-Integrationstests |
+| AXS-012 | **Forschungs und Produktcode trennen** – Experimentelle Sensoren Modelle Simulationen und Testsignaturen dürfen ohne bewusste Freigabe nicht in ein Produktpaket gelangen. | 🔵 begonnen | **T-012** Releaseinventar und automatischer Paketvergleich weisen nach dass keine Laborprobe und kein Testschlüssel enthalten sind. | scripts/check_release_inventory.py<br>Paketinventar prüft auf Proben, Testschlüssel, EICAR | Paketvergleich zwischen Releases |
+
+## P02 Sicheres Grundsystem und Verträge entwickeln
+
+*Ziel:* Benutzeroberfläche, privilegierten Broker und Scanprozesse mit klaren Rechten und Datentypen trennen.  
+*Gate:* Ein normaler Benutzer kann den Dienst weder als beliebigen Dateileser noch als Löschdienst missbrauchen; Ausfälle werden korrekt gemeldet.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-013 | **Rechte trennen** – UI unter Benutzerrechten starten; privilegierten Broker minimal halten; Parser und Engineworker mit reduzierten Rechten ohne Internetzugriff betreiben. | 🔵 begonnen | **T-013** Ein kompromittierter Testworker kann keine beliebigen Systemdateien ändern und keine Verbindung ins Netz aufbauen. | ui/AXSafe.Desktop/app.manifest<br>UI asInvoker; ClamAV als getrennter Prozess | B-05 Worker mit eingeschränktem Token |
+| AXS-014 | **Lokale IPC absichern** – Versionierte Named Pipes mit restriktiven ACLs überprüfter Clientidentität Rollen und Nachrichtenlimits verwenden; keine offen erreichbare lokale Admin HTTP API. | ⚪ geplant | **T-014** Fremde Sitzung falscher Benutzer oversized Nachricht und Replay einer mutierenden Anfrage werden abgewiesen und protokolliert. | – | – |
+| AXS-015 | **Scanergebnisse ehrlich modellieren** – Malicious Suspicious PUA NoDetection Unsupported Encrypted AccessDenied Timeout Error ChangedDuringScan getrennt modellieren; Abdeckung und Engineversion mitspeichern. | 🟢 teilweise belegt | **T-015** Keiner der Fehler und Teilzustände wird in UI oder Bericht zu sauber oder vollständig geprüft umgewandelt.<br>Tests: `axsafe-core verdict::tests::no_incomplete_state_becomes_clean`, `verdict::tests::empty_is_error_not_clean`, `scan::tests::unavailable_engine_never_yields_clean`, `cli::clean_scan_exit_zero_and_broken_rules_exit_two` | crates/axsafe-core/src/verdict.rs, report.rs<br>10 Zustände, Aggregation getestet, UI ohne grünen Status | UI-Tests auf Windows |
+| AXS-016 | **Ereignisse nachvollziehbar machen** – Schema mit UTC Zeit lokaler Anzeige Korrelations ID Prozessstartidentität Dateiidentität Regel und Engineversion implementieren; Datenmenge begrenzen. | 🔵 begonnen | **T-016** Ein Befund lässt sich vom Ereignis bis zur Aktion nachvollziehen; PID Wiederverwendung vermischt keine Prozesse. | crates/axsafe-core/src/report.rs<br>UTC-Zeit, Job-ID, Engine-/Regelversion je Befund | Korrelations-ID, Prozessidentität |
+| AXS-017 | **Policies und Ausnahmen begrenzen** – Versionierte Policies mit Rollen Ausnahmen auf genaue Objekte oder eng begrenzte Bereiche Audit und Ablaufzeit unterstützen. | ⚪ geplant | **T-017** Standardbenutzer kann keinen globalen Ausschluss setzen; ausgeschlossene Bereiche erscheinen als verringerte Abdeckung. | – | – |
+| AXS-018 | **Dateiidentität sicher behandeln** – Handle Volume Datei ID Stream und Änderungszustand statt nur Pfad verwenden; Reparsepoints Junctions Hardlinks ADS lange und Unicode Pfade berücksichtigen. | 🔵 begonnen | **T-018** Parallel umbenannte und ausgetauschte Testdateien werden nicht verwechselt; mutierende Aktionen treffen ausschließlich das validierte Objekt.<br>Tests: `identity::tests::swapped_file_with_same_name_is_detected`, `identity::tests::appended_file_is_changed`, `scan::tests::symlink_is_not_followed` | crates/axsafe-core/src/identity.rs, scan.rs<br>Identität über Handle; Austausch/Änderung erkannt (Linux) | Windows-Test, ADS, 128-Bit-IDs |
+| AXS-019 | **Betriebszustand aus Gesundheit ableiten** – ScannerReady SensorReady PolicyReady DefinitionsFresh und PrimaryProtection getrennt erfassen; Zustand unknown oder degraded bei Unsicherheit. | 🔵 begonnen | **T-019** Dienstabsturz Sensorverlust und kaputte Engine ändern den UI Status; fehlende Antwort erzeugt niemals einen grünen Schutzstatus. | crates/axsafe-core/src/engine.rs, ui<br>Engine-Gesundheit; Ausfall ergibt nie sauber | Dienst-/Sensorstatus |
+| AXS-020 | **Lokale Daten sichern** – Konfiguration Ereignisse Schlüssel und Quarantänemetadaten mit Dienstrechten ACLs Rotation und Recovery versehen; geheime Daten nicht in Logs schreiben. | ⚪ geplant | **T-020** Unprivilegierter Zugriff scheitert; beschädigte Datenbank wird kontrolliert behandelt und erzeugt keinen Schutzstillstand ohne Meldung. | – | – |
+
+## P03 Dateiprüfung und Erkennungskern umsetzen
+
+*Ziel:* Reale lokale Dateiprüfung mit Engines, eigenen Regeln und ehrlichen Teilresultaten implementieren.  
+*Gate:* Erkennung, Negativfälle, verschachtelte Container und alle Scanfehler sind nachvollziehbar getestet; keine Probe wird auf dem Host ausgeführt.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-021 | **Engineadapter real anbinden** – ClamAV über einen isolierten Worker anbinden und Engine Vertrag für weitere Anbieter definieren; keine frei erreichbare clamd TCP Schnittstelle eröffnen. | 🟢 teilweise belegt | **T-021** Reale Scanresultate Versionsinfos und Fehler sind geprüft; Engineabsturz bleibt im Worker und erzeugt einen Fehlerstatus.<br>Tests: `clamav tests::real_clamav_positive_and_benign`, `tests::engine_crash_is_error_not_clean`, `tests::hanging_engine_is_timeout`, `tests::real_clamav_without_database_is_unavailable` | crates/axsafe-engine-clamav<br>Echter ClamAV 1.5.4 über stdin, kein TCP; Absturz/Hänger → Error/Timeout | B-05, Windows-Test |
+| AXS-022 | **Eigene Regeln mit YARA X integrieren** – Signierte versionierte Regeln mit Herkunft Lizenz Schweregrad Konfidenz und Mindestengineversion laden; Laufzeit und Speicher begrenzen. | 🟢 teilweise belegt | **T-022** Positive gutartige und Timeout Tests pro Regel bestehen; bloßer Regelname oder Dateiname führt nicht zum Fund.<br>Tests: `yarax tests::eicar_positive`, `tests::benign_counterexamples`, `tests::timeout_is_reported_as_timeout`, `tests::rule_without_required_meta_is_rejected` | crates/axsafe-engine-yarax, rules/<br>Pflichtmetadaten, Mindestversion, Zeitlimit; Positiv/Gutartig/Timeout getestet | Regelsignatur (P04), Speicherlimit |
+| AXS-023 | **Dateitypen erkennen** – Typ nach Inhalt erkennen und PE32 PE64 .NET Skripte LNK MSI Office PDF Archive und Datenträgercontainer in einer Fähigkeitsmatrix führen. | 🟢 teilweise belegt | **T-023** Umbenennen einer Datei umgeht die Typbestimmung nicht; nicht unterstützte Formate erhalten einen sichtbaren Teilstatus.<br>Tests: `filetype::tests::renaming_does_not_change_type`, `cli::filetype_uses_content_not_extension`, `filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic` | crates/axsafe-core/src/filetype.rs, docs/CAPABILITY-MATRIX.md<br>Typ nach Inhalt; Umbenennen ändert nichts | Skriptsprachen, MSI vs. Office |
+| AXS-024 | **Container sicher prüfen** – Archive rekursiv mit Ressourcenlimits prüfen; Passwörter eingebettete Objekte mehrfach verschachtelte Archive und fehlerhafte Parserdaten behandeln. | 🔵 begonnen | **T-024** Archivbomben Pfadausbruch und Grenzwertüberschreitung verursachen keinen Hostschaden; unprüfbarer Inhalt wird ausdrücklich gemeldet. | crates/axsafe-engine-clamav<br>ClamAV-Limits; Passwort-ZIP → Encrypted (Demo) | Archivbomben-/Pfadausbruchtests |
+| AXS-025 | **Statische Merkmale auswerten** – Hash Authenticode Herkunft Mark of the Web Struktur Importe und nachvollziehbare Heuristiken kombinieren; Signatur und hohe Entropie allein entscheiden nicht. | ⚪ geplant | **T-025** Gutartige gepackte signierte und unsignierte Programme haben Gegenfälle; jeder Heuristikbefund nennt seine Belege. | – | – |
+| AXS-026 | **Scanarten implementieren** – Schnellscan Vollscan eigener Scan Kontextmenü Zeitplan und Wechselmedienscan mit Abbruch Fortsetzung und Fortschritt bereitstellen. | 🔵 begonnen | **T-026** Dateien Bytes Dauer übersprungene Objekte und Fehler stimmen mit dem Scanmanifest überein; Abbruch und Neustart verlieren keine Quarantäneaktion.<br>Tests: `scan::tests::positive_benign_and_counts`, `scan::tests::cancel_marks_incomplete` | crates/axsafe-core/src/scan.rs, crates/axsafe-cli<br>Eigener Scan mit Abbruch; Zählungen aus Manifest | Schnell-/Vollscan, Zeitplan, Fortsetzen |
+| AXS-027 | **Cache invalidieren** – Befunde an Inhalt beziehungsweise stabilen Dateizustand Engine Regel Modell und Policyversion binden; neue Threat Intelligence invalidiert passende Einträge. | ⚪ geplant | **T-027** Geänderte Datei neue Regel andere Policy und erneutes Mounten erzeugen eine neue Bewertung statt eines veralteten Freigabecaches. | – | – |
+| AXS-028 | **Schadcode sicher verarbeiten** – Scannen bleibt Lesen und isoliertes Analysieren; Parser temporäre Dateien native Bibliotheken und Dateizugriffe werden begrenzt und fuzzbar gestaltet. | 🔵 begonnen | **T-028** Fehlerhafte Eingaben verletzen keine Broker oder Kernelgrenze; ausführbare Proben starten nicht auf dem Endgerät.<br>Tests: `filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic`, `scan::tests::fifo_does_not_block_and_is_unsupported` | crates/axsafe-core<br>Scanner liest nur; PE-Parser übersteht jede Kürzung | Fuzzing |
+
+## P04 Sichere Updates und Regelpflege bauen
+
+*Ziel:* Programm, Signaturen, Regeln und Modelle manipulationsgeschützt und wiederherstellbar aktualisieren.  
+*Gate:* Manipulierte, abgelaufene und unzulässig alte Updates werden abgewiesen; Stromausfall und Schlüsselwechsel sind getestet.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-029 | **Updatevertrauen etablieren** – TUF mit getrennten Rollen und Offline Root Vertrauen verwenden; Artefaktsignaturen Authenticode und TLS erfüllen unterschiedliche Aufgaben. | ⚪ geplant | **T-029** Tests für Fremdschlüssel manipulierte Pakete Metadatenablauf Rollback Freeze und Mix and Match bestehen. | – | – |
+| AXS-030 | **Signaturen und Regeln pflegen** – FreshClam mit geprüfter Konfiguration für ClamAV Daten verwenden; AXSafe Regeln getrennt veröffentlichen; Upstream Lizenz Last und Verteilregeln beachten. | ⚪ geplant | **T-030** Defekte oder unpassende Daten bleiben in Staging; produktive Engine behält den letzten funktionierenden Satz. | – | – |
+| AXS-031 | **Atomar aktualisieren** – Programm Engine Regeln Modelle und Treiber mit Kompatibilitätsvertrag und atomarer Aktivierung installieren; laufende Scans behalten eine konsistente Version. | ⚪ geplant | **T-031** Abbruch Stromausfall Datenträger voll und Neustart während Update führen zu altem oder neuem gültigem Zustand ohne Mischversion. | – | – |
+| AXS-032 | **Gestuft ausrollen** – Interne VMs Pilotgruppen und kontrollierte Verteilringe mit Gesundheitsdaten Stopkriterien und authentifizierter Rücknahme definieren. | ⚪ geplant | **T-032** Eine fehlerhafte Pilotregel erreicht den nächsten Ring nicht; Ausfall einzelner Cloudsysteme deaktiviert keinen lokalen Basisschutz. | – | – |
+| AXS-033 | **Rollback und Antirollback vereinbaren** – Fehlerhafte Releases nur durch neue autorisierte Metadaten auf freigegebene bekannte Artefakte zurücksetzen; Mindestversion und gesperrte Versionen beachten. | ⚪ geplant | **T-033** Berechtigtes Recovery funktioniert; ein Angreifer kann keinen beliebigen alten verwundbaren Stand als Wiederherstellung einschleusen. | – | – |
+| AXS-034 | **Schlüssel und Offlinefälle behandeln** – Schlüssel in HSM oder geeignetem geschütztem Signierdienst halten; Rotation Widerruf Uhrfehler Proxy und Offlineupdate vorsehen. | ⚪ geplant | **T-034** Verlust eines Online Signierschlüssels führt zu geprobter Rotation; abgelaufene Metadaten und veraltete Definitionen werden sichtbar. | – | – |
+
+## P05 Quarantäne und Wiederherstellung absichern
+
+*Ziel:* Funde sicher isolieren und nachvollziehbar wiederherstellen, ohne Systemdateien zu beschädigen.  
+*Gate:* Dateiverwechslung, Rechteausweitung und Datenverlust werden in den definierten Fehlerfällen verhindert; Restore ist bytegenau geprüft.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-035 | **Quarantäne verschlüsseln** – Payload authentifiziert verschlüsseln etwa mit AES GCM und zufälligen Nonces; Schlüssel über Windows Schutzmechanismen und Dienst ACLs sichern. | ⚪ geplant | **T-035** Quarantänedatei kann nicht direkt ausgeführt oder unprivilegiert entschlüsselt werden; Manipulation wird erkannt. | – | – |
+| AXS-036 | **Quarantäne transaktional ausführen** – Identität Hash Streams Metadaten und Wiederherstellungsdaten sichern; erst nach haltbarer Sicherung Originalzugriff entfernen; Journal und Neustart fortsetzen. | ⚪ geplant | **T-036** Crash zwischen jedem Transaktionsschritt verursacht weder stille Datenlöschung noch falschen Erfolg; gesperrte Dateien haben einen expliziten Zustand. | – | – |
+| AXS-037 | **Restore kontrollieren** – Rückgabe nur nach Berechtigungsprüfung aktuellem Rescan Zielprüfung und sichtbarer Warnung; Ausnahmen eng begrenzen. | ⚪ geplant | **T-037** Originalhash und freigegebene Metadaten stimmen; belegte Zieldateien und gefährliche Pfade werden nicht unbemerkt überschrieben. | – | – |
+| AXS-038 | **Systemreparatur vorsichtig planen** – Persistenz und Dateifunde zu einer Reparaturvorschau bündeln; Systemdateien und unbekannte Abhängigkeiten nicht blind löschen. | ⚪ geplant | **T-038** Gutartige Autostarts Dienste und Systemdateien bleiben erhalten; Reparaturfehler und Neustartbedarf sind nachvollziehbar. | – | – |
+| AXS-039 | **Quarantänelimits verwalten** – Speicherlimit Aufbewahrung Export und autorisierte endgültige Löschung definieren; keine automatische riskante Wiederherstellung bei Platzmangel. | ⚪ geplant | **T-039** Volle Quarantäne und erschöpfter Datenträger erzeugen verständliche Aktionen ohne Verlust ungeklärter Fälle. | – | – |
+| AXS-040 | **Befunde überprüfen können** – Fehlalarm melden Regel zurücknehmen und Objekte nach Korrektur erneut prüfen; Meldung übermittelt nur freigegebene Daten. | ⚪ geplant | **T-040** Ein absichtlich erzeugter Fehlalarm lässt sich begründet korrigieren und bytegenau rückgängig machen. | – | – |
+
+## P06 Sensoren und Verhaltenserkennung verbinden
+
+*Ziel:* Prozess, Datei, Persistenz und Netzwerkereignisse zu überprüfbaren Verhaltensbefunden korrelieren.  
+*Gate:* Gutartige Gegenbeispiele und simulierte Angriffsketten unterscheiden sich zuverlässig; Sensorverluste sind sichtbar.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-041 | **Windows Sensoren anbinden** – Dokumentierte ETW Ereignisse und geeignete APIs für Prozess Datei Registry Dienst Task und Netzwerk nutzen; Fähigkeiten pro Build prüfen. | ⚪ geplant | **T-041** Jeder Sensor hat einen echten Integrationstest auf LTSC; nicht verfügbare oder verlorene Ereignisse sind messbar und sichtbar. | – | – |
+| AXS-042 | **Ereignisverlust beherrschen** – Queues begrenzen Backpressure Reihenfolge Duplikate und Überlauf behandeln; Dateiwatcher nur als Nachscanner nutzen. | ⚪ geplant | **T-042** Überlasttest provoziert Verluste und Rescan; kein Watcher wird als garantierte Ausführungsblockierung ausgegeben. | – | – |
+| AXS-043 | **Prozesszusammenhang bilden** – Prozessstartidentität Eltern Kind Beziehungen Signer Token Dateiobjekte und Netzverbindungen zu einer lokalen Zeitleiste verknüpfen. | ⚪ geplant | **T-043** PID Wiederverwendung Neustarts und manipulierte Namen erzeugen keine falschen Prozessketten. | – | – |
+| AXS-044 | **Verhaltensregeln validieren** – Mehrere Signale für Dropper Persistenz Credential Diebstahl verdächtige Skripte Injection und Fernsteuerung korrelieren; Konfidenz Aktion und ATTACK Bezug angeben. | ⚪ geplant | **T-044** Für jede Regel bestehen kontrollierte Angriffssimulation und mehrere legitime Gegenbeispiele; Einzelindikatoren bewirken kein pauschales Löschen. | – | – |
+| AXS-045 | **Reaktionen begrenzen** – Warnen erneutes Prüfen Zugriff blockieren isolieren und definierte Prozessbeendigung nach belegter Policy staffeln; Prozessidentität vor Aktion neu prüfen. | ⚪ geplant | **T-045** Gutartige Verwaltungswerkzeuge Debugger und Installer werden nicht allein wegen ihrer Funktion beendet. | – | – |
+| AXS-046 | **Nachvollziehbares Journal führen** – Sicherheitsrelevante Entscheidung Eingangsereignisse Aktion Ergebnis Version und Datenverlust protokollieren; Datenschutz und begrenzte Aufbewahrung einhalten. | ⚪ geplant | **T-046** Eine reproduzierte Testkette kann vollständig erklärt werden; Logs sind exportierbar ohne unnötige Geheimnisse. | – | – |
+
+## P07 Skripte und Speicher prüfen
+
+*Ziel:* AMSI Provider und begrenzte Speicheranalyse als echte zusätzliche Schutzschichten anbinden.  
+*Gate:* AXSafe eigene AMSI Befunde sind vom Aufruf fremder Scanner getrennt; nicht zugänglicher Speicher wird als solcher ausgewiesen.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-047 | **AMSI Provider implementieren** – Eigenen IAntimalwareProvider für die Zielarchitekturen registrieren signieren und mit Engines verbinden; in Skripthosts nur minimalen Code laden. | ⚪ geplant | **T-047** Testhost und passende PowerShell Hosts erhalten einen AXSafe eigenen Befund; AmsiScanBuffer Aufruf zu fremdem Provider zählt nicht als Eigenentwicklung. | – | – |
+| AXS-048 | **Skriptsitzungen korrelieren** – AMSI Streams Fragmente und Sitzungen begrenzt auswerten; Skriptinhalt als vertraulich behandeln; fehlende AMSI Einbindung kenntlich machen. | ⚪ geplant | **T-048** Fragmentierter gutartiger und kontrolliert verdächtiger Inhalt wird wie spezifiziert bewertet; Standardlogs enthalten keine vollständigen Skripte. | – | – |
+| AXS-049 | **Speicherscan begrenzen** – Gezielt verdächtige Prozesse und lesbare Bereiche mit dokumentierten APIs prüfen; keine Schutzmechanismen umgehen und keine Vollabbild Sammlung als Standard. | ⚪ geplant | **T-049** Zugriffsfehler geschützte Prozesse 32 Bit und 64 Bit werden korrekt behandelt; Worker bleibt innerhalb des Zeit und Speicherbudgets. | – | – |
+| AXS-050 | **Speicherbefunde belegen** – Signaturmuster ungewöhnliche ausführbare Bereiche Herkunft und Verhalten gemeinsam bewerten; JIT Browser Spiele und Debugger als Gegenfälle einbeziehen. | ⚪ geplant | **T-050** Gutartiger dynamischer Code löst keine pauschale Blockade aus; jeder Befund nennt beobachtete Daten und Grenzen. | – | – |
+| AXS-051 | **Sensorintegrität überwachen** – Ausfall oder mögliche Manipulation von AMSI ETW und eigenen Komponenten als eigene Gesundheitssignale melden. | ⚪ geplant | **T-051** Simulierter Ausfall führt zu degraded und prüfbarer Meldung; kein Umgehungscode ist Teil des Produkts. | – | – |
+| AXS-052 | **Skript und Makroformate dokumentieren** – PowerShell JS VBS VBA und unterstützte Dokumentversionen getrennt prüfen; nicht kooperierende Hosts bleiben als Lücke erfasst. | ⚪ geplant | **T-052** Fähigkeitsmatrix nennt Host Architektur Office Version und Test; unbekannte Kombinationen erscheinen nicht als garantiert geschützt. | – | – |
+
+## P08 Echtzeitschutz im Dateipfad entwickeln
+
+*Ziel:* Zugriffe auf unterstützten Dateipfaden vor der Freigabe prüfen und gefährliche I O sicher verhindern.  
+*Gate:* Reale Zugriffsblockierung ist auf der LTSC Testmatrix belegt; kein Dauerwarten, keine selbst verursachte Bootschleife und keine ungetesteten Treiber im Produkt.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-053 | **Minimalen Minifilter entwickeln** – Dokumentierten Windows Filter Manager mit User Mode Scanworker einsetzen; Dateiparser Modelle und Regelinterpreter nicht im Kernel ausführen. | ⚪ geplant | **T-053** Treiber enthält nur notwendige Sensor und Durchsetzungslogik; Code Review und reale I O Tests liegen vor. | – | – |
+| AXS-054 | **Zugriffszeitpunkte absichern** – Öffnen Schreiben Umbenennen Ausführen und Section Erstellung einschließlich Memory Mapping bewerten; erlaubte Abläufe und Sperrzeitpunkte präzise definieren. | ⚪ geplant | **T-054** Eine erkannte Testdatei kann auf unterstützten Pfaden nicht vor der vorgesehenen Entscheidung ausgeführt oder erneut verändert werden. | – | – |
+| AXS-055 | **Dateirennen verhindern** – Datei Stream Identität Änderungszustand stabile Lesesicht und Cache Invalidierung mit Filter Manager Mechanismen verbinden; transaktionale I O beachten. | ⚪ geplant | **T-055** Austausch Änderung Hardlink und Reparsepoint Tests zwischen Scan und Aktion erzeugen keine veraltete Freigabe oder falsche Löschung. | – | – |
+| AXS-056 | **Deadlocks und Überlast ausschließen** – Begrenzte Wartezeiten cancelbare Anfragen IRQL Regeln Reentrancy Paging I O und Verlust der User Mode Verbindung beherrschen. | ⚪ geplant | **T-056** Workerabsturz niedriger Speicher und parallele Last halten den Rechner bedienbar; Fehlerzustand ist sichtbar. | – | – |
+| AXS-057 | **Fehlerpolicy explizit machen** – Bekannt schädliche Objekte bleiben blockiert; bei unbekannten Inhalten und Scannerfehlern verfügbarkeitsorientierten oder strengeren Modus ausdrücklich definieren. | ⚪ geplant | **T-057** Timeout ergibt nie sauber; Modus und Ausnahme sind testbar und werden protokolliert; kritischer Systemstart darf nicht endlos blockieren. | – | – |
+| AXS-058 | **Treiber regulär ausliefern** – Passende WDK Toolchain Altitude Hardware Dashboard Signierung und erforderliche Tests beschaffen; Testsignierung nur im Labor. | ⚪ geplant | **T-058** Produktionstreiber lädt auf normal konfigurierten Zielsystemen; Secure Boot oder Speicherintegrität müssen dafür nicht abgeschaltet werden. | – | – |
+| AXS-059 | **Dateisysteme und Fremdfilter prüfen** – NTFS exFAT unterstützte ReFS SMB OneDrive Platzhalter ZIP ISO USB lange Pfade und fremde Filter nach definierter Matrix testen. | ⚪ geplant | **T-059** Nicht geprüfte Kombinationen sind als solche benannt; Cloud Platzhalter werden nicht unbemerkt massenhaft heruntergeladen. | – | – |
+| AXS-060 | **Boot und Treiber Recovery beweisen** – Installation Upgrade Abbruch Safe Mode und autorisierten Notfallausbau mit Offlinezugriff planen und prüfen. | ⚪ geplant | **T-060** Ein defektes Testrelease lässt sich auf einer separaten VM aus einer Bootstörung zurückholen; kein Bootloop wird als akzeptabler Restfehler freigegeben. | – | – |
+
+## P09 Ransomware und Reparatur behandeln
+
+*Ziel:* Schädliche Dateiänderungen begrenzen und unterstützte Änderungen kontrolliert rückgängig machen.  
+*Gate:* Simulierte Massenschreibvorgänge werden in der vereinbarten Schadensgrenze gestoppt; Wiederherstellung und ihre Grenzen sind bewiesen.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-061 | **Ransomware Muster korrelieren** – Prozess Herkunft ungewöhnliche Änderungsraten Dateiversionen und weitere Signale kombinieren; Entropie oder Canary alleine reicht nicht. | ⚪ geplant | **T-061** Gutartige Komprimierung Backup Sync und Entwicklung sind Gegenfälle; Simulator verändert ausschließlich wegwerfbare Testdateien. | – | – |
+| AXS-062 | **Schreibvorgänge begrenzen** – Definierte geschützte Ordner und unterstützte Dateioperationen über getestete Durchsetzung sperren; Remote SMB Verursachung gesondert behandeln. | ⚪ geplant | **T-062** Vorab festgelegtes Schadensbudget für Testdateien wird gemessen; lokal und remote ausgelöste Fälle sind getrennt ausgewiesen. | – | – |
+| AXS-063 | **Wiederherstellung begrenzt zusagen** – Für unterstützte Änderungen vorhandene Originalversionen vorhalten; Kapazität Konsistenz Verschlüsselung und geschützte Ablage planen. | ⚪ geplant | **T-063** Wiederherstellung der Testdateien ist bytegenau; ohne Originalkopie erscheint keine garantierte Entschlüsselung. | – | – |
+| AXS-064 | **Wiper und Erpressung unterscheiden** – Datenzerstörung Massenlöschung Verschlüsselung und Datenabfluss getrennt melden; kein Rollback als Schutz vor bereits erfolgter Exfiltration darstellen. | ⚪ geplant | **T-064** Simulationen erzeugen unterschiedliche Befunde und korrekte Handlungshinweise; bestehende Backups bleiben unabhängig erforderlich. | – | – |
+| AXS-065 | **Persistenz kontrolliert beseitigen** – Run Keys Dienste Tasks WMI relevante Browserkomponenten und Startup Ordner prüfen; Beziehungsnachweise für Reparatur verlangen. | ⚪ geplant | **T-065** Legitime Verwaltungs und Autostartfälle bleiben funktionsfähig; Reparaturvorschau und Wiederherstellung sind getestet. | – | – |
+| AXS-066 | **Offlineprüfung spezifizieren und erproben** – Externes bootfähiges Rettungsmedium oder WinPE Pfad mit eigenen Lizenz und Signierprüfungen bereitstellen; BitLocker und verschlüsselte Datenträger beachten. | ⚪ geplant | **T-066** Offlineablauf funktioniert auf Laborgerät mit freigegebenem Schlüsselzugriff; gesperrte Datenträger bleiben als nicht geprüft sichtbar. | – | – |
+
+## P10 Web Netzwerk E Mail und Wechselmedien ergänzen
+
+*Ziel:* Weitere Einfallstore durch getrennte und benannte Schutzfunktionen abdecken.  
+*Gate:* IPv4 IPv6, Browser, Netzlaufwerke und Wechselmedien sind getestet; HTTPS und E Mail Grenzen werden korrekt angezeigt.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-067 | **Web und Phishing trennen** – Browsererweiterung mit minimalen Berechtigungen und lizenzierter URL Reputation einsetzen; Punycode Weiterleitungen Downloads und unbekannte URLs berücksichtigen. | ⚪ geplant | **T-067** Getrennte Tests für schädliche Testseite legitime Seite Datenminimierung und Ausfall bestehen; unbekannt gilt nicht als vertrauenswürdig. | – | – |
+| AXS-068 | **Netzwerkpolicy implementieren** – Windows Firewall und gezielte WFP Filter für Prozess Ziel und Verbindungsblockaden nutzen; IPv4 IPv6 VPN Proxy und DNS Wege prüfen. | ⚪ geplant | **T-068** Gezielte Testverbindung wird blockiert erlaubte bleibt nutzbar; Isolation hält benötigte Recoverykanäle nach ausdrücklicher Policy offen. | – | – |
+| AXS-069 | **Verschlüsselungsgrenzen einhalten** – Ohne eigenen legitimierten Entschlüsselungspfad keinen vollständigen HTTPS Mail oder QUIC Inhaltsscan behaupten; keinen Root CA Eingriff als Standard. | ⚪ geplant | **T-069** UI erklärt die tatsächlich geprüften Datenquellen; Tests mit HTTPS QUIC DoH und VPN zeigen erwartete Sichtbarkeit und Grenzen. | – | – |
+| AXS-070 | **E Mail Schutz ehrlich umsetzen** – Zunächst lokal gespeicherte Anhänge und unterstützte Downloadpfade prüfen; Client oder Gateway Integration mit eigener Rechte und Protokollmatrix ausweisen. | ⚪ geplant | **T-070** Ohne echte Integration steht Anhangprüfung statt vollständiger Postfachschutz; E Mail Kennwörter und Inhalte werden nicht heimlich gesammelt. | – | – |
+| AXS-071 | **Wechselmedien prüfen** – Neue Datenträger und deren Dateien scannen Autoausführung beachten und Scanaufträge begrenzen; BadUSB nicht mit Dateivirenschutz gleichsetzen. | ⚪ geplant | **T-071** USB Datei und Ausführungsfälle sind getestet; Tastatur und Firmware Angriffe erscheinen als eigene Grenze. | – | – |
+| AXS-072 | **Netz und Kommunikationsindikatoren bewerten** – C2 bekannte Schadziele und Reputation mit Kontext Ablaufzeit und Gegenfällen verwenden; keine globale Sperre auf gemeinsam genutzte Infrastruktur ohne Beleg. | ⚪ geplant | **T-072** Benigne Cloud und CDN Ziele bleiben erreichbar; veraltete und fehlerhafte Indikatoren können kontrolliert zurückgenommen werden. | – | – |
+
+## P11 Selbstschutz und Windows Integration abschließen
+
+*Ziel:* Manipulation begrenzen und AXSafe nur mit belegter Funktion als primären Schutz integrieren.  
+*Gate:* Alle beanspruchten Schutzstufen sind technisch und organisatorisch belegt; fremder Schutz wird nicht vorzeitig deaktiviert.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-073 | **Selbstschutz stufenweise umsetzen** – ACLs signierte Konfiguration Servicezugriff und Integritätskontrollen gegen Standardbenutzer absichern; Admin und Kernelgrenzen benennen. | ⚪ geplant | **T-073** Manipulation aus Standardbenutzerkontext scheitert; verlorene Schutzfähigkeit wird erkannt und gemeldet. | – | – |
+| AXS-074 | **ELAM und PPL Pfad prüfen** – Für starken Dienstschutz ELAM zertifizierten Treiber Zertifikatsressourcen signierte DLLs und Wartungsweg technisch erproben. | ⚪ geplant | **T-074** Bei beanspruchtem PPL Schutz liegt ein realer Nachweis vor; ohne externe Voraussetzungen bleibt dieser Punkt offen und blockiert das entsprechende Versprechen. | – | – |
+| AXS-075 | **Windows Sicherheitscenter regulär anbinden** – Unterstützten Registrierungs und Statuspfad mit Microsoft beziehungsweise geeignetem OEM klären; keine erfundenen API oder WMI Produktmeldungen. | ⚪ geplant | **T-075** Windows zeigt den realen Zustand; Aufnahme Voraussetzungen und Zugang sind dokumentiert statt simuliert. | – | – |
+| AXS-076 | **Koexistenz nachweisen** – Bis zur geprüften Primärschutzfreigabe vorhandenen Defender aktiv lassen; keine breiten Ausschlüsse oder pauschal erzwungenen Betriebsmodi setzen. | ⚪ geplant | **T-076** Companion Tests und kontrollierter Primärschutzwechsel beweisen dass kein ungeschütztes Zeitfenster entsteht. | – | – |
+| AXS-077 | **Rootkit und Treiberrisiken behandeln** – Treiber und Bootintegrität unterstützte Blocklisten Secure Boot und HVCI Status prüfen; tiefe Kernel oder Firmwarekompromittierung als Eskalationsfall behandeln. | ⚪ geplant | **T-077** Bekannte Testindikatoren und fehlende Voraussetzungen werden gemeldet; kein vollständiger Firmware Reinheitsnachweis wird aus einem Live Scan abgeleitet. | – | – |
+| AXS-078 | **Autorisierten Ausbau erlauben** – Pausieren Reparatur und Deinstallation mit Rechten Zeitbegrenzung Audit und Recovery verbinden; Nutzer darf nicht ausgesperrt werden. | ⚪ geplant | **T-078** Legitime Deinstallation und Notfallwiederherstellung funktionieren; beliebige unprivilegierte Schutzabschaltung gelingt nicht. | – | – |
+
+## P12 Cloud Sandbox und Modellforschung validieren
+
+*Ziel:* Optionale Cloudfunktionen und vertiefte Analysen mit getrennten Vertrauensgrenzen aufbauen.  
+*Gate:* Lokaler Schutz läuft ohne Cloud weiter; kein Dateiinhalt verlässt den Rechner ohne Freigabe; Modelle bleiben ohne Eignungsnachweis im Forschungsmodus.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-079 | **Optionale Reputation betreiben** – Eigenen authentifizierten Backendvertrag mit Hash Abfragen TTL Limits Quoten Ausfallcache und getrennten Datenschutzstufen entwickeln. | ⚪ geplant | **T-079** Cloud aus offline und langsames Netz lassen lokale Erkennung weiterlaufen; kein unbekannter Hash wird automatisch als sicher eingestuft. | – | – |
+| AXS-080 | **Sample Upload ausdrücklich freigeben** – Vor jedem nicht bereits konkret freigegebenen Inhaltsupload Zweck Empfänger Daten und Aufbewahrung erklären; keine Bank oder Arbeitgeberdaten als Testmaterial. | ⚪ geplant | **T-080** Abgelehnter Upload übermittelt keine Datei; Freigabe Audit Löschung Zugriffskontrolle und getrennte Ablage sind getestet. | – | – |
+| AXS-081 | **Sandbox isoliert integrieren** – Verdächtige Dateien nur in separaten zurücksetzbaren Analyse VMs ausführen; Kontrollpfad und Ausgabeparser absichern; niemals auf dem Alltagsgerät detonieren. | ⚪ geplant | **T-081** Isolation Rücksetzung Limits und fehlerhafte Analysedaten bestehen Tests; unauffälliger Sandboxlauf bedeutet keine Freigabegarantie. | – | – |
+| AXS-082 | **Modellforschung reproduzieren** – Lizenzgeprüfte Datensätze mit zeitlicher und Familien Trennung verwenden; aktuelle gutartige Dateien ergänzen; einfache Baseline vor komplexen Netzen bewerten. | ⚪ geplant | **T-082** Versionierte Daten und Features liefern reproduzierbare Ergebnisse ohne Train Test Überschneidung; alte Datensätze begründen keine aktuelle Schutzquote. | – | – |
+| AXS-083 | **Modelle sicher freigeben** – Fehlalarme Kalibrierung unbekannte Typen Drift Poisoning und manipulierte Merkmale prüfen; Modell Featurevertrag und Inferenzruntime signieren. | ⚪ geplant | **T-083** Modell bleibt ohne belegten Mehrwert im Forschungsmodus; optionaler Produktbetrieb hat Grenzwerte Rücknahme und nachvollziehbare Befunde. | – | – |
+| AXS-084 | **Forschungsbetrieb begrenzen** – Threat Intel Quellen STIX TAXII Analystenfreigaben Kosten und Missbrauchsschutz planen; kein öffentliches Malware Ausführungs API als Nebenprodukt bauen. | ⚪ geplant | **T-084** Untrusted Daten erhalten weder Produktionssignierschlüssel noch direkten Zugriff auf Analysehosts; LLM Vorschläge führen nie selbstständig zu Löschung oder Blockade. | – | – |
+
+## P13 Benutzeroberfläche nach Referenz fertigstellen
+
+*Ziel:* Die dunkle AXSafe Oberfläche mit echten Daten und verständlichen Zuständen vervollständigen.  
+*Gate:* Jeder aktive Schalter hat eine getestete Wirkung; UI und Dienst stimmen bei Ausfall, Neustart und veralteten Daten überein.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-085 | **Referenzdesign aufnehmen** – Dunkelblaue Desktopoberfläche mit cyanblauen Akzenten linker Navigation Dashboard Mitte Schutzmodulen rechts und eigenem AXSafe Schild gestalten. | 🔵 begonnen | **T-085** Ansicht orientiert sich an Nutzerbild vom 24 Oktober 2026 und bleibt bei 125 bis 200 Prozent Skalierung bedienbar. | ui/AXSafe.Desktop<br>Dunkelblaue WPF-Oberfläche mit Schild, Navigation, Modulen | B-10 Lauf auf LTSC, Skalierungstest |
+| AXS-086 | **Navigation vollständig anbinden** – Übersicht Virenscan Echtzeitschutz Ransomware Firewall und Netzwerk Web und Phishing Quarantäne Datenschutz Berichte Einstellungen und Hilfe als echte Ansichten umsetzen. | 🔵 begonnen | **T-086** Alle Ziele öffnen passende Inhalte; kein sichtbarer Hauptbutton endet ohne Aktion oder Erklärung. | ui/AXSafe.Desktop/MainWindow.xaml<br>Alle Navigationsziele öffnen Inhalte oder erklären Fehlen | Bedientest |
+| AXS-087 | **Dashboard mit echten Daten füllen** – Schutzbanner Module Scanstatistik Updatezeit Aktivitätsdiagramm Scan Center letzte Funde und Live Ereignisse aus dem Dienst beziehen. | 🔵 begonnen | **T-087** Keine festen Beispielzähler in Produktion; Sensor oder Cloudausfall veraltete Regeln und fehlender Primärschutz ändern Banner und Modulzustände. | ui/AXSafe.Desktop<br>Keine Beispielzähler; Werte nur aus echtem Bericht | Dienstanbindung |
+| AXS-088 | **Scan und Fundabläufe gestalten** – Fortschritt Abbruch Teilresultate Erkennungsdetails Quarantäne Restore Fehlalarm und Neustartbedarf verständlich darstellen. | 🔵 begonnen | **T-088** Nutzer kann einen Scan starten einen Fehler verstehen und einen Fund kontrolliert behandeln ohne unbeabsichtigte destructive Aktion. | ui/AXSafe.Desktop<br>Start, Abbruch, Fehler, Teilresultat sichtbar | Quarantäne/Restore |
+| AXS-089 | **Modulschalter ehrlich machen** – Schalter benötigen Capability Prüfung Berechtigungen Rückmeldung und bestätigten Dienstzustand; nicht vorhandene Funktion sichtbar deaktivieren. | 🔵 begonnen | **T-089** Fehlgeschlagene Umschaltung springt zum tatsächlichen Zustand zurück; Demo oder Laborbetrieb bleibt dauerhaft markiert. | ui/AXSafe.Desktop<br>Nicht vorhandene Funktionen deaktiviert und erklärt | echte Schalter |
+| AXS-090 | **Bedienbarkeit und Datenschutz sichern** – Deutsch Tastaturbedienung Screenreader Kontrast Status ohne reine Farbcodes ruhige Benachrichtigungen und minimale Diagnoseexporte vorsehen. | 🔵 begonnen | **T-090** Bedientest mit Tastatur Skalierung und Fehlerzuständen besteht; keine überflüssigen Konten oder Uploads sind zum lokalen Scan nötig. | ui/AXSafe.Desktop<br>Deutsch, Status als Text, kein Konto, keine Uploads | Screenreader-/Tastaturtest |
+
+## P14 Gesamtschutz und Zuverlässigkeit nachweisen
+
+*Ziel:* Schutzwirkung, Fehlalarme, Systemverträglichkeit und Betriebsstabilität getrennt bewerten.  
+*Gate:* Alle V1 Pflichtnachweise liegen vor; kritische Fehler und nicht belegte Schutzversprechen blockieren die Freigabe.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-091 | **Funktionsnachweise getrennt führen** – EICAR AMTSO Integrationstests und echte Schutztests getrennt auswerten; Simulationsbelege nicht als Malware Wirksamkeitsquote ausgeben. | ⚪ geplant | **T-091** Bericht nennt Testart Korpus Datum Version OS Einstellung Onlinezustand und Zuordnung zur konkreten AXSafe Komponente. | – | – |
+| AXS-092 | **Schutzwirkung messen** – Prävention Erkennung Eindämmung Reparatur und Schaden getrennt anhand zeitlich aktueller rechtmäßig beschaffter Fälle testen; unabhängigen Testweg planen. | ⚪ geplant | **T-092** Recall Fehlalarme verpasste Fälle Latenzen und Schadensumfang sind transparent; keine Bestenliste aus unterschiedlichen Testbedingungen. | – | – |
+| AXS-093 | **Fehlalarme ernst nehmen** – Großen repräsentativen sauberen Korpus mit Windows Office Browsern Spielen Entwicklertools Backups und eigener Zielsoftware testen. | ⚪ geplant | **T-093** Kein destruktiver Fehlalarm auf kritischen Systemdateien; Regeln und Modelle mit unvertretbarer Fehlalarmrate werden zurückgenommen. | – | – |
+| AXS-094 | **Leistung und Kompatibilität messen** – Leerlauf Scan Boot Dateioperationen Programminstallationen Spiele VM Betrieb SMB OneDrive und Updates gegen dokumentierte Baseline vergleichen. | ⚪ geplant | **T-094** Perzentile CPU RAM Datenträgerlast und Ausreißer sind berichtet; vorab vereinbarte Budgets sind erfüllt oder Freigabe bleibt offen. | – | – |
+| AXS-095 | **Ausfälle und Angriffe gegen AXSafe testen** – Parser IPC Updateformate Quarantäne und Treiber fuzzingorientiert prüfen; Stromausfall voller Datenträger Offlinezustand Überlast und Schlüsselkompromittierung erproben. | ⚪ geplant | **T-095** Keine offenen kritischen Sicherheits oder Datenverlustfehler; Treiberprüfung Langzeittest und Recoverybericht liegen vor. | – | – |
+| AXS-096 | **Externen Review und Abdeckung abschließen** – Unabhängige Sicherheitsprüfung und geeignete Labortests vorbereiten; Anforderungen mit Code Test Ergebnis offenen Punkten und Produktversprechen verknüpfen. | ⚪ geplant | **T-096** Alle verpflichtenden Anforderungen sind mit echten Belegen bestanden; externe fehlende Freigaben werden nicht durch interne Mocks ersetzt. | – | – |
+
+## P15 Veröffentlichen und dauerhaft betreiben
+
+*Ziel:* Ein betreubares Produkt mit signierter Auslieferung, Support und Schwachstellenmanagement freigeben.  
+*Gate:* Releasecheckliste vollständig, Rollback geprobt, Meldewege einsatzbereit, rechtliche und lizenzbezogene Prüfungen abgeschlossen.
+
+| ID | Anforderung | Status | Abnahme | Ort / Beleg | Offen |
+| --- | --- | --- | --- | --- | --- |
+| AXS-097 | **Signiertes Release paketieren** – Installations Upgrade und Deinstallationspakete Signaturen SBOM Lizenztexte Prüfsummen bekannte Grenzen und Wiederherstellungsanleitung bereitstellen. | ⚪ geplant | **T-097** Saubere Installation Upgrade und autorisierter Ausbau auf der Zielmatrix bestehen; Produktpaket enthält keine Forschungssamples. | – | – |
+| AXS-098 | **Verantwortlichen Betrieb etablieren** – Support Fehlalarmannahme Schwachstellenkoordination Security Kontakt Incident Verfahren Backup Restore Monitoring und Updatebereitschaft organisieren. | ⚪ geplant | **T-098** Probe eines kritischen Fehlalarms und kompromittierten Updates erreicht zuständige Personen und funktioniert auch bei Cloudausfall. | – | – |
+| AXS-099 | **Markt und Datenschutzfreigabe abschließen** – CRA Pflichten Konformitätsweg Datenschutzinformationen Auftragsverarbeitung Drittlandtransfers Supportdauer Namensrechte und Open Source Pflichten vor Vertrieb prüfen. | ⚪ geplant | **T-099** Freigabeakte und gültige Unterlagen liegen vor; öffentlich genutzte Siegel entsprechen tatsächlich erlangten Prüfungen. | – | – |
+| AXS-100 | **V1 nur mit Abnahme freigeben** – V1 bleibt bei fehlenden Pflichtnachweisen unveröffentlicht oder eindeutig als begrenzte Vorversion gekennzeichnet; Umfang nicht stillschweigend reduzieren. | ⚪ geplant | **T-100** Releasecheckliste nennt erfüllte Ziele Grenzen offene Risiken Versionen und Freigabeverantwortung; kein geplanter Punkt wird als implementiert verkauft. | – | – |

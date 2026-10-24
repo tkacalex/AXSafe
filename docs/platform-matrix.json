@@ -1,0 +1,95 @@
+{
+  "schema": "axsafe.platform-matrix/1",
+  "requirement": "AXS-001",
+  "test": "T-001",
+  "updated": "2026-10-24",
+  "platforms": [
+    {
+      "id": "win10-ltsc2021-x64-primary",
+      "role": "Hauptziel",
+      "edition": "Windows 10 Enterprise LTSC",
+      "version": "21H2",
+      "build_family": 19044,
+      "build_revision": 7807,
+      "architecture": "x64",
+      "support_end_reported": "2027-01-12",
+      "support_source": "Q02",
+      "evidence": [
+        {
+          "date": "2026-10-24",
+          "method": "msinfo32 (Systeminformationen) auf dem Zielgerät gelesen",
+          "observed": {
+            "os_name": "Microsoft Windows 10 Enterprise LTSC",
+            "version": "10.0.19044 Build 19044",
+            "system_type": "x64-based PC",
+            "bios_mode": "UEFI",
+            "secure_boot_state": "Off",
+            "vbs": "Running",
+            "vbs_services_running": "keine (Speicherintegrität/HVCI nicht aktiv)",
+            "kernel_dma_protection": "On",
+            "wdac_policy": "Enforced",
+            "wdac_user_mode_policy": "Off",
+            "hardware": "Alienware m15 R3, Intel Core i7-10750H, 32 GB RAM"
+          }
+        },
+        {
+          "date": "2026-10-24",
+          "method": "Nutzerscreenshot (winver)",
+          "observed": { "build": "19044.7807" }
+        },
+        {
+          "date": "2026-10-24",
+          "method": "Claude-Desktop-Geräteinfo",
+          "observed": { "platform": "win32", "arch": "x64" }
+        }
+      ],
+      "status": {
+        "architecture_confirmed": true,
+        "edition_confirmed": true,
+        "not_iot_edition": "msinfo32 zeigt 'Enterprise LTSC', nicht 'IoT Enterprise LTSC'",
+        "patch_level": "19044.7807 laut Nutzerscreenshot; vor Release erneut mit winver/Registry UBR prüfen"
+      },
+      "capabilities": {
+        "net10_wpf": { "state": "unterstützt laut Microsoft-Liste", "source": "Q03", "tested_on_target": false },
+        "rust_cli_x64_msvc": { "state": "gebaut in CI (windows-latest)", "tested_on_target": false },
+        "clamav_windows": { "state": "nicht installiert auf Zielgerät", "tested_on_target": false },
+        "minifilter": { "state": "nicht entwickelt (P08)", "requires": ["Altitude", "Treibersignierung", "Labor-VM"] },
+        "amsi_provider": { "state": "nicht entwickelt (P07)" },
+        "elam_ppl": { "state": "nicht verfügbar (externe Voraussetzungen, P11)" },
+        "wsc_integration": { "state": "nicht verfügbar (externer Klärpunkt, P11)" },
+        "vulnerable_driver_blocklist": { "state": "auf Zielgerät nicht geprüft", "source": "Q35" },
+        "secure_boot": { "state": "aus (gemessen)", "note": "AXSafe setzt Secure Boot nicht voraus und schaltet es nie ab; Empfehlung zur Aktivierung siehe docs/PLATFORM.md" },
+        "hvci": { "state": "nicht aktiv (gemessen)", "note": "Treiber muss trotzdem HVCI-kompatibel sein (T-058)" }
+      }
+    },
+    {
+      "id": "win11-x64-compat",
+      "role": "Zusätzliche Kompatibilitätsplattform",
+      "edition": "Windows 11 (Edition offen)",
+      "architecture": "x64",
+      "evidence": [],
+      "status": { "tested": false, "next_step": "Windows-11-VM im Labor (AXS-008) aufsetzen" }
+    },
+    {
+      "id": "ci-windows-runner",
+      "role": "Build- und Unit-Test-Umgebung (kein Zielsystem)",
+      "edition": "GitHub Actions windows-latest (Windows Server)",
+      "architecture": "x64",
+      "note": "Ein grüner CI-Lauf ist kein Nachweis für Windows 10 LTSC."
+    },
+    {
+      "id": "ci-linux-runner",
+      "role": "Build- und Unit-Test-Umgebung (kein Zielsystem)",
+      "edition": "Ubuntu 24.04",
+      "architecture": "x64"
+    }
+  ],
+  "not_released": [
+    "Windows 10 Home/Pro",
+    "andere LTSC-Versionen (2019, 2016)",
+    "Windows 10 IoT Enterprise LTSC",
+    "ARM64",
+    "x86 (32-Bit-Betriebssystem)",
+    "macOS, Linux, Android, iOS (siehe Konzept Abschnitt 20)"
+  ]
+}
