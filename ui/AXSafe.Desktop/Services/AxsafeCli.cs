@@ -27,10 +27,13 @@ public sealed class AxsafeCli
 
     private static string? Locate()
     {
+        // Wichtig: Windows unterscheidet nicht zwischen AXSafe.exe (Oberfläche) und
+        // axsafe.exe (CLI). Die CLI liegt deshalb im Unterordner "cli", und die
+        // eigene Programmdatei wird ausdrücklich ausgeschlossen.
         var baseDir = AppContext.BaseDirectory;
+        var self = Environment.ProcessPath ?? "";
         var candidates = new List<string>
         {
-            Path.Combine(baseDir, "axsafe.exe"),
             Path.Combine(baseDir, "cli", "axsafe.exe"),
         };
         var pathVar = Environment.GetEnvironmentVariable("PATH") ?? "";
@@ -38,7 +41,9 @@ public sealed class AxsafeCli
         {
             try { candidates.Add(Path.Combine(dir.Trim(), "axsafe.exe")); } catch (ArgumentException) { }
         }
-        return candidates.FirstOrDefault(File.Exists);
+        return candidates.FirstOrDefault(c =>
+            File.Exists(c) &&
+            !string.Equals(Path.GetFullPath(c), Path.GetFullPath(self), StringComparison.OrdinalIgnoreCase));
     }
 
     private string? RulesDir()

@@ -154,7 +154,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 <TextBlock x:Name="EngineEmpty" Style="{StaticResource MutedText}" Visibility="Collapsed"
-                                           Text="axsafe.exe wurde nicht gefunden. Lege die CLI neben AXSafe.exe (siehe Hilfe)."/>
+                                           Text="axsafe.exe wurde nicht gefunden. Lege die CLI in den Unterordner cli neben AXSafe.exe (siehe Hilfe)."/>
                             </StackPanel>
                         </Border>
                         <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0,0,0">

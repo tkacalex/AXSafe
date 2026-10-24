@@ -30,9 +30,11 @@ jobs:
       - name: Paket
         shell: pwsh
         run: |
-          Copy-Item target/release/axsafe.exe dist/AXSafe/
-          New-Item -ItemType Directory dist/AXSafe/rules | Out-Null
-          Copy-Item -Recurse rules/* dist/AXSafe/rules/
+          # CLI in Unterordner: Windows unterscheidet axsafe.exe und AXSafe.exe nicht.
+          New-Item -ItemType Directory dist/AXSafe/cli/rules -Force | Out-Null
+          Copy-Item target/release/axsafe.exe dist/AXSafe/cli/
+          Copy-Item -Recurse rules/* dist/AXSafe/cli/rules/
+          if (-not (Test-Path dist/AXSafe/AXSafe.dll)) { throw "Oberfläche fehlt im Paket" }
           Copy-Item README.md, CHANGELOG.md, SECURITY.md dist/AXSafe/
           Get-ChildItem *.pdb -Path dist/AXSafe -Recurse | Remove-Item
           python scripts/check_release_inventory.py dist/AXSafe --allow-test-rules --inventory dist/inventory.json

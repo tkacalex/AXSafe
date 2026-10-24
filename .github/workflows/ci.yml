@@ -92,16 +92,18 @@ jobs:
       - name: Paket zusammenstellen
         shell: pwsh
         run: |
-          Copy-Item target/release/axsafe.exe dist/AXSafe/
-          New-Item -ItemType Directory dist/AXSafe/rules | Out-Null
-          Copy-Item -Recurse rules/* dist/AXSafe/rules/
+          # CLI in Unterordner: Windows unterscheidet axsafe.exe und AXSafe.exe nicht.
+          New-Item -ItemType Directory dist/AXSafe/cli/rules -Force | Out-Null
+          Copy-Item target/release/axsafe.exe dist/AXSafe/cli/
+          Copy-Item -Recurse rules/* dist/AXSafe/cli/rules/
+          if (-not (Test-Path dist/AXSafe/AXSafe.dll)) { throw "Oberfläche fehlt im Paket" }
           Copy-Item README.md, CHANGELOG.md, SECURITY.md dist/AXSafe/
           Get-ChildItem *.pdb -Path dist/AXSafe -Recurse | Remove-Item
       - name: CLI-Rauchtest auf Windows
         shell: pwsh
         run: |
-          dist/AXSafe/axsafe.exe --version
-          dist/AXSafe/axsafe.exe engines --no-clamav --rules dist/AXSafe/rules
+          dist/AXSafe/cli/axsafe.exe --version
+          dist/AXSafe/cli/axsafe.exe engines --no-clamav --rules dist/AXSafe/cli/rules
           if ($LASTEXITCODE -ne 0) { throw "Engines nicht bereit" }
       - name: Releaseinventar prüfen (T-012; Testregel bewusst freigegeben für Vorversion)
         run: python scripts/check_release_inventory.py dist/AXSafe --allow-test-rules --inventory dist/inventory.json

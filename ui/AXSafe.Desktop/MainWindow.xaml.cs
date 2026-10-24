@@ -54,7 +54,7 @@ public partial class MainWindow : Window
             "Standardbenutzer können keine globalen Ausnahmen setzen."),
         ["help"] = new("Hilfe", "AXSafe Vorversion 0.1",
             "AXSafe ist ein Open-Development-Projekt für einen ehrlichen, mehrschichtigen Windows-Schutz. Diese Vorversion ist ein Datei-Scanner auf Anforderung.",
-            "Installation: axsafe.exe und den Ordner 'rules' neben AXSafe.exe legen. Optional ClamAV installieren. Projekt und Doku: github.com/tkacalex/AXSafe",
+            "Installation: axsafe.exe und den Ordner 'rules' in den Unterordner 'cli' neben AXSafe.exe legen. Optional ClamAV installieren. Projekt und Doku: github.com/tkacalex/AXSafe",
             "Kein Antivirus erkennt jede Schadsoftware. Lass Microsoft Defender aktiv."),
     };
 
