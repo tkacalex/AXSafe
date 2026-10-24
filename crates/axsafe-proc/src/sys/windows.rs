@@ -44,10 +44,10 @@ use windows_sys::Win32::System::JobObjects::{
 };
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
-    InitializeProcThreadAttributeList, OpenThread, ResumeThread, UpdateProcThreadAttribute,
-    WaitForSingleObject, CREATE_SUSPENDED, DETACHED_PROCESS, EXTENDED_STARTUPINFO_PRESENT,
-    INFINITE, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+    CreateMutexW, CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
+    InitializeProcThreadAttributeList, OpenThread, ReleaseMutex, ResumeThread,
+    UpdateProcThreadAttribute, WaitForSingleObject, CREATE_SUSPENDED, DETACHED_PROCESS,
+    EXTENDED_STARTUPINFO_PRESENT, INFINITE, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
     PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
     THREAD_SUSPEND_RESUME,
 };
@@ -373,6 +373,31 @@ fn appcontainer_sid(profile: &str) -> io::Result<Sid> {
     let display = wide(OsStr::new("AXSafe Scanworker"));
     let desc = wide(OsStr::new("AXSafe: isolierter Scanworker ohne Fähigkeiten"));
     let mut sid: PSID = std::ptr::null_mut();
+    // Mehrere AXSafe-Prozesse dürfen das Profil nicht gleichzeitig anlegen:
+    // Auf dem Windows-Runner schlug CreateProcess sonst mit „Datei nicht
+    // gefunden“ fehl, solange ein anderer Prozess das Profil noch anlegte.
+    let mutex_name = wide(OsStr::new("Local\\AXSafe.AppContainerProfile.v1"));
+    // SAFETY: benanntes Mutex; Handle wird unten freigegeben.
+    let mutex = unsafe { CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr()) };
+    if !mutex.is_null() {
+        // SAFETY: gültiges Mutex-Handle; höchstens 30 s warten.
+        unsafe {
+            WaitForSingleObject(mutex, 30_000);
+        }
+    }
+    struct Unlock(HANDLE);
+    impl Drop for Unlock {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                // SAFETY: eigenes Mutex-Handle.
+                unsafe {
+                    ReleaseMutex(self.0);
+                    CloseHandle(self.0);
+                }
+            }
+        }
+    }
+    let _unlock = Unlock(mutex);
     // SAFETY: gültige, nullterminierte Zeichenketten; sid wird von der API gesetzt.
     unsafe {
         let hr = CreateAppContainerProfile(
@@ -591,20 +616,35 @@ fn spawn_appcontainer(cmd: &Command, limits: &Limits, profile: &str) -> io::Resu
             si.StartupInfo.hStdError = err_child;
             si.lpAttributeList = list;
             let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
-            if CreateProcessW(
-                app.as_ptr(),
-                cmdline.as_mut_ptr(),
-                std::ptr::null(),
-                std::ptr::null(),
-                1,
-                EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | DETACHED_PROCESS,
-                std::ptr::null(),
-                cwd.as_ptr(),
-                &si.StartupInfo,
-                &mut pi,
-            ) == 0
-            {
-                let e = last_err("CreateProcessW (AppContainer)");
+            let mut created = false;
+            let mut last = io::Error::other("CreateProcessW nicht aufgerufen");
+            // Kurzer Wiederholversuch, falls das AppContainer-Profil gerade
+            // erst sichtbar wird (ERROR_FILE_NOT_FOUND/PATH_NOT_FOUND).
+            for attempt in 0..5 {
+                if CreateProcessW(
+                    app.as_ptr(),
+                    cmdline.as_mut_ptr(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                    1,
+                    EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | DETACHED_PROCESS,
+                    std::ptr::null(),
+                    cwd.as_ptr(),
+                    &si.StartupInfo,
+                    &mut pi,
+                ) != 0
+                {
+                    created = true;
+                    break;
+                }
+                last = last_err("CreateProcessW (AppContainer)");
+                if !matches!(last.raw_os_error(), Some(2) | Some(3)) || attempt == 4 {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            if !created {
+                let e = last;
                 return Err(match &grant {
                     Err(g) => io::Error::new(
                         e.kind(),
