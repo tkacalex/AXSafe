@@ -20,6 +20,8 @@
     <InvariantGlobalization>false</InvariantGlobalization>
     <SatelliteResourceLanguages>de</SatelliteResourceLanguages>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Lockfile enthält den RID-Graphen für das self-contained Windows-Paket (Release prüft im Locked Mode). -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>

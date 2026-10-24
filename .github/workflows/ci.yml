@@ -221,7 +221,7 @@ jobs:
           python scripts/ci/test_summary.py --cargo cargo-all.log --dotnet trx \
             --platform "Windows Server (windows-latest) – kein LTSC-Nachweis" --markdown "$GITHUB_STEP_SUMMARY"
       - name: Oberfläche bauen (.NET 10 WPF)
-        run: dotnet publish ui/AXSafe.Desktop/AXSafe.Desktop.csproj -c Release -r win-x64 --self-contained true -o dist/AXSafe
+        run: dotnet publish ui/AXSafe.Desktop/AXSafe.Desktop.csproj -c Release -r win-x64 --self-contained true -p:RestoreLockedMode=true -o dist/AXSafe
       - name: Paket zusammenstellen (mit Lizenzhinweisen)
         shell: pwsh
         run: ./scripts/ci/package.ps1 -Dist dist/AXSafe
