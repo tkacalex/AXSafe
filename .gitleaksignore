@@ -1,0 +1,4 @@
+# Bekannte Fehlalarme. Jeder Eintrag braucht eine Begründung.
+# Commit ce7eb20: scripts/check_release_inventory.py enthielt die PEM-Kopfzeile als Suchmuster
+# (das Skript sucht nach Schlüsseln, es enthält keinen). Seit dem Folgecommit zur Laufzeit zusammengesetzt.
+ce7eb2079a8a999e8eeb703af15b07e2674f792b:scripts/check_release_inventory.py:private-key:34

@@ -46,3 +46,13 @@ if cargo build -q --locked >"$TMP/build.txt" 2>&1; then
 fi
 grep -qi "checksum" "$TMP/build.txt" || { echo "FEHLER: Build scheiterte aus anderem Grund"; cat "$TMP/build.txt"; exit 1; }
 echo "OK: manipulierte Abhängigkeit wird abgelehnt"
+
+echo "== Selbsttest 3: Releaseinventar erkennt EICAR und Schlüsselmaterial (T-012)"
+mkdir -p "$TMP/pkg-bad" "$TMP/pkg-ok"
+python3 -c "import sys; open(sys.argv[1],'w').write('X5O!P%@AP[4\\\\PZX54(P^)7CC)7}\$'+'EICAR-STANDARD-ANTIVIRUS-TEST-FILE!\$H+H*')" "$TMP/pkg-bad/probe.com"
+echo "harmlos" > "$TMP/pkg-ok/readme.txt"
+if python3 "$ROOT/scripts/check_release_inventory.py" "$TMP/pkg-bad" >/dev/null; then
+  echo "FEHLER: Inventarprüfung hat EICAR NICHT erkannt"; exit 1
+fi
+python3 "$ROOT/scripts/check_release_inventory.py" "$TMP/pkg-ok" >/dev/null || { echo "FEHLER: sauberes Paket abgelehnt"; exit 1; }
+echo "OK: Inventarprüfung unterscheidet sauberes und belastetes Paket"

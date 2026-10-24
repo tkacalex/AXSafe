@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Behoben
+- Inventarprüfung las den Wert von `--inventory` als zweiten Paketpfad (erster Windows-CI-Lauf schlug deshalb fehl); jetzt argparse, UTF-8-Ausgabe unter Windows.
+- Gitleaks-Fehlalarm auf die PEM-Suchmuster im Inventarskript: Muster werden zur Laufzeit gebildet, alter Fund begründet in `.gitleaksignore`.
+
+### Neu
+- Selbsttest 3 in der CI: Inventarprüfung muss EICAR erkennen und saubere Pakete durchlassen (T-012).
+- ADR-0006 (Entwurf): isolierter Scanworker mit Job Object/AppContainer und Named-Pipe-IPC `axsafe.ipc/1` als Plan für Phase P02.
+
 ## [0.1.0] – 2026-10-24 · erste Vorversion
 
 ### Neu

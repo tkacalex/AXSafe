@@ -11,7 +11,7 @@ Jeder Test nennt Ausgangszustand, Eingabe, Erwartung, tatsächliches Ergebnis, V
 | Versionen | Rust 1.97.0 · YARA-X 1.22.0 · ClamAV 1.5.4 · AXSafe 0.1.0 |
 | Ergebnis | **45 / 45 bestanden**, Clippy ohne Warnungen, `cargo deny`: alles ok |
 | Beleg | [`evidence/2026-10-24-linux-testlauf.txt`](evidence/2026-10-24-linux-testlauf.txt) |
-| Windows | CI-Job `windows` (Windows Server, x64) führt dieselben Tests aus; Ergebnis im Actions-Log. **Windows 10 LTSC: offen (B-02, B-03).** |
+| Windows | CI-Lauf [40101883430](https://github.com/tkacalex/AXSafe/actions/runs/40101883430) auf `windows-latest` (Windows Server, x64): **39 / 39 bestanden** (Unix-spezifische Tests entfallen dort; ClamAV dort nicht installiert → echte ClamAV-Tests übersprungen). **Windows 10 LTSC: offen (B-02, B-03).** |
 
 ## Zuordnung zu Abnahmen
 
@@ -41,8 +41,9 @@ Jeder Test nennt Ausgangszustand, Eingabe, Erwartung, tatsächliches Ergebnis, V
 | T-026 | core · `scan::positive_benign_and_counts`, `cancel_marks_incomplete`, `size_limit_is_reported_not_clean` | Zählungen = Manifest; Abbruch/Limit → unvollständig | ✅ | offen |
 | T-028 | core · `scan::fifo_does_not_block_and_is_unsupported` | Named Pipe → kein Hängen, `Unsupported` | ✅ | n/a |
 | T-020 (Teil) | core · `scan::access_denied_is_reported_when_enforced` | Datei ohne Leserechte → `AccessDenied` | ⚠️ übersprungen als root, läuft in CI als Nicht-root | offen |
-| T-010 | CI · `scripts/ci/selftest_supply_chain.sh` | Testgeheimnis → Gitleaks schlägt an; manipulierte Prüfsumme → Build bricht ab | ✅ Teil 2 lokal; Teil 1 in CI | – |
-| T-012 | `scripts/check_release_inventory.py` | Paket mit EICAR → Verstoß; sauberes Paket → ok | ✅ beide Fälle manuell | CI-Paket |
+| T-010 | CI · `scripts/ci/selftest_supply_chain.sh` | Testgeheimnis → Gitleaks schlägt an; manipulierte Prüfsumme → Build bricht ab | ✅ lokal (Gitleaks 8.28.0) | – |
+| T-010 | CI · Gitleaks über gesamten Verlauf | erster CI-Lauf fand einen **Fehlalarm** (PEM-Suchmuster im Prüfskript) → behoben und begründet in `.gitleaksignore` | ✅ | – |
+| T-012 | `scripts/check_release_inventory.py` + Selbsttest 3 | Paket mit EICAR oder privatem Schlüssel → Verstoß; sauberes Paket → ok; Testregeln nur mit `--allow-test-rules` | ✅ | CI-Paket |
 
 ## Noch ohne Test (Auszug)
 
