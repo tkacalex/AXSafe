@@ -88,9 +88,11 @@ Was du hier siehst: Die Testdatei wird von **beiden** Engines erkannt. Das passw
 
 ### Variante A – fertiges Windows-Paket (Vorversion)
 
-1. Öffne die [neueste erfolgreiche CI-Ausführung](https://github.com/tkacalex/AXSafe/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess) und lade das Artefakt **`axsafe-windows-x64-preview`** herunter (GitHub-Anmeldung nötig).
+1. Unter [**Releases**](https://github.com/tkacalex/AXSafe/releases) die neueste Vorversion öffnen und `AXSafe-…-windows-x64-vorversion.zip` laden. Die Prüfsumme steht in `SHA256SUMS.txt`.
 2. Entpacken, `AXSafe.exe` starten. Die .NET-Laufzeit ist enthalten. Die Kommandozeile liegt in `cli\axsafe.exe`.
 3. Optional: [ClamAV für Windows](https://www.clamav.net/downloads) installieren und `freshclam` ausführen – AXSafe nutzt es dann automatisch zusätzlich.
+
+Jeder erfolgreiche CI-Lauf stellt außerdem das Artefakt **`axsafe-windows-x64-preview`** bereit ([Actions](https://github.com/tkacalex/AXSafe/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess), GitHub-Anmeldung nötig).
 
 > Die Pakete sind noch **nicht signiert**. Windows SmartScreen kann deshalb warnen.
 

@@ -503,7 +503,17 @@ mod tests {
         let p = dir.join("fake-clamscan");
         std::fs::write(&p, format!("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'ClamAV 0.0-test'; exit 0; fi\ncat >/dev/null\n{body}\n")).unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-        p
+        // Linux meldet kurz nach dem Schreiben gelegentlich ETXTBSY („Text file
+        // busy“), wenn ein parallel laufender Test gerade einen Prozess startet
+        // und dabei den Schreib-Handle erbt. Warten, bis das Skript startbar ist,
+        // damit der Test das Zeitlimit prüft und nicht diesen Nebeneffekt.
+        for _ in 0..100 {
+            match Command::new(&p).arg("--version").output() {
+                Ok(o) if o.status.success() => return p,
+                _ => std::thread::sleep(Duration::from_millis(20)),
+            }
+        }
+        panic!("Testskript nicht startbar");
     }
 
     #[cfg(unix)]

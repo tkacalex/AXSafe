@@ -5,6 +5,7 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 ## [Unveröffentlicht]
 
 ### Behoben
+- Wackeltest `hanging_engine_is_timeout`: Linux meldete beim sofortigen Start des frisch geschriebenen Testskripts gelegentlich „Text file busy“. Der Adapter meldete korrekt `Error`; der Test wartet jetzt, bis das Skript startbar ist (8 Wiederholungen ohne Fehler).
 - Paket: `axsafe.exe` (CLI) überschrieb unter Windows `AXSafe.exe` (Oberfläche), weil Windows Groß-/Kleinschreibung nicht unterscheidet. CLI liegt jetzt in `cli\`; die Oberfläche schließt sich bei der CLI-Suche selbst aus. Paketbau prüft, dass die Oberfläche enthalten ist.
 - Oberfläche stürzte beim Start ab: einer `Background`-Eigenschaft wurde eine Farbe statt eines Pinsels zugewiesen (vom Windows-CI-Screenshot-Schritt aufgedeckt).
 - Absturzprotokoll nach `%LOCALAPPDATA%\AXSafe\logs` mit verständlicher Meldung statt stillem Beenden.
