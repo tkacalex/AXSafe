@@ -1,18 +1,30 @@
 [package]
 name = "axsafe-engine-clamav"
-description = "AXSafe Engineadapter für ClamAV (clamscan als getrennter Prozess, ohne TCP)"
+description = "AXSafe Engineadapter für ClamAV (clamscan als begrenzter Kindprozess, ohne TCP)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 repository.workspace = true
 
+# Harmloser Helferprozess NUR für Tests (gleiche Quelle wie in axsafe-proc).
+[[bin]]
+name = "axsafe-clamav-testhelper"
+path = "../axsafe-proc/testhelper/main.rs"
+test = false
+doc = false
+
 [dependencies]
 axsafe-core = { path = "../axsafe-core" }
-wait-timeout.workspace = true
+axsafe-proc = { path = "../axsafe-proc" }
 sha2.workspace = true
 hex.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 md-5.workspace = true
+zip.workspace = true
+flate2.workspace = true
+cfb.workspace = true
+cab.workspace = true
+sevenz-rust2.workspace = true

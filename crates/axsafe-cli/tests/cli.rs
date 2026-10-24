@@ -1,11 +1,14 @@
-//! End-to-End-Tests der echten `axsafe`-Binärdatei mit echten Engines.
+//! End-to-End-Tests der echten `axsafe`-Binärdatei.
 //!
 //! Testdaten werden zur Laufzeit in temporären Ordnern erzeugt. Es wird keine
 //! Probe ausgeführt und keine Datei aus dem Internet geladen (T-009, T-028).
+//! Tests mit externen Vorbedingungen (echtes ClamAV, Windows-Symlinkrecht)
+//! sind `#[ignore]` mit Grund und laufen in der CI mit `--include-ignored`.
 
 use md5::{Digest, Md5};
+use sha2::Sha256;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 fn bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_axsafe"))
@@ -21,31 +24,179 @@ fn eicar() -> Vec<u8> {
     format!("{a}{b}").into_bytes()
 }
 
-fn clamscan_available() -> bool {
-    Command::new("clamscan")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+fn sha(p: &Path) -> String {
+    hex::encode(Sha256::digest(std::fs::read(p).unwrap()))
+}
+
+fn scan(args: &[&str], extra: &[&Path]) -> Output {
+    let mut c = Command::new(bin());
+    c.arg("scan").arg("--rules").arg(rules()).args(args);
+    for p in extra {
+        c.arg(p);
+    }
+    c.output().unwrap()
 }
 
 fn report(path: &Path) -> serde_json::Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
-fn verdict_of<'a>(rep: &'a serde_json::Value, suffix: &str) -> &'a str {
+fn file_entry<'a>(rep: &'a serde_json::Value, suffix: &str) -> &'a serde_json::Value {
     rep["files"]
         .as_array()
         .unwrap()
         .iter()
         .find(|f| f["path"].as_str().unwrap().ends_with(suffix))
-        .unwrap_or_else(|| panic!("{suffix} fehlt im Bericht"))["verdict"]
-        .as_str()
-        .unwrap()
+        .unwrap_or_else(|| panic!("{suffix} fehlt im Bericht"))
+}
+
+fn stdout(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+fn stderr(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stderr).into_owned()
+}
+
+// ---------------------------------------------------------------------------
+// Befund 1: Berichtsziel überschreibt nie vorhandene Objekte
+// ---------------------------------------------------------------------------
+
+#[test]
+fn report_target_equal_to_scan_object_is_refused_and_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("nutz.txt");
+    std::fs::write(&f, b"Wichtige Nutzdaten\n").unwrap();
+    let before = sha(&f);
+    let o = scan(&["--no-clamav", "--json", f.to_str().unwrap()], &[&f]);
+    assert_eq!(o.status.code(), Some(3), "{}", stderr(&o));
+    assert!(stderr(&o).contains("existiert bereits"));
+    assert_eq!(sha(&f), before, "Inhalt wurde verändert");
 }
 
 #[test]
-fn yara_only_detects_eicar_and_ignores_names() {
+fn report_target_hardlink_to_scan_object_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("nutz.txt");
+    std::fs::write(&f, b"Nutzdaten").unwrap();
+    let link = dir.path().join("bericht.json");
+    std::fs::hard_link(&f, &link).unwrap();
+    let before = sha(&f);
+    let o = scan(&["--no-clamav", "--json", link.to_str().unwrap()], &[&f]);
+    assert_eq!(o.status.code(), Some(3));
+    assert_eq!(sha(&f), before);
+    assert_eq!(sha(&link), before);
+}
+
+#[test]
+fn report_target_directory_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let sub = dir.path().join("ordner");
+    std::fs::create_dir(&sub).unwrap();
+    std::fs::write(dir.path().join("a.txt"), b"x").unwrap();
+    let o = scan(
+        &["--no-clamav", "--json", sub.to_str().unwrap()],
+        &[dir.path()],
+    );
+    assert_eq!(o.status.code(), Some(3), "{}", stderr(&o));
+    assert!(sub.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn report_target_symlink_and_dangling_symlink_are_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("nutz.txt");
+    std::fs::write(&f, b"Nutzdaten").unwrap();
+    let before = sha(&f);
+    let link = dir.path().join("link.json");
+    std::os::unix::fs::symlink(&f, &link).unwrap();
+    let o = scan(&["--no-clamav", "--json", link.to_str().unwrap()], &[&f]);
+    assert_eq!(o.status.code(), Some(3));
+    assert_eq!(sha(&f), before);
+
+    let target = dir.path().join("noch-nicht-da.txt");
+    let dangling = dir.path().join("dangling.json");
+    std::os::unix::fs::symlink(&target, &dangling).unwrap();
+    let o = scan(
+        &["--no-clamav", "--json", dangling.to_str().unwrap()],
+        &[&f],
+    );
+    assert_eq!(o.status.code(), Some(3));
+    assert!(!target.exists(), "Linkziel darf nicht angelegt werden");
+}
+
+#[test]
+fn new_report_inside_scan_root_is_excluded_by_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.txt"), b"harmlos").unwrap();
+    let rep_path = dir.path().join("bericht.json");
+    let o = scan(
+        &["--no-clamav", "--json", rep_path.to_str().unwrap()],
+        &[dir.path()],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stdout(&o));
+    let rep = report(&rep_path);
+    assert_eq!(
+        rep["summary"]["objects_total"], 1,
+        "nur a.txt, nicht der eigene Bericht"
+    );
+    assert_eq!(rep["scope"]["excluded"].as_array().unwrap().len(), 1);
+}
+
+#[cfg(windows)]
+#[test]
+fn report_via_junction_into_scan_root_is_excluded_and_junction_target_refused() {
+    // Junctions brauchen kein Sonderrecht (mklink /J).
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("daten");
+    std::fs::create_dir(&data).unwrap();
+    std::fs::write(data.join("a.txt"), b"harmlos").unwrap();
+    let junction = dir.path().join("j");
+    let st = Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(&junction)
+        .arg(&data)
+        .status()
+        .unwrap();
+    assert!(st.success(), "mklink /J fehlgeschlagen");
+    // Bericht über die Junction in den gescannten Ordner: wird ausgeschlossen.
+    let via = junction.join("bericht.json");
+    let o = scan(&["--no-clamav", "--json", via.to_str().unwrap()], &[&data]);
+    assert_eq!(o.status.code(), Some(0), "{}{}", stdout(&o), stderr(&o));
+    let rep = report(&data.join("bericht.json"));
+    assert_eq!(rep["summary"]["objects_total"], 1);
+    assert_eq!(rep["scope"]["excluded"].as_array().unwrap().len(), 1);
+    // Die Junction selbst als Berichtsziel: abgelehnt.
+    let o = scan(
+        &["--no-clamav", "--json", junction.to_str().unwrap()],
+        &[&data],
+    );
+    assert_eq!(o.status.code(), Some(3));
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "benötigt Recht zum Anlegen symbolischer Links (Windows-CI: Administrator)"]
+fn report_target_windows_symlink_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("nutz.txt");
+    std::fs::write(&f, b"Nutzdaten").unwrap();
+    let before = sha(&f);
+    let link = dir.path().join("link.json");
+    std::os::windows::fs::symlink_file(&f, &link)
+        .expect("Vorbedingung: Symlink-Recht fehlt (Test nur mit --include-ignored als Admin)");
+    let o = scan(&["--no-clamav", "--json", link.to_str().unwrap()], &[&f]);
+    assert_eq!(o.status.code(), Some(3));
+    assert_eq!(sha(&f), before);
+}
+
+// ---------------------------------------------------------------------------
+// Befund 2, 3, 6: Fund/Abdeckung, Container, leere Aufträge; Exitcodes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn yara_detects_eicar_and_ignores_names() {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().join("daten");
     std::fs::create_dir(&data).unwrap();
@@ -57,80 +208,212 @@ fn yara_only_detects_eicar_and_ignores_names() {
     .unwrap();
     std::fs::write(data.join("brief.txt"), b"Sehr geehrte Damen und Herren").unwrap();
     let json = dir.path().join("r.json");
-
-    let out = Command::new(bin())
-        .args(["scan", "--no-clamav", "--rules"])
-        .arg(rules())
-        .arg("--json")
-        .arg(&json)
-        .arg(&data)
-        .output()
-        .unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(out.status.code(), Some(1), "{stdout}");
-    assert!(
-        stdout.contains("AXSafe.Test.EICAR (Testsignatur) via yara-x"),
-        "{stdout}"
-    );
-
+    let o = scan(&["--no-clamav", "--json", json.to_str().unwrap()], &[&data]);
+    assert_eq!(o.status.code(), Some(1), "{}", stdout(&o));
+    assert!(stdout(&o).contains("Fund: AXSafe.Test.EICAR (Testsignatur) via yara-x"));
     let rep = report(&json);
-    assert_eq!(rep["schema"], "axsafe.scan-report/1");
-    assert_eq!(rep["overall"], "Malicious");
-    assert_eq!(rep["summary"]["objects"], 3);
-    assert_eq!(rep["summary"]["detections"], 1);
-    assert_eq!(verdict_of(&rep, "test.txt"), "Malicious");
-    assert_eq!(verdict_of(&rep, "eicar.com"), "NoDetection");
-    assert_eq!(verdict_of(&rep, "brief.txt"), "NoDetection");
-    assert_eq!(rep["scope"]["engines"].as_array().unwrap().len(), 1);
-    assert_eq!(rep["files"][0]["action"], "report_only");
+    assert_eq!(rep["schema"], "axsafe.scan-report/2");
+    assert_eq!(rep["outcome"], "detection");
+    assert_eq!(rep["complete"], true);
+    assert_eq!(file_entry(&rep, "test.txt")["status"], "detection");
+    assert_eq!(file_entry(&rep, "eicar.com")["status"], "no_detection");
+    assert_eq!(file_entry(&rep, "brief.txt")["status"], "no_detection");
+}
+
+#[test]
+fn test_only_rules_are_flagged_loudly() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.txt"), b"x").unwrap();
+    let o = scan(&["--no-clamav"], &[dir.path()]);
+    assert!(
+        stdout(&o).contains("ausschließlich Funktionstest-Regeln"),
+        "{}",
+        stdout(&o)
+    );
+    assert!(stdout(&o).contains("KEINE echte Schadsoftware"));
+}
+
+#[cfg(unix)]
+fn fake_clamscan(dir: &Path, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let p = dir.join("fake-clamscan");
+    std::fs::write(
+        &p,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'ClamAV 0.0-test'; exit 0; fi\n\
+             n=$(cat | wc -c)\nif [ \"$n\" -eq 0 ]; then echo 'stdin: OK'; exit 0; fi\n{body}\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    for _ in 0..200 {
+        if Command::new(&p)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return p;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("Testskript nicht startbar");
+}
+
+#[cfg(unix)]
+#[test]
+fn detection_plus_engine_error_is_exit_4_and_visible() {
+    // Befund 2 Ende-zu-Ende.
+    let dir = tempfile::tempdir().unwrap();
+    let fake = fake_clamscan(dir.path(), "echo 'LibClamAV Error: Test' >&2; exit 2");
+    let data = dir.path().join("d");
+    std::fs::create_dir(&data).unwrap();
+    std::fs::write(data.join("e.com"), eicar()).unwrap();
+    let json = dir.path().join("r.json");
+    let o = scan(
+        &[
+            "--clamscan",
+            fake.to_str().unwrap(),
+            "--json",
+            json.to_str().unwrap(),
+        ],
+        &[&data],
+    );
+    assert_eq!(o.status.code(), Some(4), "{}", stdout(&o));
+    assert!(stdout(&o).contains("FUND + LÜCKE"));
+    let rep = report(&json);
+    assert_eq!(rep["outcome"], "detection_incomplete");
+    assert_eq!(rep["complete"], false);
+    assert_eq!(rep["summary"]["with_detection"], 1);
+    assert_eq!(rep["summary"]["incomplete"], 1);
+    assert_eq!(rep["summary"]["detection_and_incomplete"], 1);
+    let f = file_entry(&rep, "e.com");
+    assert_eq!(f["detection"], "Malicious");
+    assert_eq!(f["gaps"][0]["state"], "Error");
+}
+
+#[test]
+fn archives_without_container_engine_are_incomplete() {
+    // Befund 3 Ende-zu-Ende ohne ClamAV: ZIP-Signatur reicht.
+    let dir = tempfile::tempdir().unwrap();
+    let mut zip = b"PK\x03\x04".to_vec();
+    zip.extend_from_slice(&[0u8; 80]);
+    std::fs::write(dir.path().join("a.zip"), &zip).unwrap();
+    let json = dir.path().join("r.json");
+    let o = scan(
+        &["--no-clamav", "--json", json.to_str().unwrap()],
+        &[&dir.path().join("a.zip")],
+    );
+    assert_eq!(o.status.code(), Some(2), "{}", stdout(&o));
+    let rep = report(&json);
+    assert_eq!(rep["outcome"], "incomplete");
+    let g = &file_entry(&rep, "a.zip")["gaps"][0];
+    assert_eq!(g["reason"], "content_not_inspected");
+    assert_eq!(g["state"], "Unsupported");
+}
+
+#[test]
+fn empty_folder_is_nothing_scanned_exit_5() {
+    let dir = tempfile::tempdir().unwrap();
+    let empty = dir.path().join("leer");
+    std::fs::create_dir(&empty).unwrap();
+    let json = dir.path().join("r.json");
+    let o = scan(
+        &[
+            "--clamscan",
+            "/nicht/vorhanden/clamscan",
+            "--json",
+            json.to_str().unwrap(),
+        ],
+        &[&empty],
+    );
+    assert_eq!(o.status.code(), Some(5), "{}", stdout(&o));
+    assert!(stdout(&o).contains("Keine prüfbaren Objekte"));
+    let rep = report(&json);
+    assert_eq!(rep["outcome"], "nothing_scanned");
+    assert_eq!(rep["complete"], false);
+    assert_eq!(rep["job_gaps"][0]["reason"], "engine_unavailable");
 }
 
 #[test]
 fn clean_scan_exit_zero_and_broken_rules_exit_two() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("a.txt"), b"nur Text").unwrap();
-    let ok = Command::new(bin())
-        .args(["scan", "--no-clamav", "--rules"])
-        .arg(rules())
-        .arg(dir.path())
-        .output()
-        .unwrap();
-    assert_eq!(ok.status.code(), Some(0));
+    let ok = scan(&["--no-clamav"], &[dir.path()]);
+    assert_eq!(ok.status.code(), Some(0), "{}", stdout(&ok));
 
-    // Defekter Regelsatz: nie „sauber“, sondern unvollständig (Exit 2).
     let bad = tempfile::tempdir().unwrap();
     std::fs::write(bad.path().join("x.yar"), "rule {").unwrap();
-    let out = Command::new(bin())
+    let o = Command::new(bin())
         .args(["scan", "--no-clamav", "--rules"])
         .arg(bad.path())
         .arg(dir.path())
         .output()
         .unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(out.status.code(), Some(2), "{stdout}");
-    assert!(stdout.contains("NICHT VERFÜGBAR"), "{stdout}");
-    assert!(stdout.contains("UNVOLLSTÄNDIG"), "{stdout}");
+    assert_eq!(o.status.code(), Some(2), "{}", stdout(&o));
+    assert!(stdout(&o).contains("NICHT VERFÜGBAR"));
 }
 
 #[test]
 fn missing_clamav_makes_scan_incomplete_not_clean() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("a.txt"), b"nur Text").unwrap();
-    let out = Command::new(bin())
-        .args(["scan", "--clamscan", "/nicht/vorhanden/clamscan", "--rules"])
-        .arg(rules())
-        .arg(dir.path())
-        .output()
-        .unwrap();
-    assert_eq!(out.status.code(), Some(2));
+    let o = scan(&["--clamscan", "/nicht/vorhanden/clamscan"], &[dir.path()]);
+    assert_eq!(o.status.code(), Some(2));
 }
 
+// ---------------------------------------------------------------------------
+// Befund 5 (CLI-Teil): Auftragskennung
+// ---------------------------------------------------------------------------
+
 #[test]
-fn both_engines_detect_eicar_when_clamav_present() {
-    if !clamscan_available() {
-        eprintln!("clamscan nicht installiert: Test übersprungen (in CI Pflicht)");
-        return;
-    }
+fn job_id_is_taken_over_and_invalid_id_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.txt"), b"x").unwrap();
+    let json = dir.path().join("r.json");
+    let id = "0b7c3f7a-3a52-4c64-9a0e-6c2b9e1f4d11";
+    let o = scan(
+        &[
+            "--no-clamav",
+            "--job-id",
+            id,
+            "--json",
+            json.to_str().unwrap(),
+        ],
+        &[dir.path()],
+    );
+    assert_eq!(o.status.code(), Some(0));
+    assert_eq!(report(&json)["job_id"], id);
+    let json2 = dir.path().join("r2.json");
+    let o = scan(
+        &[
+            "--no-clamav",
+            "--job-id",
+            "kein-uuid",
+            "--json",
+            json2.to_str().unwrap(),
+        ],
+        &[dir.path()],
+    );
+    assert_eq!(o.status.code(), Some(3));
+    assert!(!json2.exists(), "bei ungültigem Auftrag kein Bericht");
+}
+
+// ---------------------------------------------------------------------------
+// Echte Engines
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "benötigt clamscan (Linux-CI: Pflicht)"]
+fn both_engines_detect_eicar_with_real_clamav() {
+    assert!(
+        Command::new("clamscan")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false),
+        "Vorbedingung fehlt: clamscan nicht installiert"
+    );
     let dir = tempfile::tempdir().unwrap();
     let e = eicar();
     let db = dir.path().join("axsafe-test.hdb");
@@ -148,25 +431,18 @@ fn both_engines_detect_eicar_when_clamav_present() {
     std::fs::write(data.join("probe.bin"), &e).unwrap();
     std::fs::write(data.join("ok.txt"), b"harmlos").unwrap();
     let json = dir.path().join("r.json");
-    let out = Command::new(bin())
-        .args(["scan", "--rules"])
-        .arg(rules())
-        .arg("--clamav-db")
-        .arg(&db)
-        .arg("--json")
-        .arg(&json)
-        .arg(&data)
-        .output()
-        .unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(out.status.code(), Some(1), "{stdout}");
+    let o = scan(
+        &[
+            "--clamav-db",
+            db.to_str().unwrap(),
+            "--json",
+            json.to_str().unwrap(),
+        ],
+        &[&data],
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", stdout(&o));
     let rep = report(&json);
-    let probe = rep["files"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|f| f["path"].as_str().unwrap().ends_with("probe.bin"))
-        .unwrap();
+    let probe = file_entry(&rep, "probe.bin");
     let engines: Vec<&str> = probe["engines"]
         .as_array()
         .unwrap()
@@ -175,7 +451,7 @@ fn both_engines_detect_eicar_when_clamav_present() {
         .map(|e| e["engine"].as_str().unwrap())
         .collect();
     assert_eq!(engines, vec!["yara-x", "clamav"], "{probe}");
-    assert_eq!(verdict_of(&rep, "ok.txt"), "NoDetection");
+    assert_eq!(file_entry(&rep, "ok.txt")["status"], "no_detection");
     assert_eq!(rep["complete"], true);
 }
 
@@ -193,7 +469,7 @@ fn filetype_uses_content_not_extension() {
 }
 
 #[test]
-fn engines_json_reports_health() {
+fn engines_json_reports_health_content_and_capabilities() {
     let out = Command::new(bin())
         .args(["engines", "--json", "--no-clamav", "--rules"])
         .arg(rules())
@@ -203,4 +479,6 @@ fn engines_json_reports_health() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v[0]["name"], "yara-x");
     assert_eq!(v[0]["health"]["state"], "ready");
+    assert_eq!(v[0]["content_kind"], "test_only");
+    assert_eq!(v[0]["inspects_contents_of"].as_array().unwrap().len(), 0);
 }

@@ -29,10 +29,10 @@ pub mod scan;
 pub mod verdict;
 
 /// Version des Berichtsschemas. Wird bei inkompatiblen Änderungen erhöht.
-pub const REPORT_SCHEMA_VERSION: &str = "axsafe.scan-report/1";
+pub const REPORT_SCHEMA_VERSION: &str = "axsafe.scan-report/2";
 
 /// Version der eingebauten Standardpolicy (Limits, Aggregationsregeln).
-pub const POLICY_VERSION: &str = "policy-2026.10.24-1";
+pub const POLICY_VERSION: &str = "policy-2026.10.24-2";
 
 /// Paketversion von AXSafe.
 pub const AXSAFE_VERSION: &str = env!("CARGO_PKG_VERSION");

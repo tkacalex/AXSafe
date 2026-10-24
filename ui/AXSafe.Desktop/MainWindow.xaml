@@ -95,6 +95,16 @@
                         </Grid>
                     </Border>
 
+                    <!-- Befund 7: unübersehbarer Hinweis, wenn nur Funktionstest-Regeln geladen sind -->
+                    <Border x:Name="TestRulesNotice" Visibility="Collapsed" CornerRadius="12" Padding="16,12" Margin="0,12,0,0"
+                            Background="#2A1414" BorderBrush="{StaticResource Red}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock x:Name="TestRulesTitle" Text="NUR FUNKTIONSTEST-REGELN GELADEN" Foreground="{StaticResource Red}" FontWeight="Bold" FontSize="12"/>
+                            <TextBlock x:Name="TestRulesText" FontSize="14" Margin="0,4,0,0"
+                                       Text="AXSafe erkennt mit dem aktuellen Regelbestand keine echte Schadsoftware. Die mitgelieferte EICAR-Regel prüft nur, ob der Prüfpfad funktioniert. Eine Erkennungsleistung wurde nicht gemessen."/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Statistikzeile (nur Werte aus dem letzten echten Scan dieser Sitzung) -->
                     <UniformGrid Columns="4" Margin="0,16,0,0">
                         <Border Style="{StaticResource Card}" Margin="0,0,8,0">
@@ -111,13 +121,13 @@
                         </Border>
                         <Border Style="{StaticResource Card}" Margin="8,0">
                             <StackPanel>
-                                <TextBlock Text="Funde" Style="{StaticResource MutedText}"/>
+                                <TextBlock Text="Objekte mit Fund" Style="{StaticResource MutedText}"/>
                                 <TextBlock x:Name="StatDetections" Text="–" FontSize="20" FontWeight="SemiBold" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}" Margin="8,0,0,0">
                             <StackPanel>
-                                <TextBlock Text="Nicht vollständig geprüft" Style="{StaticResource MutedText}"/>
+                                <TextBlock Text="Objekte mit Prüflücke" Style="{StaticResource MutedText}"/>
                                 <TextBlock x:Name="StatIncomplete" Text="–" FontSize="20" FontWeight="SemiBold" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
@@ -131,7 +141,7 @@
                         <Border Style="{StaticResource Card}" Margin="0,0,8,0">
                             <StackPanel>
                                 <TextBlock Text="Engines" Style="{StaticResource H2}"/>
-                                <TextBlock Text="Live abgefragt über axsafe engines" Style="{StaticResource MutedText}" Margin="0,2,0,10"/>
+                                <TextBlock Text="Live abgefragt über axsafe engines – Bereitschaft, Regelbestand und Fähigkeiten getrennt" Style="{StaticResource MutedText}" Margin="0,2,0,10"/>
                                 <ItemsControl x:Name="EngineList">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -143,10 +153,18 @@
                                                         <Run Text="{Binding EngineVersion, Mode=OneWay}"/>
                                                     </TextBlock>
                                                     <TextBlock Style="{StaticResource MutedText}">
-                                                        <Run Text="Zustand: "/>
-                                                        <Run Text="{Binding Health.StateLabel, Mode=OneWay}"/>
-                                                        <Run Text=" · Inhalt: "/>
-                                                        <Run Text="{Binding ContentVersion, Mode=OneWay}"/>
+                                                        <Run Text="Bereitschaft: "/>
+                                                        <Run Text="{Binding ReadinessLabel, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                    <TextBlock Style="{StaticResource MutedText}">
+                                                        <Run Text="Regelbestand: "/>
+                                                        <Run Text="{Binding ContentLabel, Mode=OneWay}"/>
+                                                        <Run Text=" – "/>
+                                                        <Run Text="{Binding ContentNote, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                    <TextBlock Style="{StaticResource MutedText}">
+                                                        <Run Text="Containerinhalte: "/>
+                                                        <Run Text="{Binding ContainerLabel, Mode=OneWay}"/>
                                                     </TextBlock>
                                                     <TextBlock Style="{StaticResource MutedText}" Text="{Binding Health.Reason, Mode=OneWay}"/>
                                                 </StackPanel>
@@ -154,6 +172,8 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                                <TextBlock x:Name="CoverageNote" Style="{StaticResource MutedText}" Margin="0,10,0,0"
+                                           Text="Nachgewiesene Abdeckung: nur Funktionstest (EICAR) und harmlose Testcontainer. Eine Erkennungsquote für echte Schadsoftware wurde nicht gemessen."/>
                                 <TextBlock x:Name="EngineEmpty" Style="{StaticResource MutedText}" Visibility="Collapsed"
                                            Text="axsafe.exe wurde nicht gefunden. Lege die CLI in den Unterordner cli neben AXSafe.exe (siehe Hilfe)."/>
                             </StackPanel>
@@ -215,17 +235,17 @@
                         <StackPanel>
                             <TextBlock Text="Ergebnisse" Style="{StaticResource H2}"/>
                             <TextBlock Style="{StaticResource MutedText}" Margin="0,2,0,10"
-                                       Text="'Ohne Fund' gilt nur für die genannten Engines und Regeln. Lücken werden nie als sauber gezählt."/>
+                                       Text="Fund und Prüflücke werden getrennt angezeigt. 'Ohne Fund' gilt nur für die genannten Engines und Regeln; Lücken werden nie als sauber gezählt."/>
                             <ListView x:Name="ResultList" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
                                       ScrollViewer.HorizontalScrollBarVisibility="Disabled" MaxHeight="520">
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
                                         <Grid Margin="0,4">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="190"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding VerdictLabel}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,8,0"/>
                                             <StackPanel Grid.Column="1">
                                                 <TextBlock Text="{Binding Path}"/>
                                                 <TextBlock Text="{Binding Details}" Style="{StaticResource MutedText}" FontSize="12"/>

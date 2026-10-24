@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/axsafe-proc",
     "crates/axsafe-core",
     "crates/axsafe-engine-yarax",
     "crates/axsafe-engine-clamav",
@@ -8,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.97.0"
 publish = false
@@ -27,10 +28,15 @@ clap = { version = "=4.6.7", features = ["derive"] }
 uuid = { version = "=1.29.0", features = ["v4", "serde"] }
 chrono = { version = "=0.4.45", default-features = false, features = ["clock", "serde", "std"] }
 yara-x = { version = "=1.22.0", default-features = false, features = [] }
-wait-timeout = "=0.2.1"
 tempfile = "=3.27.0"
-libc = "0.2"
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+# Nur für Tests: harmlose Containerdateien erzeugen (Befund 3)
+zip = { version = "=9.1.0", default-features = false, features = ["deflate-flate2"] }
+flate2 = "=1.1.10"
+cfb = "=0.15.0"
+cab = "=0.6.0"
+sevenz-rust2 = { version = "=0.24.1", default-features = false, features = ["compress", "util"] }
+libc = "=0.2.191"
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }
 
 [profile.release]
 lto = "thin"

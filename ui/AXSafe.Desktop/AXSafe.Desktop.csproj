@@ -10,7 +10,7 @@
     <RootNamespace>AXSafe.Desktop</RootNamespace>
     <AssemblyName>AXSafe</AssemblyName>
     <Product>AXSafe</Product>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Description>AXSafe Vorversion – deutsche Desktopoberfläche (kein Echtzeitschutz)</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Erlaubt das Bauen auf Linux-CI; ausgeführt wird nur auf Windows. -->
@@ -19,6 +19,11 @@
     <Deterministic>true</Deterministic>
     <InvariantGlobalization>false</InvariantGlobalization>
     <SatelliteResourceLanguages>de</SatelliteResourceLanguages>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AXSafe.Client\AXSafe.Client.csproj" />
+  </ItemGroup>
 
 </Project>

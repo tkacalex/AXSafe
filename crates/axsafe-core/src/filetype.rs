@@ -106,6 +106,63 @@ impl FileKind {
     }
 }
 
+/// Formate mit eingebettetem oder komprimiertem Inhalt. Ein Rohbytescan über
+/// die Containerbytes ist bei diesen Formaten **keine** Inhaltsprüfung.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentFormat {
+    Zip,
+    Ooxml,
+    OleCfb,
+    SevenZip,
+    Rar,
+    Gzip,
+    Cab,
+    Iso,
+    Vhdx,
+    /// PDF enthält meist komprimierte Streams.
+    Pdf,
+    /// RTF kann eingebettete OLE-Objekte enthalten.
+    Rtf,
+}
+
+impl ContentFormat {
+    pub fn label(self) -> &'static str {
+        match self {
+            ContentFormat::Zip => "ZIP",
+            ContentFormat::Ooxml => "Office (OOXML)",
+            ContentFormat::OleCfb => "OLE (Office 97–2003/MSI)",
+            ContentFormat::SevenZip => "7z",
+            ContentFormat::Rar => "RAR",
+            ContentFormat::Gzip => "GZIP",
+            ContentFormat::Cab => "CAB",
+            ContentFormat::Iso => "ISO",
+            ContentFormat::Vhdx => "VHDX",
+            ContentFormat::Pdf => "PDF",
+            ContentFormat::Rtf => "RTF",
+        }
+    }
+}
+
+/// Liefert das Inhaltsformat, falls der Dateityp eine eigene Inhaltsprüfung
+/// braucht; `None` für Formate, bei denen die Rohbytes der Inhalt sind.
+pub fn content_format(kind: &FileKind) -> Option<ContentFormat> {
+    Some(match kind {
+        FileKind::Zip => ContentFormat::Zip,
+        FileKind::Ooxml => ContentFormat::Ooxml,
+        FileKind::OleCfb => ContentFormat::OleCfb,
+        FileKind::SevenZip => ContentFormat::SevenZip,
+        FileKind::Rar => ContentFormat::Rar,
+        FileKind::Gzip => ContentFormat::Gzip,
+        FileKind::Cab => ContentFormat::Cab,
+        FileKind::Iso => ContentFormat::Iso,
+        FileKind::Vhdx => ContentFormat::Vhdx,
+        FileKind::Pdf => ContentFormat::Pdf,
+        FileKind::Rtf => ContentFormat::Rtf,
+        _ => return None,
+    })
+}
+
 fn u16_le(b: &[u8], off: usize) -> Option<u16> {
     b.get(off..off.checked_add(2)?)
         .map(|s| u16::from_le_bytes([s[0], s[1]]))
@@ -281,6 +338,28 @@ mod tests {
         let full = fake_pe(true, false, true);
         for cut in 0..full.len() {
             let _ = detect(&full[..cut]); // darf nie paniken
+        }
+    }
+
+    #[test]
+    fn containers_need_content_inspection() {
+        assert_eq!(content_format(&FileKind::Zip), Some(ContentFormat::Zip));
+        assert_eq!(content_format(&FileKind::Pdf), Some(ContentFormat::Pdf));
+        assert_eq!(content_format(&FileKind::Text), None);
+        assert_eq!(content_format(&detect(&fake_pe(true, false, false))), None);
+        // Jeder Container im Sinne von is_container braucht Inhaltsprüfung.
+        for k in [
+            FileKind::Zip,
+            FileKind::Ooxml,
+            FileKind::OleCfb,
+            FileKind::SevenZip,
+            FileKind::Rar,
+            FileKind::Gzip,
+            FileKind::Cab,
+            FileKind::Iso,
+            FileKind::Vhdx,
+        ] {
+            assert!(k.is_container() && content_format(&k).is_some(), "{k:?}");
         }
     }
 

@@ -3,22 +3,28 @@
 //! Ablauf je Datei:
 //! 1. Objektart ohne Linkverfolgung bestimmen (Links/Reparsepunkte: Prüflücke).
 //! 2. Datei öffnen (ohne Linkverfolgung, ohne Blockieren), Identität über das
-//!    Handle lesen.
+//!    Handle lesen. Ausgeschlossene Identitäten (z. B. die eigene
+//!    Berichtsdatei) werden übersprungen und im Umfang dokumentiert.
 //! 3. Inhalt über **dasselbe** Handle lesen, SHA-256 bilden, Typ bestimmen.
-//! 4. Alle Engines prüfen denselben Schnappschuss.
-//! 5. Identität erneut lesen und Pfad erneut auflösen. Abweichung:
-//!    [`Verdict::ChangedDuringScan`].
+//! 4. Alle bereiten Engines prüfen denselben Schnappschuss.
+//! 5. Fund und Lücken getrennt sammeln (Befund 2). Containerinhalte, die
+//!    keine aktive Engine inhaltlich prüft, werden als Lücke gemeldet (Befund 3).
+//! 6. Identität erneut lesen und Pfad erneut auflösen. Abweichung: Lücke
+//!    `ChangedDuringScan` – ein bereits gefundener Fund bleibt sichtbar.
+//!
+//! Auftragslücken (nicht verfügbare beauftragte Engine, Abbruch) werden
+//! unabhängig von Dateiergebnissen geführt (Befund 6).
 //!
 //! Der Scanner **liest nur**. Er löscht, verschiebt oder startet nichts.
 
-use crate::engine::{Engine, EngineHealth, EngineOutcome, ScanInput};
+use crate::engine::{Engine, EngineHealth, EngineInfo, EngineOutcome, Gap, GapReason, ScanInput};
 use crate::filetype;
 use crate::identity::FileIdentity;
 use crate::report::{
-    overall_verdict, FileResult, ObjectType, ScanLimits, ScanReport, ScanScope, Summary,
-    DISCLAIMER_DE,
+    highest_detection, job_outcome, ExcludedObject, FileResult, ObjectStatus, ObjectType,
+    ScanLimits, ScanReport, ScanScope, Summary, DISCLAIMER_DE,
 };
-use crate::verdict::{aggregate, Action, Verdict};
+use crate::verdict::{Action, Verdict};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
@@ -39,50 +45,149 @@ impl Progress for NoProgress {}
 pub struct Scanner {
     engines: Vec<Box<dyn Engine>>,
     limits: ScanLimits,
+    excluded: Vec<(FileIdentity, String)>,
 }
 
-fn now_utc() -> String {
+pub(crate) fn now_utc() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
-fn io_verdict(e: &io::Error) -> Verdict {
+const AXSAFE: &str = "axsafe";
+
+fn io_gap(e: &io::Error, what: &str) -> Gap {
     match e.kind() {
-        io::ErrorKind::PermissionDenied => Verdict::AccessDenied,
-        _ => Verdict::Error,
+        io::ErrorKind::PermissionDenied => Gap::new(
+            Verdict::AccessDenied,
+            GapReason::AccessDenied,
+            AXSAFE,
+            format!("{what}: Zugriff verweigert ({e})"),
+        ),
+        _ => Gap::new(
+            Verdict::Error,
+            GapReason::IoError,
+            AXSAFE,
+            format!("{what}: {e}"),
+        ),
     }
+}
+
+/// Wandelt einen Engine-Lückenzustand ohne eigene Lückenliste in eine Lücke um.
+fn outcome_gap(o: &EngineOutcome, unavailable: bool) -> Gap {
+    let reason = match o.verdict {
+        Verdict::Timeout => GapReason::EngineTimeout,
+        Verdict::Encrypted => GapReason::Encrypted,
+        Verdict::Unsupported => GapReason::EngineLimitExceeded,
+        Verdict::AccessDenied => GapReason::AccessDenied,
+        Verdict::ChangedDuringScan => GapReason::ChangedDuringScan,
+        _ if unavailable => GapReason::EngineUnavailable,
+        _ => GapReason::EngineError,
+    };
+    Gap::new(
+        o.verdict,
+        reason,
+        &o.engine,
+        o.note
+            .clone()
+            .unwrap_or_else(|| "keine Angabe der Engine".into()),
+    )
+}
+
+enum FileOutcome {
+    Result(Box<FileResult>),
+    Excluded(ExcludedObject),
 }
 
 impl Scanner {
     pub fn new(engines: Vec<Box<dyn Engine>>, limits: ScanLimits) -> Self {
-        Scanner { engines, limits }
+        Scanner {
+            engines,
+            limits,
+            excluded: Vec::new(),
+        }
+    }
+
+    /// Schließt ein Dateiobjekt anhand seiner **Identität** (nicht des Pfads)
+    /// vom Scan aus, z. B. die vom Auftrag selbst angelegte Berichtsdatei.
+    /// Greift auch bei Hardlinks und bei Pfaden über Junctions/Symlinks.
+    pub fn exclude_identity(&mut self, id: FileIdentity, reason: impl Into<String>) {
+        self.excluded.push((id, reason.into()));
     }
 
     pub fn limits(&self) -> &ScanLimits {
         &self.limits
     }
 
-    /// Prüft die angegebenen Pfade. `cancel` kann jederzeit gesetzt werden.
+    /// Informationen aller Engines (Bereitschaft, Inhalt, Fähigkeiten).
+    pub fn engine_infos(&self) -> Vec<EngineInfo> {
+        self.engines.iter().map(|e| e.info()).collect()
+    }
+
+    /// Prüft die angegebenen Pfade mit zufälliger Auftragskennung.
     pub fn scan_paths(
         &self,
         roots: &[PathBuf],
         cancel: &AtomicBool,
         progress: &mut dyn Progress,
     ) -> ScanReport {
+        self.scan_job(uuid::Uuid::new_v4().to_string(), roots, cancel, progress)
+    }
+
+    /// Prüft die angegebenen Pfade unter einer vorgegebenen Auftragskennung.
+    pub fn scan_job(
+        &self,
+        job_id: String,
+        roots: &[PathBuf],
+        cancel: &AtomicBool,
+        progress: &mut dyn Progress,
+    ) -> ScanReport {
         let started = Instant::now();
         let started_utc = now_utc();
+        let infos = self.engine_infos();
+
+        // Auftragslücken, unabhängig von einzelnen Dateien (Befund 6).
+        let mut job_gaps = Vec::new();
+        if self.engines.is_empty() {
+            job_gaps.push(Gap::new(
+                Verdict::Error,
+                GapReason::NoEngine,
+                AXSAFE,
+                "Keine Engine konfiguriert: keine Aussage möglich",
+            ));
+        }
+        for i in &infos {
+            if let EngineHealth::Unavailable { reason } = &i.health {
+                job_gaps.push(Gap::new(
+                    Verdict::Error,
+                    GapReason::EngineUnavailable,
+                    &i.name,
+                    format!("Beauftragte Engine nicht verfügbar: {reason}"),
+                ));
+            }
+        }
+
         let mut files = Vec::new();
+        let mut excluded = Vec::new();
         for root in roots {
             if cancel.load(Ordering::SeqCst) {
                 break;
             }
-            self.visit(root, 0, cancel, &mut files, progress);
+            self.visit(root, 0, cancel, &infos, &mut files, &mut excluded, progress);
         }
         let cancelled = cancel.load(Ordering::SeqCst);
+        if cancelled {
+            job_gaps.push(Gap::new(
+                Verdict::Error,
+                GapReason::Cancelled,
+                AXSAFE,
+                "Auftrag abgebrochen: weitere Objekte wurden nicht geprüft",
+            ));
+        }
         let summary = Summary::from_files(&files);
-        let overall = overall_verdict(&files);
+        debug_assert!(summary.is_consistent());
+        let (outcome, complete) = job_outcome(&summary, &job_gaps, cancelled);
         ScanReport {
             schema: crate::REPORT_SCHEMA_VERSION.into(),
-            job_id: uuid::Uuid::new_v4().to_string(),
+            job_id,
             axsafe_version: crate::AXSAFE_VERSION.into(),
             policy_version: crate::POLICY_VERSION.into(),
             started_utc,
@@ -90,13 +195,16 @@ impl Scanner {
             duration_ms: started.elapsed().as_millis() as u64,
             scope: ScanScope {
                 roots: roots.iter().map(|p| p.display().to_string()).collect(),
-                engines: self.engines.iter().map(|e| e.info()).collect(),
+                engines: infos,
                 limits: self.limits.clone(),
                 follows_links: false,
+                excluded,
             },
-            complete: !cancelled && summary.incomplete == 0,
+            outcome,
+            detection: highest_detection(files.iter().map(|f| f.detection)),
+            complete,
             cancelled,
-            overall,
+            job_gaps,
             summary,
             files,
             disclaimer: DISCLAIMER_DE.into(),
@@ -108,12 +216,15 @@ impl Scanner {
         out.push(r);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn visit(
         &self,
         path: &Path,
         depth: usize,
         cancel: &AtomicBool,
+        infos: &[EngineInfo],
         out: &mut Vec<FileResult>,
+        excluded: &mut Vec<ExcludedObject>,
         progress: &mut dyn Progress,
     ) {
         if cancel.load(Ordering::SeqCst) {
@@ -122,34 +233,41 @@ impl Scanner {
         let meta = match fs::symlink_metadata(path) {
             Ok(m) => m,
             Err(e) => {
-                let r = gap(
+                let r = gap_result(
                     path,
                     ObjectType::Unknown,
-                    io_verdict(&e),
-                    format!("Metadaten nicht lesbar: {e}"),
+                    io_gap(&e, "Metadaten nicht lesbar"),
                 );
                 return self.push(out, progress, r);
             }
         };
         let ft = meta.file_type();
         if ft.is_symlink() || is_reparse_point(&meta) {
-            let r = gap(
+            let r = gap_result(
                 path,
                 ObjectType::Link,
-                Verdict::Unsupported,
-                "Link oder Reparsepunkt: wird nicht verfolgt, Ziel nicht geprüft".into(),
+                Gap::new(
+                    Verdict::Unsupported,
+                    GapReason::LinkNotFollowed,
+                    AXSAFE,
+                    "Link, Junction oder Reparsepunkt: wird nicht verfolgt, Ziel nicht geprüft",
+                ),
             );
             return self.push(out, progress, r);
         }
         if ft.is_dir() {
             if depth >= self.limits.max_depth {
-                let r = gap(
+                let r = gap_result(
                     path,
                     ObjectType::Directory,
-                    Verdict::Unsupported,
-                    format!(
-                        "Maximale Verzeichnistiefe {} erreicht: Inhalt nicht geprüft",
-                        self.limits.max_depth
+                    Gap::new(
+                        Verdict::Unsupported,
+                        GapReason::DepthLimit,
+                        AXSAFE,
+                        format!(
+                            "Maximale Verzeichnistiefe {} erreicht: Inhalt nicht geprüft",
+                            self.limits.max_depth
+                        ),
                     ),
                 );
                 return self.push(out, progress, r);
@@ -157,11 +275,10 @@ impl Scanner {
             let entries = match fs::read_dir(path) {
                 Ok(it) => it,
                 Err(e) => {
-                    let r = gap(
+                    let r = gap_result(
                         path,
                         ObjectType::Directory,
-                        io_verdict(&e),
-                        format!("Verzeichnis nicht lesbar: {e}"),
+                        io_gap(&e, "Verzeichnis nicht lesbar"),
                     );
                     return self.push(out, progress, r);
                 }
@@ -171,11 +288,10 @@ impl Scanner {
                 match entry {
                     Ok(en) => children.push(en.path()),
                     Err(e) => {
-                        let r = gap(
+                        let r = gap_result(
                             path,
                             ObjectType::Directory,
-                            io_verdict(&e),
-                            format!("Eintrag nicht lesbar: {e}"),
+                            io_gap(&e, "Eintrag nicht lesbar"),
                         );
                         self.push(out, progress, r);
                     }
@@ -183,29 +299,53 @@ impl Scanner {
             }
             children.sort();
             for child in children {
-                self.visit(&child, depth + 1, cancel, out, progress);
+                self.visit(&child, depth + 1, cancel, infos, out, excluded, progress);
             }
             return;
         }
         if !ft.is_file() {
-            let r = gap(
+            let r = gap_result(
                 path,
                 ObjectType::Other,
-                Verdict::Unsupported,
-                "Kein reguläres Dateiobjekt (Gerät, Pipe, Socket): nicht geprüft".into(),
+                Gap::new(
+                    Verdict::Unsupported,
+                    GapReason::NotRegularFile,
+                    AXSAFE,
+                    "Kein reguläres Dateiobjekt (Gerät, Pipe, Socket): nicht geprüft",
+                ),
             );
             return self.push(out, progress, r);
         }
-        let r = self.scan_file(path);
-        self.push(out, progress, r);
+        match self.scan_file_inner(path, infos) {
+            FileOutcome::Result(r) => self.push(out, progress, *r),
+            FileOutcome::Excluded(x) => excluded.push(x),
+        }
     }
 
-    /// Prüft genau eine reguläre Datei.
+    /// Prüft genau eine reguläre Datei (ohne Ausschlussliste der Auftragsebene).
     pub fn scan_file(&self, path: &Path) -> FileResult {
+        match self.scan_file_inner(path, &self.engine_infos()) {
+            FileOutcome::Result(r) => *r,
+            FileOutcome::Excluded(x) => gap_result(
+                path,
+                ObjectType::File,
+                Gap::new(
+                    Verdict::Unsupported,
+                    GapReason::NotRegularFile,
+                    AXSAFE,
+                    x.reason,
+                ),
+            ),
+        }
+    }
+
+    fn scan_file_inner(&self, path: &Path, infos: &[EngineInfo]) -> FileOutcome {
         let mut result = FileResult {
             path: path.display().to_string(),
             object_type: ObjectType::File,
-            verdict: Verdict::Error,
+            detection: Verdict::NoDetection,
+            gaps: Vec::new(),
+            status: ObjectStatus::Incomplete,
             size: None,
             sha256: None,
             file_kind: None,
@@ -215,54 +355,55 @@ impl Scanner {
             action: Action::ReportOnly,
             scanned_utc: now_utc(),
         };
+        let fail = |mut r: FileResult, g: Gap| {
+            r.gaps.push(g);
+            r.status = ObjectStatus::from_parts(r.detection, &r.gaps);
+            FileOutcome::Result(Box::new(r))
+        };
 
         let file = match open_no_follow(path) {
             Ok(f) => f,
-            Err(e) => {
-                result.verdict = io_verdict(&e);
-                result.notes.push(format!("Öffnen fehlgeschlagen: {e}"));
-                return result;
-            }
+            Err(e) => return fail(result, io_gap(&e, "Öffnen fehlgeschlagen")),
         };
         // Nach dem Öffnen erneut prüfen: zwischen Metadaten und Öffnen kann
-        // der Pfad ausgetauscht worden sein.
+        // der Pfad ausgetauscht worden sein (z. B. gegen einen Link).
         match file.metadata() {
-            Ok(m) if m.is_file() => {}
+            Ok(m) if m.is_file() && !is_reparse_point(&m) => {}
             Ok(_) => {
-                result.verdict = Verdict::ChangedDuringScan;
-                result
-                    .notes
-                    .push("Objektart hat sich vor dem Lesen geändert".into());
-                return result;
+                return fail(
+                    result,
+                    Gap::new(
+                        Verdict::ChangedDuringScan,
+                        GapReason::ChangedDuringScan,
+                        AXSAFE,
+                        "Objektart hat sich vor dem Lesen geändert",
+                    ),
+                )
             }
-            Err(e) => {
-                result.verdict = io_verdict(&e);
-                result
-                    .notes
-                    .push(format!("Metadaten über Handle nicht lesbar: {e}"));
-                return result;
-            }
+            Err(e) => return fail(result, io_gap(&e, "Metadaten über Handle nicht lesbar")),
         }
         let before = match FileIdentity::from_file(&file) {
             Ok(id) => id,
-            Err(e) => {
-                result.verdict = io_verdict(&e);
-                result
-                    .notes
-                    .push(format!("Dateiidentität nicht lesbar: {e}"));
-                return result;
-            }
+            Err(e) => return fail(result, io_gap(&e, "Dateiidentität nicht lesbar")),
         };
+        if let Some((_, reason)) = self.excluded.iter().find(|(id, _)| id.same_object(&before)) {
+            return FileOutcome::Excluded(ExcludedObject {
+                path: path.display().to_string(),
+                reason: reason.clone(),
+            });
+        }
         result.size = Some(before.size);
         result.identity = Some(before.clone());
 
         if before.size > self.limits.max_file_size {
-            result.verdict = Verdict::Unsupported;
-            result.notes.push(format!(
+            let detail = format!(
                 "Datei größer als Limit ({} > {} Bytes): nicht gelesen, nicht geprüft",
                 before.size, self.limits.max_file_size
-            ));
-            return result;
+            );
+            return fail(
+                result,
+                Gap::new(Verdict::Unsupported, GapReason::SizeLimit, AXSAFE, detail),
+            );
         }
 
         let mut data = Vec::with_capacity(before.size as usize);
@@ -270,9 +411,7 @@ impl Scanner {
             .take(self.limits.max_file_size + 1)
             .read_to_end(&mut data)
         {
-            result.verdict = io_verdict(&e);
-            result.notes.push(format!("Lesen fehlgeschlagen: {e}"));
-            return result;
+            return fail(result, io_gap(&e, "Lesen fehlgeschlagen"));
         }
         let sha = hex::encode(Sha256::digest(&data));
         let kind = filetype::detect(&data);
@@ -286,33 +425,73 @@ impl Scanner {
             sha256: &sha,
             timeout,
         };
-        let mut verdicts = Vec::new();
-        for engine in &self.engines {
-            let outcome = match engine.info().health {
-                EngineHealth::Ready => engine.scan(&input),
-                EngineHealth::Unavailable { reason } => EngineOutcome {
-                    engine: engine.name().into(),
-                    engine_version: "unbekannt".into(),
-                    content_version: "unbekannt".into(),
-                    verdict: Verdict::Error,
-                    detections: Vec::new(),
-                    note: Some(format!("Engine nicht verfügbar: {reason}")),
-                    duration_ms: 0,
-                },
+        let content_fmt = filetype::content_format(&kind);
+        let mut content_inspected = false;
+        let mut detections = Vec::new();
+        for (engine, info) in self.engines.iter().zip(infos) {
+            let (outcome, unavailable) = match &info.health {
+                EngineHealth::Ready => (engine.scan(&input), false),
+                EngineHealth::Unavailable { reason } => (
+                    EngineOutcome {
+                        engine: info.name.clone(),
+                        engine_version: info.engine_version.clone(),
+                        content_version: info.content_version.clone(),
+                        verdict: Verdict::Error,
+                        detections: Vec::new(),
+                        gaps: Vec::new(),
+                        note: Some(format!("Engine nicht verfügbar: {reason}")),
+                        duration_ms: 0,
+                    },
+                    true,
+                ),
             };
-            verdicts.push(outcome.verdict);
+            detections.extend(outcome.detections.iter().map(|d| d.verdict));
+            if outcome.verdict.is_detection() {
+                detections.push(outcome.verdict);
+            }
+            if outcome.gaps.is_empty() {
+                if outcome.verdict.is_incomplete() {
+                    result.gaps.push(outcome_gap(&outcome, unavailable));
+                }
+            } else {
+                result.gaps.extend(outcome.gaps.iter().cloned());
+            }
+            if let Some(fmt) = content_fmt {
+                let ran =
+                    !unavailable && !matches!(outcome.verdict, Verdict::Error | Verdict::Timeout);
+                if ran && info.inspects_contents_of.contains(&fmt) {
+                    content_inspected = true;
+                }
+            }
             result.engines.push(outcome);
         }
         if self.engines.is_empty() {
-            result
-                .notes
-                .push("Keine Engine konfiguriert: keine Aussage möglich".into());
+            result.gaps.push(Gap::new(
+                Verdict::Error,
+                GapReason::NoEngine,
+                AXSAFE,
+                "Keine Engine konfiguriert: keine Aussage möglich",
+            ));
         }
-        if kind.is_container() {
-            result.notes.push(
-                "Container: Tiefe der Prüfung hängt von der Engine ab (siehe Fähigkeitsmatrix)"
-                    .into(),
-            );
+        if let Some(fmt) = content_fmt {
+            if !content_inspected {
+                let raw_only: Vec<&str> = infos
+                    .iter()
+                    .filter(|i| i.health == EngineHealth::Ready)
+                    .map(|i| i.name.as_str())
+                    .collect();
+                result.gaps.push(Gap::new(
+                    Verdict::Unsupported,
+                    GapReason::ContentNotInspected,
+                    AXSAFE,
+                    format!(
+                        "Inhalt des Formats {} wurde nicht geprüft: keine aktive Engine prüft diesen \
+                         Containerinhalt (aktiv: {}; nur äußere Bytes geprüft)",
+                        fmt.label(),
+                        if raw_only.is_empty() { "keine".to_string() } else { raw_only.join(", ") }
+                    ),
+                ));
+            }
         }
 
         // Identität nach dem Lesen und der Prüfung erneut vergleichen.
@@ -325,28 +504,34 @@ impl Scanner {
             Err(_) => true,
         };
         if changed || path_moved {
-            verdicts.push(Verdict::ChangedDuringScan);
-            result.notes.push(
-                "Datei oder Pfad hat sich während der Prüfung geändert: Ergebnis verworfen, neu prüfen"
-                    .into(),
-            );
+            result.gaps.push(Gap::new(
+                Verdict::ChangedDuringScan,
+                GapReason::ChangedDuringScan,
+                AXSAFE,
+                "Datei oder Pfad hat sich während der Prüfung geändert: neu prüfen. \
+                 Ein Fund bezieht sich auf den gelesenen Stand.",
+            ));
         }
-        result.verdict = aggregate(verdicts);
-        result
+        result.detection = highest_detection(detections);
+        result.status = ObjectStatus::from_parts(result.detection, &result.gaps);
+        FileOutcome::Result(Box::new(result))
     }
 }
 
-fn gap(path: &Path, object_type: ObjectType, verdict: Verdict, note: String) -> FileResult {
+fn gap_result(path: &Path, object_type: ObjectType, gap: Gap) -> FileResult {
+    let gaps = vec![gap];
     FileResult {
         path: path.display().to_string(),
         object_type,
-        verdict,
+        detection: Verdict::NoDetection,
+        status: ObjectStatus::from_parts(Verdict::NoDetection, &gaps),
+        gaps,
         size: None,
         sha256: None,
         file_kind: None,
         identity: None,
         engines: Vec::new(),
-        notes: vec![note],
+        notes: Vec::new(),
         action: Action::ReportOnly,
         scanned_utc: now_utc(),
     }
@@ -354,7 +539,7 @@ fn gap(path: &Path, object_type: ObjectType, verdict: Verdict, note: String) -> 
 
 /// Öffnet eine Datei nur zum Lesen, ohne Links zu folgen und ohne zu blockieren.
 #[cfg(unix)]
-fn open_no_follow(path: &Path) -> io::Result<File> {
+pub(crate) fn open_no_follow(path: &Path) -> io::Result<File> {
     use std::os::unix::fs::OpenOptionsExt;
     OpenOptions::new()
         .read(true)
@@ -365,7 +550,7 @@ fn open_no_follow(path: &Path) -> io::Result<File> {
 /// Öffnet eine Datei nur zum Lesen; Reparsepunkte werden selbst geöffnet,
 /// nicht ihr Ziel (`FILE_FLAG_OPEN_REPARSE_POINT`).
 #[cfg(windows)]
-fn open_no_follow(path: &Path) -> io::Result<File> {
+pub(crate) fn open_no_follow(path: &Path) -> io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt;
     const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     const FILE_FLAG_SEQUENTIAL_SCAN: u32 = 0x0800_0000;
@@ -379,48 +564,114 @@ fn open_no_follow(path: &Path) -> io::Result<File> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn open_no_follow(path: &Path) -> io::Result<File> {
+pub(crate) fn open_no_follow(path: &Path) -> io::Result<File> {
     OpenOptions::new().read(true).open(path)
 }
 
 #[cfg(windows)]
-fn is_reparse_point(meta: &fs::Metadata) -> bool {
+pub(crate) fn is_reparse_point(meta: &fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
     meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 
 #[cfg(not(windows))]
-fn is_reparse_point(_meta: &fs::Metadata) -> bool {
+pub(crate) fn is_reparse_point(_meta: &fs::Metadata) -> bool {
     false
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{Detection, EngineInfo};
+    use crate::engine::{ContentKind, Detection};
+    use crate::filetype::ContentFormat;
+    use crate::report::JobOutcome;
     use crate::verdict::{Confidence, Severity};
 
-    /// Test-Engine für die Orchestrierung: meldet einen Fund, wenn der
-    /// Inhalt mit `BAD` beginnt. Nur in Tests, nie im Produkt.
-    struct PrefixEngine;
-    impl Engine for PrefixEngine {
+    /// Konfigurierbare Test-Engine für die Orchestrierung. Nur in Tests.
+    /// Meldet einen Fund, wenn der Inhalt mit `BAD` beginnt; kann zusätzlich
+    /// einen festen Lückenzustand liefern und Containerformate „können“.
+    struct TestEngine {
+        name: &'static str,
+        ready: bool,
+        extra: Option<Verdict>,
+        caps: Vec<ContentFormat>,
+    }
+
+    impl TestEngine {
+        fn prefix() -> Self {
+            TestEngine {
+                name: "test-prefix",
+                ready: true,
+                extra: None,
+                caps: vec![],
+            }
+        }
+        fn failing(v: Verdict) -> Self {
+            TestEngine {
+                name: "test-fail",
+                ready: true,
+                extra: Some(v),
+                caps: vec![],
+            }
+        }
+        fn unavailable() -> Self {
+            TestEngine {
+                name: "test-down",
+                ready: false,
+                extra: None,
+                caps: vec![],
+            }
+        }
+        fn container_capable() -> Self {
+            TestEngine {
+                name: "test-unpack",
+                ready: true,
+                extra: None,
+                caps: vec![ContentFormat::Zip],
+            }
+        }
+    }
+
+    impl Engine for TestEngine {
         fn name(&self) -> &str {
-            "test-prefix"
+            self.name
         }
         fn info(&self) -> EngineInfo {
             EngineInfo {
-                name: "test-prefix".into(),
+                name: self.name.into(),
                 engine_version: "0".into(),
                 content_version: "0".into(),
-                health: EngineHealth::Ready,
+                health: if self.ready {
+                    EngineHealth::Ready
+                } else {
+                    EngineHealth::Unavailable {
+                        reason: "Testausfall".into(),
+                    }
+                },
                 license: "n/a".into(),
+                content_kind: ContentKind::TestOnly,
+                content_note: "Test".into(),
+                inspects_contents_of: self.caps.clone(),
             }
         }
         fn scan(&self, input: &ScanInput<'_>) -> EngineOutcome {
+            assert!(self.ready, "nicht bereite Engine darf nicht scannen");
+            if let Some(v) = self.extra {
+                return EngineOutcome {
+                    engine: self.name.into(),
+                    engine_version: "0".into(),
+                    content_version: "0".into(),
+                    verdict: v,
+                    detections: vec![],
+                    gaps: vec![],
+                    note: Some(format!("Testzustand {v:?}")),
+                    duration_ms: 0,
+                };
+            }
             let hit = input.data.starts_with(b"BAD");
             EngineOutcome {
-                engine: "test-prefix".into(),
+                engine: self.name.into(),
                 engine_version: "0".into(),
                 content_version: "0".into(),
                 verdict: if hit {
@@ -441,30 +692,10 @@ mod tests {
                 } else {
                     vec![]
                 },
+                gaps: vec![],
                 note: None,
                 duration_ms: 0,
             }
-        }
-    }
-
-    struct BrokenEngine;
-    impl Engine for BrokenEngine {
-        fn name(&self) -> &str {
-            "broken"
-        }
-        fn info(&self) -> EngineInfo {
-            EngineInfo {
-                name: "broken".into(),
-                engine_version: "?".into(),
-                content_version: "?".into(),
-                health: EngineHealth::Unavailable {
-                    reason: "Testausfall".into(),
-                },
-                license: "n/a".into(),
-            }
-        }
-        fn scan(&self, _: &ScanInput<'_>) -> EngineOutcome {
-            unreachable!("nicht bereit")
         }
     }
 
@@ -482,35 +713,190 @@ mod tests {
         fs::write(dir.path().join("a.bin"), b"BAD stuff").unwrap();
         fs::write(dir.path().join("b.txt"), b"good stuff").unwrap();
         fs::write(dir.path().join("BAD.txt"), b"name is not content").unwrap();
-        let rep = run(&scanner(vec![Box::new(PrefixEngine)]), dir.path());
-        assert_eq!(rep.summary.objects, 3);
-        assert_eq!(rep.summary.detections, 1);
-        assert_eq!(rep.summary.no_detection, 2);
-        assert_eq!(rep.overall, Verdict::Malicious);
+        let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), dir.path());
+        assert_eq!(rep.summary.objects_total, 3);
+        assert_eq!(rep.summary.objects_read, 3);
+        assert_eq!(rep.summary.with_detection, 1);
+        assert_eq!(rep.summary.no_detection_complete, 2);
+        assert_eq!(rep.outcome, JobOutcome::Detection);
+        assert_eq!(rep.detection, Verdict::Malicious);
         assert!(rep.complete);
         assert_eq!(rep.summary.bytes_read, 9 + 10 + 19);
+        assert!(rep.summary.is_consistent());
     }
 
     #[test]
-    fn unavailable_engine_never_yields_clean() {
-        // T-019/T-015: Eine ausgefallene Engine erzeugt nie ein sauberes Ergebnis.
+    fn detection_and_engine_gap_are_both_visible() {
+        // Befund 2: Engine A findet, Engine B scheitert. Beides muss sichtbar sein.
+        for failure in [
+            Verdict::Error,
+            Verdict::Timeout,
+            Verdict::Unsupported,
+            Verdict::Encrypted,
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            fs::write(dir.path().join("a.bin"), b"BAD").unwrap();
+            let rep = run(
+                &scanner(vec![
+                    Box::new(TestEngine::prefix()),
+                    Box::new(TestEngine::failing(failure)),
+                ]),
+                dir.path(),
+            );
+            let f = &rep.files[0];
+            assert_eq!(f.detection, Verdict::Malicious, "{failure:?}");
+            assert_eq!(f.gaps.len(), 1);
+            assert_eq!(f.gaps[0].state, failure);
+            assert_eq!(f.status, ObjectStatus::DetectionIncomplete);
+            assert!(!rep.complete);
+            assert_eq!(rep.outcome, JobOutcome::DetectionIncomplete);
+            assert_eq!(rep.summary.detection_and_incomplete, 1);
+            assert_eq!(rep.outcome.exit_code(), 4);
+        }
+    }
+
+    #[test]
+    fn gap_without_detection_is_incomplete() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("b.txt"), b"good").unwrap();
+        let rep = run(
+            &scanner(vec![
+                Box::new(TestEngine::prefix()),
+                Box::new(TestEngine::failing(Verdict::Timeout)),
+            ]),
+            dir.path(),
+        );
+        assert_eq!(rep.files[0].status, ObjectStatus::Incomplete);
+        assert_eq!(rep.outcome, JobOutcome::Incomplete);
+        assert_eq!(rep.files[0].gaps[0].reason, GapReason::EngineTimeout);
+    }
+
+    #[test]
+    fn unavailable_engine_never_yields_clean_and_is_job_gap() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("b.txt"), b"good stuff").unwrap();
         let rep = run(
-            &scanner(vec![Box::new(PrefixEngine), Box::new(BrokenEngine)]),
+            &scanner(vec![
+                Box::new(TestEngine::prefix()),
+                Box::new(TestEngine::unavailable()),
+            ]),
             dir.path(),
         );
-        assert_eq!(rep.files[0].verdict, Verdict::Error);
+        assert_eq!(rep.files[0].status, ObjectStatus::Incomplete);
+        assert_eq!(rep.files[0].gaps[0].reason, GapReason::EngineUnavailable);
+        assert_eq!(rep.job_gaps.len(), 1);
+        assert_eq!(rep.job_gaps[0].reason, GapReason::EngineUnavailable);
         assert!(!rep.complete);
-        assert_eq!(rep.overall, Verdict::Error);
+        assert_eq!(rep.outcome, JobOutcome::Incomplete);
     }
 
     #[test]
-    fn no_engine_is_error() {
+    fn empty_scope_is_nothing_scanned_even_with_engine_failure() {
+        // Befund 6
+        let dir = tempfile::tempdir().unwrap();
+        let rep = run(
+            &scanner(vec![
+                Box::new(TestEngine::prefix()),
+                Box::new(TestEngine::unavailable()),
+            ]),
+            dir.path(),
+        );
+        assert_eq!(rep.outcome, JobOutcome::NothingScanned);
+        assert!(!rep.complete);
+        assert_eq!(rep.job_gaps.len(), 1);
+        let ok = run(&scanner(vec![Box::new(TestEngine::prefix())]), dir.path());
+        assert_eq!(ok.outcome, JobOutcome::NothingScanned);
+        assert!(!ok.complete);
+    }
+
+    #[test]
+    fn no_engine_is_gap() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("b.txt"), b"x").unwrap();
         let rep = run(&scanner(vec![]), dir.path());
-        assert_eq!(rep.files[0].verdict, Verdict::Error);
+        assert_eq!(rep.files[0].gaps[0].reason, GapReason::NoEngine);
+        assert_eq!(rep.job_gaps[0].reason, GapReason::NoEngine);
+        assert_eq!(rep.outcome, JobOutcome::Incomplete);
+    }
+
+    fn zip_bytes() -> Vec<u8> {
+        let mut z = b"PK\x03\x04".to_vec();
+        z.extend_from_slice(&[0u8; 60]);
+        z
+    }
+
+    #[test]
+    fn container_without_capable_engine_is_content_gap() {
+        // Befund 3: Rohbytes-Engine allein prüft keinen Containerinhalt.
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.zip"), zip_bytes()).unwrap();
+        let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), dir.path());
+        let f = &rep.files[0];
+        assert_eq!(f.detection, Verdict::NoDetection);
+        assert_eq!(f.gaps.len(), 1);
+        assert_eq!(f.gaps[0].reason, GapReason::ContentNotInspected);
+        assert_eq!(
+            f.gaps[0].state,
+            Verdict::Unsupported,
+            "ohne Nachweis nie Encrypted"
+        );
+        assert_eq!(rep.outcome, JobOutcome::Incomplete);
+        assert!(!rep.complete);
+    }
+
+    #[test]
+    fn container_with_capable_engine_is_complete() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.zip"), zip_bytes()).unwrap();
+        let rep = run(
+            &scanner(vec![
+                Box::new(TestEngine::prefix()),
+                Box::new(TestEngine::container_capable()),
+            ]),
+            dir.path(),
+        );
+        assert!(rep.files[0].gaps.is_empty(), "{:?}", rep.files[0].gaps);
+        assert_eq!(rep.outcome, JobOutcome::NoDetection);
+    }
+
+    #[test]
+    fn capable_engine_that_fails_does_not_count_as_inspected() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.zip"), zip_bytes()).unwrap();
+        let failing_unpacker = TestEngine {
+            name: "test-unpack",
+            ready: true,
+            extra: Some(Verdict::Error),
+            caps: vec![ContentFormat::Zip],
+        };
+        let rep = run(
+            &scanner(vec![
+                Box::new(TestEngine::prefix()),
+                Box::new(failing_unpacker),
+            ]),
+            dir.path(),
+        );
+        let reasons: Vec<GapReason> = rep.files[0].gaps.iter().map(|g| g.reason).collect();
+        assert!(reasons.contains(&GapReason::EngineError));
+        assert!(reasons.contains(&GapReason::ContentNotInspected));
+    }
+
+    #[test]
+    fn excluded_identity_is_skipped_and_documented() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = dir.path().join("bericht.json");
+        fs::write(&report, b"").unwrap();
+        let link = dir.path().join("hardlink.json");
+        fs::hard_link(&report, &link).unwrap();
+        fs::write(dir.path().join("b.txt"), b"x").unwrap();
+        let mut s = scanner(vec![Box::new(TestEngine::prefix())]);
+        s.exclude_identity(
+            FileIdentity::from_file(&File::open(&report).unwrap()).unwrap(),
+            "Berichtsdatei dieses Auftrags",
+        );
+        let rep = run(&s, dir.path());
+        assert_eq!(rep.summary.objects_total, 1, "nur b.txt");
+        assert_eq!(rep.scope.excluded.len(), 2, "Original und Hardlink");
     }
 
     #[test]
@@ -521,33 +907,50 @@ mod tests {
             max_file_size: 1024,
             ..ScanLimits::default()
         };
-        let s = Scanner::new(vec![Box::new(PrefixEngine)], limits);
+        let s = Scanner::new(vec![Box::new(TestEngine::prefix())], limits);
         let rep = run(&s, dir.path());
-        assert_eq!(rep.files[0].verdict, Verdict::Unsupported);
-        assert!(!rep.complete);
+        assert_eq!(rep.files[0].gaps[0].reason, GapReason::SizeLimit);
+        assert_eq!(rep.outcome, JobOutcome::Incomplete);
     }
 
     #[test]
-    fn missing_path_is_error() {
+    fn missing_path_is_gap() {
         let dir = tempfile::tempdir().unwrap();
         let rep = run(
-            &scanner(vec![Box::new(PrefixEngine)]),
+            &scanner(vec![Box::new(TestEngine::prefix())]),
             &dir.path().join("fehlt"),
         );
-        assert_eq!(rep.files[0].verdict, Verdict::Error);
+        assert_eq!(rep.files[0].gaps[0].reason, GapReason::IoError);
+        assert_eq!(rep.outcome, JobOutcome::Incomplete);
     }
 
     #[test]
     fn cancel_marks_incomplete() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("b.txt"), b"x").unwrap();
-        let rep = scanner(vec![Box::new(PrefixEngine)]).scan_paths(
+        let rep = scanner(vec![Box::new(TestEngine::prefix())]).scan_paths(
             &[dir.path().to_path_buf()],
             &AtomicBool::new(true),
             &mut NoProgress,
         );
         assert!(rep.cancelled);
         assert!(!rep.complete);
+        assert!(rep
+            .job_gaps
+            .iter()
+            .any(|g| g.reason == GapReason::Cancelled));
+    }
+
+    #[test]
+    fn job_id_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let rep = scanner(vec![Box::new(TestEngine::prefix())]).scan_job(
+            "11111111-2222-4333-8444-555555555555".into(),
+            &[dir.path().to_path_buf()],
+            &AtomicBool::new(false),
+            &mut NoProgress,
+        );
+        assert_eq!(rep.job_id, "11111111-2222-4333-8444-555555555555");
     }
 
     #[cfg(unix)]
@@ -558,41 +961,37 @@ mod tests {
         fs::write(&target, b"BAD").unwrap();
         let link = dir.path().join("link");
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        let rep = run(&scanner(vec![Box::new(PrefixEngine)]), &link);
-        assert_eq!(rep.files[0].verdict, Verdict::Unsupported);
+        let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), &link);
+        assert_eq!(rep.files[0].gaps[0].reason, GapReason::LinkNotFollowed);
         assert_eq!(rep.files[0].object_type, ObjectType::Link);
     }
 
     #[cfg(unix)]
     #[test]
-    fn fifo_does_not_block_and_is_unsupported() {
+    fn fifo_does_not_block_and_is_gap() {
         let dir = tempfile::tempdir().unwrap();
         let fifo = dir.path().join("pipe");
         let status = std::process::Command::new("mkfifo").arg(&fifo).status();
-        if !matches!(status, Ok(s) if s.success()) {
-            eprintln!("mkfifo nicht verfügbar, Test übersprungen");
-            return;
-        }
-        let rep = run(&scanner(vec![Box::new(PrefixEngine)]), dir.path());
-        assert_eq!(rep.files[0].verdict, Verdict::Unsupported);
+        assert!(matches!(status, Ok(s) if s.success()), "mkfifo nötig");
+        let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), dir.path());
+        assert_eq!(rep.files[0].gaps[0].reason, GapReason::NotRegularFile);
     }
 
+    /// Benötigt einen Benutzer ohne Leserechte auf die Testdatei, also nicht root.
     #[cfg(unix)]
     #[test]
-    fn access_denied_is_reported_when_enforced() {
+    #[ignore = "benötigt Nicht-root-Benutzer; in CI mit --include-ignored ausgeführt"]
+    fn access_denied_is_reported() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("secret.bin");
         fs::write(&p, b"x").unwrap();
         fs::set_permissions(&p, fs::Permissions::from_mode(0o000)).unwrap();
-        if File::open(&p).is_ok() {
-            // Als root greifen Dateirechte nicht. Ehrlich überspringen.
-            eprintln!(
-                "Rechte werden in dieser Umgebung nicht durchgesetzt (root), Test übersprungen"
-            );
-            return;
-        }
-        let rep = run(&scanner(vec![Box::new(PrefixEngine)]), &p);
-        assert_eq!(rep.files[0].verdict, Verdict::AccessDenied);
+        assert!(
+            File::open(&p).is_err(),
+            "Vorbedingung verletzt: Datei ohne Rechte ist lesbar (läuft der Test als root?)"
+        );
+        let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), &p);
+        assert_eq!(rep.files[0].gaps[0].state, Verdict::AccessDenied);
     }
 }

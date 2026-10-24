@@ -1,0 +1,23 @@
+[package]
+name = "axsafe-proc"
+description = "AXSafe: Kindprozesse mit gemeinsamem Ablaufdatum, Ausgabe-, Speicher- und Prozessbaumgrenzen (Job Objects unter Windows)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# Harmloser Helferprozess NUR für Tests (Hänger, verwaiste Nachkommen,
+# Ausgabeflut, Speicherbedarf). Wird nie paketiert; die Inventarprüfung
+# lehnt "testhelper" in Paketen ab.
+[[bin]]
+name = "axsafe-proc-testhelper"
+path = "testhelper/main.rs"
+test = false
+doc = false
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

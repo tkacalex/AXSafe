@@ -17,9 +17,11 @@ axsafe-engine-yarax = { path = "../axsafe-engine-yarax" }
 axsafe-engine-clamav = { path = "../axsafe-engine-clamav" }
 clap.workspace = true
 serde_json.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 serde_json.workspace = true
 md-5.workspace = true
 hex.workspace = true
+sha2.workspace = true

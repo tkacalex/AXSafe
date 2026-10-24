@@ -12,7 +12,10 @@
 
 #![forbid(unsafe_code)]
 
-use axsafe_core::engine::{Detection, Engine, EngineHealth, EngineInfo, EngineOutcome, ScanInput};
+use axsafe_core::engine::{
+    ContentKind, Detection, Engine, EngineHealth, EngineInfo, EngineOutcome, Gap, GapReason,
+    ScanInput,
+};
 use axsafe_core::verdict::{Confidence, Severity, Verdict};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -37,6 +40,8 @@ struct Loaded {
     rules: yara_x::Rules,
     content_version: String,
     rule_count: usize,
+    /// Regeln mit `meta: test = true` (Funktionstest, z. B. EICAR).
+    test_rule_count: usize,
 }
 
 /// YARA-X Engine mit geladenem Regelsatz.
@@ -137,8 +142,12 @@ fn load(dir: &Path) -> Result<Loaded, String> {
     let rules = compiler.build();
     let engine = version_tuple(YARAX_VERSION).expect("gültige Konstante");
     let mut count = 0usize;
+    let mut test_count = 0usize;
     for rule in rules.iter() {
         count += 1;
+        if meta_str(&rule, "test").as_deref() == Some("true") {
+            test_count += 1;
+        }
         let ident = rule.identifier().to_string();
         for key in REQUIRED_META {
             if meta_str(&rule, key).is_none() {
@@ -168,6 +177,7 @@ fn load(dir: &Path) -> Result<Loaded, String> {
         rules,
         content_version: format!("rules-sha256:{}", &digest[..16]),
         rule_count: count,
+        test_rule_count: test_count,
     })
 }
 
@@ -202,9 +212,29 @@ impl YaraXEngine {
                 .unwrap_or_else(|_| "nicht geladen".into()),
             verdict,
             detections: Vec::new(),
+            gaps: match verdict {
+                Verdict::Timeout => vec![Gap::new(
+                    Verdict::Timeout,
+                    GapReason::EngineTimeout,
+                    "yara-x",
+                    note.clone().unwrap_or_default(),
+                )],
+                Verdict::Error => vec![Gap::new(
+                    Verdict::Error,
+                    GapReason::EngineError,
+                    "yara-x",
+                    note.clone().unwrap_or_default(),
+                )],
+                _ => Vec::new(),
+            },
             note,
             duration_ms: start.elapsed().as_millis() as u64,
         }
+    }
+
+    /// Anzahl geladener Funktions-Testregeln.
+    pub fn test_rule_count(&self) -> usize {
+        self.loaded.as_ref().map(|l| l.test_rule_count).unwrap_or(0)
     }
 }
 
@@ -221,12 +251,37 @@ impl Engine for YaraXEngine {
                 EngineHealth::Unavailable { reason: e.clone() },
             ),
         };
+        let (content_kind, content_note) = match &self.loaded {
+            Ok(l) if l.test_rule_count == l.rule_count => (
+                ContentKind::TestOnly,
+                format!(
+                    "nur Funktionstest-Regeln ({} von {}), z. B. EICAR – damit wird keine echte \
+                     Schadsoftware erkannt",
+                    l.test_rule_count, l.rule_count
+                ),
+            ),
+            Ok(l) => (
+                ContentKind::Production,
+                format!(
+                    "{} Regeln, davon {} produktiv und {} Funktionstest",
+                    l.rule_count,
+                    l.rule_count - l.test_rule_count,
+                    l.test_rule_count
+                ),
+            ),
+            Err(_) => (ContentKind::Unknown, "Regelsatz nicht geladen".into()),
+        };
         EngineInfo {
             name: "yara-x".into(),
             engine_version: YARAX_VERSION.into(),
             content_version,
             health,
             license: "BSD-3-Clause (Engine; Regellizenzen je Regel in meta.license)".into(),
+            content_kind,
+            content_note,
+            // YARA-X prüft die übergebenen Rohbytes; Containerinhalte werden
+            // nicht entpackt (Befund 3).
+            inspects_contents_of: Vec::new(),
         }
     }
 
@@ -335,6 +390,38 @@ mod tests {
     }
 
     #[test]
+    fn repo_rules_are_marked_test_only() {
+        // Befund 7: Der mitgelieferte Regelbestand ist ausschließlich EICAR.
+        let i = YaraXEngine::from_dir(repo_rules()).info();
+        assert_eq!(i.content_kind, ContentKind::TestOnly, "{i:?}");
+        assert!(i.content_note.contains("keine echte"));
+        assert!(
+            i.inspects_contents_of.is_empty(),
+            "YARA-X entpackt keine Container"
+        );
+    }
+
+    #[test]
+    fn mixed_rules_are_production() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(
+            repo_rules().join("test/eicar.yar"),
+            dir.path().join("eicar.yar"),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("prod.yar"),
+            r#"rule Prod { meta: id = "P1" verdict = "suspicious" severity = "low" confidence = "low"
+               author = "t" license = "CC0-1.0" source = "t" min_engine = "1.0.0"
+               strings: $a = "nie-vorkommender-teststring-axsafe" condition: $a }"#,
+        )
+        .unwrap();
+        let e = YaraXEngine::from_dir(dir.path());
+        assert_eq!(e.info().content_kind, ContentKind::Production);
+        assert_eq!(e.test_rule_count(), 1);
+    }
+
+    #[test]
     fn eicar_positive() {
         let e = YaraXEngine::from_dir(repo_rules());
         let o = scan(&e, &eicar());
@@ -438,6 +525,7 @@ mod tests {
             timeout: Duration::from_secs(1),
         });
         assert_eq!(o.verdict, Verdict::Timeout, "{o:?}");
+        assert_eq!(o.gaps[0].reason, GapReason::EngineTimeout);
     }
 
     #[test]

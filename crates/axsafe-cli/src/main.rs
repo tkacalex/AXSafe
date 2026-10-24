@@ -1,20 +1,24 @@
 //! `axsafe` – Kommandozeile der AXSafe Vorversion.
 //!
-//! Exitcodes (stabil, für Skripte):
+//! Exitcodes (stabil, für Skripte; aus dem Auftragsergebnis abgeleitet):
 //! * `0` – vollständig geprüft, nichts erkannt (im angegebenen Umfang)
-//! * `1` – mindestens ein Fund (schädlich, verdächtig oder PUA)
-//! * `2` – kein Fund, aber unvollständig (Fehler, Lücken, Abbruch)
-//! * `3` – Bedienungs- oder Konfigurationsfehler
+//! * `1` – mindestens ein Fund, Auftrag vollständig
+//! * `2` – kein Fund, aber unvollständig (Lücken, Engine-Ausfall, Abbruch)
+//! * `3` – Bedienungs-/Konfigurationsfehler, z. B. Berichtsziel existiert bereits
+//! * `4` – mindestens ein Fund **und** unvollständig geprüft
+//! * `5` – keine prüfbaren Objekte im Umfang (es wurde nichts geprüft)
 
 #![forbid(unsafe_code)]
 
-use axsafe_core::engine::{Engine, EngineHealth};
-use axsafe_core::report::{FileResult, ScanLimits, ScanReport};
+mod report_target;
+
+use axsafe_core::engine::{ContentKind, Engine, EngineHealth, EngineInfo};
+use axsafe_core::report::{FileResult, ObjectStatus, ScanLimits, ScanReport};
 use axsafe_core::scan::{Progress, Scanner};
-use axsafe_core::verdict::Verdict;
 use axsafe_engine_clamav::{ClamAvConfig, ClamAvEngine};
 use axsafe_engine_yarax::YaraXEngine;
 use clap::{Parser, Subcommand};
+use report_target::ReportTarget;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
@@ -27,7 +31,9 @@ use std::sync::atomic::AtomicBool;
     long_about = "AXSafe Vorversion.\n\nPrüft Dateien und Ordner mit YARA-X (eigene Regeln) und optional ClamAV.\n\
 Der Scanner liest nur: keine Quarantäne, kein Löschen, kein Ausführen.\n\
 'Nichts erkannt' gilt nur für den angegebenen Umfang und ist kein Beweis für Harmlosigkeit.\n\
-Bitte lass deinen bisherigen Virenschutz (z. B. Microsoft Defender) aktiv."
+Bitte lass deinen bisherigen Virenschutz (z. B. Microsoft Defender) aktiv.\n\n\
+Exitcodes: 0 ohne Fund vollständig · 1 Fund · 2 unvollständig · 3 Bedienfehler · \
+4 Fund und unvollständig · 5 nichts prüfbar"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -59,20 +65,26 @@ enum Cmd {
         paths: Vec<PathBuf>,
         #[command(flatten)]
         engines: EngineArgs,
-        /// JSON-Bericht in diese Datei schreiben
+        /// JSON-Bericht in diese NEUE Datei schreiben (wird nie überschrieben)
         #[arg(long)]
         json: Option<PathBuf>,
+        /// Auftragskennung (UUID), die im Bericht steht; Standard: zufällig
+        #[arg(long)]
+        job_id: Option<String>,
         /// Maximale Dateigröße in MB (größere Dateien: nicht geprüft)
         #[arg(long, default_value_t = 256)]
         max_file_size_mb: u64,
-        /// Zeitbudget je Engine und Datei in Sekunden
+        /// Gemeinsames Zeitbudget je Engine-Aufruf und Datei in Sekunden
         #[arg(long, default_value_t = 30)]
         timeout_secs: u64,
+        /// Zeitbudget in Millisekunden (überschreibt --timeout-secs)
+        #[arg(long)]
+        timeout_ms: Option<u64>,
         /// Auch Dateien ohne Fund einzeln anzeigen
         #[arg(short, long)]
         verbose: bool,
     },
-    /// Zustand und Versionen der Engines anzeigen
+    /// Zustand, Regelbestand und Fähigkeiten der Engines anzeigen
     Engines {
         #[command(flatten)]
         engines: EngineArgs,
@@ -119,34 +131,65 @@ fn build_engines(a: &EngineArgs) -> Vec<Box<dyn Engine>> {
     v
 }
 
-fn tag(v: Verdict) -> &'static str {
-    match v {
-        Verdict::Malicious => "SCHÄDLICH    ",
-        Verdict::Suspicious => "VERDÄCHTIG   ",
-        Verdict::Pua => "PUA          ",
-        Verdict::NoDetection => "OHNE FUND    ",
-        Verdict::Unsupported => "NICHT GEPRÜFT",
-        Verdict::Encrypted => "VERSCHLÜSSELT",
-        Verdict::AccessDenied => "KEIN ZUGRIFF ",
-        Verdict::Timeout => "ZEITLIMIT    ",
-        Verdict::Error => "FEHLER       ",
-        Verdict::ChangedDuringScan => "GEÄNDERT     ",
+fn content_label(k: ContentKind) -> &'static str {
+    match k {
+        ContentKind::TestOnly => "NUR FUNKTIONSTEST",
+        ContentKind::Production => "produktiv",
+        ContentKind::OfficialSignatures => "offizielle Signaturen",
+        ContentKind::CustomSignatures => "eigene Signaturen",
+        ContentKind::Unknown => "unbekannt",
     }
 }
 
-fn print_engines(engines: &[Box<dyn Engine>]) {
+fn print_engines(infos: &[EngineInfo]) {
     println!("Engines:");
-    for e in engines {
-        let i = e.info();
+    for i in infos {
         match &i.health {
-            EngineHealth::Ready => println!(
-                "  [bereit]          {:<7} {}  Inhalt: {}",
-                i.name, i.engine_version, i.content_version
-            ),
+            EngineHealth::Ready => {
+                println!("  [bereit]          {:<7} {}", i.name, i.engine_version)
+            }
             EngineHealth::Unavailable { reason } => {
                 println!("  [NICHT VERFÜGBAR] {:<7} {}", i.name, reason)
             }
         }
+        println!(
+            "                    Regelbestand: {} – {}",
+            content_label(i.content_kind),
+            i.content_note
+        );
+        let caps = if i.inspects_contents_of.is_empty() {
+            "keine (nur Rohbytes)".to_string()
+        } else {
+            i.inspects_contents_of
+                .iter()
+                .map(|f| f.label())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        println!("                    Containerinhalte: {caps}");
+    }
+    let ready: Vec<&EngineInfo> = infos
+        .iter()
+        .filter(|i| i.health == EngineHealth::Ready)
+        .collect();
+    if !ready.is_empty()
+        && ready
+            .iter()
+            .all(|i| i.content_kind == ContentKind::TestOnly)
+    {
+        println!();
+        println!("  ACHTUNG: Es sind ausschließlich Funktionstest-Regeln geladen (z. B. EICAR).");
+        println!("           Damit erkennt AXSafe KEINE echte Schadsoftware. Ein Fund belegt nur,");
+        println!("           dass der Prüfpfad funktioniert.");
+    }
+}
+
+fn status_tag(s: ObjectStatus) -> &'static str {
+    match s {
+        ObjectStatus::Detection => "FUND         ",
+        ObjectStatus::DetectionIncomplete => "FUND + LÜCKE ",
+        ObjectStatus::NoDetection => "OHNE FUND    ",
+        ObjectStatus::Incomplete => "NICHT VOLLST.",
     }
 }
 
@@ -156,10 +199,11 @@ struct Live {
 
 impl Progress for Live {
     fn on_result(&mut self, r: &FileResult) {
-        if !self.verbose && r.verdict == Verdict::NoDetection {
+        if !self.verbose && r.status == ObjectStatus::NoDetection {
             return;
         }
-        let mut detail: Vec<String> = Vec::new();
+        let kind = r.file_kind.as_ref().map(|k| k.label()).unwrap_or_default();
+        println!("  [{}] {}  {}", status_tag(r.status), r.path, kind);
         for e in &r.engines {
             for d in &e.detections {
                 let test = if d.test_signature {
@@ -167,17 +211,17 @@ impl Progress for Live {
                 } else {
                     ""
                 };
-                detail.push(format!("{}{} via {}", d.name, test, e.engine));
-            }
-            if let Some(n) = &e.note {
-                detail.push(format!("{}: {}", e.engine, n));
+                println!(
+                    "                  - Fund: {}{} via {}",
+                    d.name, test, e.engine
+                );
             }
         }
-        detail.extend(r.notes.iter().cloned());
-        let kind = r.file_kind.as_ref().map(|k| k.label()).unwrap_or_default();
-        println!("  [{}] {}  {}", tag(r.verdict), r.path, kind);
-        for d in detail {
-            println!("                  - {d}");
+        for g in &r.gaps {
+            println!(
+                "                  - Lücke {:?} ({}): {}",
+                g.state, g.source, g.detail
+            );
         }
     }
 }
@@ -186,17 +230,28 @@ fn print_summary(rep: &ScanReport) {
     let s = &rep.summary;
     println!();
     println!(
-        "Zusammenfassung: {} Objekte | {} mit Fund | {} unvollständig | {} ohne Fund | {} Bytes gelesen | {} ms",
-        s.objects, s.detections, s.incomplete, s.no_detection, s.bytes_read, rep.duration_ms
+        "Zusammenfassung: {} Objekte | {} gelesen | {} mit Fund | {} mit Lücke | davon {} Fund+Lücke | {} ohne Fund vollständig | {} Bytes | {} ms",
+        s.objects_total,
+        s.objects_read,
+        s.with_detection,
+        s.incomplete,
+        s.detection_and_incomplete,
+        s.no_detection_complete,
+        s.bytes_read,
+        rep.duration_ms
     );
-    let status = if rep.overall.is_detection() {
-        format!("FUND – {}", rep.overall.label_de())
-    } else if !rep.complete {
-        format!("UNVOLLSTÄNDIG – {}", rep.overall.label_de())
-    } else {
-        "Nichts erkannt (nur im geprüften Umfang, kein Beweis für Harmlosigkeit)".into()
-    };
-    println!("Gesamtstatus:    {status}");
+    for g in &rep.job_gaps {
+        println!(
+            "Auftragslücke:   {:?} ({}): {}",
+            g.state, g.source, g.detail
+        );
+    }
+    if !rep.scope.excluded.is_empty() {
+        for x in &rep.scope.excluded {
+            println!("Ausgeschlossen:  {} ({})", x.path, x.reason);
+        }
+    }
+    println!("Ergebnis:        {}", rep.outcome.label_de());
     println!("Aktion:          keine (Vorversion meldet nur; keine Quarantäne, kein Löschen)");
 }
 
@@ -205,8 +260,8 @@ fn main() -> ExitCode {
     match cli.command {
         Cmd::Engines { engines, json } => {
             let engines = build_engines(&engines);
+            let infos: Vec<EngineInfo> = engines.iter().map(|e| e.info()).collect();
             if json {
-                let infos: Vec<_> = engines.iter().map(|e| e.info()).collect();
                 match serde_json::to_string_pretty(&infos) {
                     Ok(t) => println!("{t}"),
                     Err(e) => {
@@ -215,12 +270,9 @@ fn main() -> ExitCode {
                     }
                 }
             } else {
-                print_engines(&engines);
+                print_engines(&infos);
             }
-            let ready = engines
-                .iter()
-                .all(|e| e.info().health == EngineHealth::Ready);
-            if ready {
+            if infos.iter().all(|i| i.health == EngineHealth::Ready) {
                 ExitCode::from(0)
             } else {
                 ExitCode::from(2)
@@ -247,47 +299,65 @@ fn main() -> ExitCode {
             paths,
             engines,
             json,
+            job_id,
             max_file_size_mb,
             timeout_secs,
+            timeout_ms,
             verbose,
         } => {
+            let job_id = match job_id {
+                Some(j) => match uuid::Uuid::parse_str(&j) {
+                    Ok(u) => u.hyphenated().to_string(),
+                    Err(e) => {
+                        eprintln!("Ungültige Auftragskennung {j:?}: {e}");
+                        return ExitCode::from(3);
+                    }
+                },
+                None => uuid::Uuid::new_v4().to_string(),
+            };
+            // Berichtsziel VOR dem Scan exklusiv anlegen (Befund 1).
+            let target = match json.as_deref().map(ReportTarget::reserve).transpose() {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::from(3);
+                }
+            };
             println!(
                 "AXSafe {} – Vorversion. Kein Echtzeitschutz. Bitte bisherigen Virenschutz aktiv lassen.",
                 axsafe_core::AXSAFE_VERSION
             );
             let engines = build_engines(&engines);
-            print_engines(&engines);
             let limits = ScanLimits {
                 max_file_size: max_file_size_mb.saturating_mul(1024 * 1024),
-                engine_timeout_ms: timeout_secs.saturating_mul(1000),
+                engine_timeout_ms: timeout_ms.unwrap_or_else(|| timeout_secs.saturating_mul(1000)),
                 ..ScanLimits::default()
             };
-            let scanner = Scanner::new(engines, limits);
+            let mut scanner = Scanner::new(engines, limits);
+            print_engines(&scanner.engine_infos());
+            if let Some(t) = &target {
+                scanner.exclude_identity(t.identity().clone(), "Berichtsdatei dieses Auftrags");
+            }
             println!("Ergebnisse:");
             let cancel = AtomicBool::new(false);
-            let rep = scanner.scan_paths(&paths, &cancel, &mut Live { verbose });
+            let rep = scanner.scan_job(job_id, &paths, &cancel, &mut Live { verbose });
             print_summary(&rep);
-            if let Some(path) = json {
-                let text = match serde_json::to_string_pretty(&rep) {
+            if let Some(t) = target {
+                let shown = t.path().display().to_string();
+                let text = match serde_json::to_vec_pretty(&rep) {
                     Ok(t) => t,
                     Err(e) => {
                         eprintln!("Bericht nicht serialisierbar: {e}");
                         return ExitCode::from(3);
                     }
                 };
-                if let Err(e) = std::fs::write(&path, text) {
-                    eprintln!("Bericht nicht schreibbar ({}): {e}", path.display());
+                if let Err(e) = t.write(&text) {
+                    eprintln!("Bericht konnte nicht geschrieben werden ({shown}): {e}");
                     return ExitCode::from(3);
                 }
-                println!("Bericht:         {}", path.display());
+                println!("Bericht:         {shown}");
             }
-            if rep.summary.detections > 0 {
-                ExitCode::from(1)
-            } else if !rep.complete {
-                ExitCode::from(2)
-            } else {
-                ExitCode::from(0)
-            }
+            ExitCode::from(rep.outcome.exit_code())
         }
     }
 }

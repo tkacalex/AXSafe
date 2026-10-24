@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>AXSafe.Client</RootNamespace>
+    <AssemblyName>AXSafe.Client</AssemblyName>
+    <Version>0.2.0</Version>
+    <Description>AXSafe: Anbindung an die CLI, Berichtsmodell (Schema v2) und Auftragsvalidierung. Plattformneutral und testbar.</Description>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+</Project>

@@ -1,4 +1,4 @@
-//! ClamAV Engineadapter (AXS-021, T-021, erster Schritt).
+//! ClamAV Engineadapter (AXS-021, T-021).
 //!
 //! * ClamAV läuft als **getrennter Prozess** (`clamscan`). Es wird **kein**
 //!   `clamd` und keine TCP-Schnittstelle geöffnet (ClamAV-Doku: TCP ohne
@@ -6,29 +6,48 @@
 //! * Der Inhalt wird über **stdin** übergeben. ClamAV prüft damit exakt den
 //!   Schnappschuss, den AXSafe gehasht hat, nicht einen später erneut
 //!   geöffneten Pfad.
-//! * Absturz, fehlende Datenbank oder Zeitüberschreitung bleiben im
-//!   Kindprozess und werden als `Error` beziehungsweise `Timeout` gemeldet.
-//! * Verschlüsselte Inhalte und überschrittene Limits werden über
-//!   `--alert-encrypted` und `--alert-exceeds-max` sichtbar gemacht und als
-//!   Prüflücke (`Encrypted`, `Unsupported`) gemeldet, nie als sauber.
+//! * Der Aufruf läuft über [`axsafe_proc`]: **ein** gemeinsames Ablaufdatum
+//!   für Prozess, Eingabe und Ausgabe; Nachkommen werden kontrolliert
+//!   (Windows: Job Object); Ausgabe und Speicher sind begrenzt (Befund 4).
+//! * Fund und Prüflücke werden getrennt gemeldet: Eine Zeile kann ein Fund
+//!   sein, eine andere eine Lücke (verschlüsselt, Grenzwert) – beides bleibt
+//!   sichtbar (Befund 2).
+//! * Welche Containerformate ClamAV **inhaltlich** prüft, steht verbindlich in
+//!   [`VERIFIED_CONTENT_FORMATS`]; jedes Format ist durch einen Test mit
+//!   echtem ClamAV belegt (Befund 3).
+//! * Signaturquelle wird ausgewiesen: offizielle Signaturen, eigene Datenbank
+//!   oder ausschließlich AXSafe-Testsignaturen (Befund 7).
 //!
 //! Lizenz: ClamAV steht unter GPL-2.0. AXSafe ruft das separat installierte
-//! Programm auf und verteilt es in dieser Vorversion **nicht** mit. Vor einer
-//! Weitergabe ist die Lizenzprüfung aus ADR-0003 abzuschließen.
-//!
-//! Noch offen: eingeschränktes Token/Job Object für den Kindprozess (P02),
-//! FreshClam-Updatepfad (P04), Test auf Windows 10 LTSC.
+//! Programm auf und verteilt es in dieser Vorversion **nicht** mit.
 
 #![forbid(unsafe_code)]
 
-use axsafe_core::engine::{Detection, Engine, EngineHealth, EngineInfo, EngineOutcome, ScanInput};
+use axsafe_core::engine::{
+    ContentKind, Detection, Engine, EngineHealth, EngineInfo, EngineOutcome, Gap, GapReason,
+    ScanInput,
+};
+use axsafe_core::filetype::ContentFormat;
 use axsafe_core::verdict::{aggregate, Confidence, Severity, Verdict};
+use axsafe_proc::{run, Limits, RunOutcome};
 use sha2::{Digest, Sha256};
-use std::io::{Read, Write};
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, Instant};
-use wait_timeout::ChildExt;
+
+/// Containerformate, deren **Inhalt** ClamAV nachweislich prüft.
+/// Nur Formate mit bestandenem Integrationstest (`tests/clamav_real.rs`,
+/// `content_formats_are_backed_by_real_clamav`). RAR (abhängig von
+/// unrar-Unterstützung der Installation), ISO, RTF und VHDX fehlen bewusst.
+pub const VERIFIED_CONTENT_FORMATS: [ContentFormat; 7] = [
+    ContentFormat::Zip,
+    ContentFormat::Ooxml,
+    ContentFormat::Gzip,
+    ContentFormat::OleCfb,
+    ContentFormat::Cab,
+    ContentFormat::SevenZip,
+    ContentFormat::Pdf,
+];
 
 /// Konfiguration des Adapters.
 #[derive(Debug, Clone)]
@@ -41,6 +60,10 @@ pub struct ClamAvConfig {
     pub max_filesize_mb: u32,
     pub max_scansize_mb: u32,
     pub max_recursion: u32,
+    /// Speichergrenze für den clamscan-Prozess (Signaturdatenbank braucht viel).
+    pub max_memory_bytes: u64,
+    /// Höchstmenge der Ausgabe je Kanal.
+    pub max_output_bytes: usize,
 }
 
 impl Default for ClamAvConfig {
@@ -55,6 +78,8 @@ impl Default for ClamAvConfig {
             max_filesize_mb: 100,
             max_scansize_mb: 400,
             max_recursion: 17,
+            max_memory_bytes: 4 * 1024 * 1024 * 1024,
+            max_output_bytes: 1024 * 1024,
         }
     }
 }
@@ -64,75 +89,13 @@ pub struct ClamAvEngine {
     cfg: ClamAvConfig,
     engine_version: String,
     content_version: String,
+    content_kind: ContentKind,
+    content_note: String,
     health: EngineHealth,
 }
 
-struct RunOutput {
-    status: Option<i32>,
-    stdout: String,
-    stderr: String,
-    timed_out: bool,
-}
-
-fn run(cmd: &mut Command, stdin: Option<&[u8]>, timeout: Duration) -> std::io::Result<RunOutput> {
-    cmd.stdin(if stdin.is_some() {
-        Stdio::piped()
-    } else {
-        Stdio::null()
-    })
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
-    let mut child = cmd.spawn()?;
-    // stdin in eigenem Thread schreiben, damit volle Pipes nicht blockieren.
-    let writer = stdin.map(|data| {
-        let data = data.to_vec();
-        let mut pipe = child.stdin.take().expect("stdin piped");
-        std::thread::spawn(move || {
-            let _ = pipe.write_all(&data);
-        })
-    });
-    let mut out = child.stdout.take().expect("stdout piped");
-    let mut err = child.stderr.take().expect("stderr piped");
-    let out_t = std::thread::spawn(move || {
-        let mut s = Vec::new();
-        let _ = out.read_to_end(&mut s);
-        s
-    });
-    let err_t = std::thread::spawn(move || {
-        let mut s = Vec::new();
-        let _ = err.read_to_end(&mut s);
-        s
-    });
-    let (status, timed_out) = match child.wait_timeout(timeout)? {
-        Some(st) => (st.code(), false),
-        None => {
-            let _ = child.kill();
-            let _ = child.wait();
-            // Nicht auf die Lesethreads warten: Enkelprozesse können die
-            // Pipes offen halten. Die Threads enden, sobald die Pipe schließt.
-            // (Vollständiges Beenden des Prozessbaums: Job Object, Phase P02.)
-            return Ok(RunOutput {
-                status: None,
-                stdout: String::new(),
-                stderr: String::new(),
-                timed_out: true,
-            });
-        }
-    };
-    if let Some(w) = writer {
-        let _ = w.join();
-    }
-    let stdout = String::from_utf8_lossy(&out_t.join().unwrap_or_default()).into_owned();
-    let stderr = String::from_utf8_lossy(&err_t.join().unwrap_or_default()).into_owned();
-    Ok(RunOutput {
-        status,
-        stdout,
-        stderr,
-        timed_out,
-    })
-}
-
-fn first_line(s: &str) -> String {
+fn first_line(s: &[u8]) -> String {
+    let s = String::from_utf8_lossy(s);
     let line = s
         .lines()
         .find(|l| !l.trim().is_empty())
@@ -161,7 +124,7 @@ fn is_test_signature(name: &str) -> bool {
     n.contains("eicar") || n.starts_with("axsafe.test.")
 }
 
-fn database_digest(path: &PathBuf) -> std::io::Result<String> {
+fn db_files(path: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     if path.is_dir() {
         for e in std::fs::read_dir(path)? {
@@ -171,9 +134,13 @@ fn database_digest(path: &PathBuf) -> std::io::Result<String> {
             }
         }
     } else {
-        files.push(path.clone());
+        files.push(path.to_path_buf());
     }
     files.sort();
+    Ok(files)
+}
+
+fn database_digest(files: &[PathBuf]) -> std::io::Result<String> {
     let mut h = Sha256::new();
     for f in files {
         h.update(
@@ -182,9 +149,78 @@ fn database_digest(path: &PathBuf) -> std::io::Result<String> {
                 .unwrap_or_default(),
         );
         h.update([0]);
-        h.update(std::fs::read(&f)?);
+        h.update(std::fs::read(f)?);
     }
     Ok(format!("db-sha256:{}", &hex::encode(h.finalize())[..16]))
+}
+
+/// Bestimmt die Art einer eigenen Signaturdatenbank.
+fn classify_database(files: &[PathBuf]) -> (ContentKind, String) {
+    let official = ["main", "daily", "bytecode"];
+    let mut has_official = false;
+    let mut names = Vec::new();
+    let mut text_sigs = 0usize;
+    let mut test_sigs = 0usize;
+    for f in files {
+        let stem = f.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let ext = f
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        names.push(
+            f.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        );
+        if official.contains(&stem) && matches!(ext.as_str(), "cvd" | "cld" | "cud") {
+            has_official = true;
+            continue;
+        }
+        let field = match ext.as_str() {
+            "hdb" | "hsb" | "hdu" | "hsu" | "mdb" | "msb" => Some(2usize),
+            "ndb" | "ndu" | "ldb" | "ldu" => Some(0usize),
+            _ => None,
+        };
+        if let (Some(idx), Ok(text)) = (field, std::fs::read_to_string(f)) {
+            for line in text
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            {
+                text_sigs += 1;
+                let name = line.split([':', ';']).nth(idx).unwrap_or("");
+                if name.starts_with("AXSafe.Test.") {
+                    test_sigs += 1;
+                }
+            }
+        }
+    }
+    if has_official {
+        (
+            ContentKind::OfficialSignatures,
+            format!(
+                "offizielle ClamAV-Datenbank in eigenem Pfad ({})",
+                names.join(", ")
+            ),
+        )
+    } else if text_sigs > 0 && text_sigs == test_sigs {
+        (
+            ContentKind::TestOnly,
+            format!(
+                "nur AXSafe-Testsignaturen ({test_sigs}) – keine Erkennung echter Schadsoftware ({})",
+                names.join(", ")
+            ),
+        )
+    } else {
+        (
+            ContentKind::CustomSignatures,
+            format!(
+                "eigene, nicht offizielle Signaturdatenbank ({})",
+                names.join(", ")
+            ),
+        )
+    }
 }
 
 impl ClamAvEngine {
@@ -194,6 +230,8 @@ impl ClamAvEngine {
             cfg,
             engine_version: "unbekannt".into(),
             content_version: "unbekannt".into(),
+            content_kind: ContentKind::Unknown,
+            content_note: "nicht geprüft".into(),
             health: EngineHealth::Unavailable {
                 reason: "nicht geprüft".into(),
             },
@@ -217,91 +255,227 @@ impl ClamAvEngine {
         c
     }
 
-    fn probe(&mut self) {
-        let mut v = Command::new(&self.cfg.clamscan);
-        v.arg("--version");
-        match run(&mut v, None, Duration::from_secs(15)) {
-            Ok(o) if o.status == Some(0) => {
-                // Format: "ClamAV 1.5.4" oder "ClamAV 1.5.4/27789/Fri Oct 23 ..."
-                let line = first_line(&o.stdout);
-                let mut parts = line.splitn(3, '/');
-                self.engine_version = parts.next().unwrap_or("").trim().to_string();
-                if let Some(db) = parts.next() {
-                    self.content_version = format!("daily-{db}");
-                }
-            }
-            Ok(o) => {
-                self.health = EngineHealth::Unavailable {
-                    reason: format!(
-                        "clamscan --version fehlgeschlagen: {}",
-                        first_line(&o.stderr)
-                    ),
-                };
-                return;
-            }
-            Err(e) => {
-                self.health = EngineHealth::Unavailable {
-                    reason: format!(
-                        "clamscan nicht startbar ({}): {e}",
-                        self.cfg.clamscan.display()
-                    ),
-                };
-                return;
-            }
-        }
-        if let Some(db) = &self.cfg.database {
-            match database_digest(db) {
-                Ok(d) => self.content_version = d,
-                Err(e) => {
-                    self.health = EngineHealth::Unavailable {
-                        reason: format!("Signaturdatenbank {} nicht lesbar: {e}", db.display()),
-                    };
-                    return;
-                }
-            }
-        }
-        // Echter Funktionstest: leere Eingabe muss mit Status 0 geprüft werden.
-        // Schlägt fehl, wenn z. B. keine Signaturdatenbank vorhanden ist.
-        let mut c = self.base_command();
-        c.arg("-");
-        match run(&mut c, Some(b""), Duration::from_secs(120)) {
-            Ok(o) if o.status == Some(0) => self.health = EngineHealth::Ready,
-            Ok(o) if o.timed_out => {
-                self.health = EngineHealth::Unavailable {
-                    reason: "Funktionstest: Zeitüberschreitung beim Laden der Datenbank".into(),
-                }
-            }
-            Ok(o) => {
-                let msg = first_line(&o.stderr);
-                let msg = if msg.is_empty() {
-                    first_line(&o.stdout)
-                } else {
-                    msg
-                };
-                self.health = EngineHealth::Unavailable {
-                    reason: format!(
-                        "Funktionstest fehlgeschlagen (Status {:?}): {msg}",
-                        o.status
-                    ),
-                }
-            }
-            Err(e) => {
-                self.health = EngineHealth::Unavailable {
-                    reason: format!("Funktionstest nicht startbar: {e}"),
-                }
-            }
+    fn limits(&self, timeout: Duration) -> Limits {
+        Limits {
+            timeout,
+            max_output_bytes: self.cfg.max_output_bytes,
+            max_memory_bytes: Some(self.cfg.max_memory_bytes),
+            max_processes: Some(4),
         }
     }
 
-    fn outcome(&self, verdict: Verdict, note: Option<String>, start: Instant) -> EngineOutcome {
+    fn unavailable(&mut self, reason: String) {
+        self.health = EngineHealth::Unavailable { reason };
+    }
+
+    fn probe(&mut self) {
+        let mut v = Command::new(&self.cfg.clamscan);
+        v.arg("--version");
+        match run(v, None, &self.limits(Duration::from_secs(15))) {
+            Ok(o) if o.clean_success() => {
+                // Format: "ClamAV 1.5.4" oder "ClamAV 1.5.4/27789/Fri Oct 23 09:28:02 2026"
+                let line = first_line(&o.stdout);
+                let mut parts = line.splitn(3, '/');
+                self.engine_version = parts.next().unwrap_or("").trim().to_string();
+                if self.cfg.database.is_none() {
+                    match (parts.next(), parts.next()) {
+                        (Some(daily), Some(date)) => {
+                            self.content_version = format!("daily-{daily}");
+                            self.content_kind = ContentKind::OfficialSignatures;
+                            self.content_note = format!(
+                                "offizielle ClamAV-Signaturen, daily {daily} vom {date}. \
+                                 Aktualisierungspfad (FreshClam) separat nachzuweisen."
+                            );
+                        }
+                        _ => {
+                            self.content_kind = ContentKind::Unknown;
+                            self.content_note =
+                                "keine Signaturdatenbank im Standardpfad erkannt".into();
+                        }
+                    }
+                }
+            }
+            Ok(o) => {
+                return self.unavailable(format!(
+                    "clamscan --version fehlgeschlagen (Status {:?}{}): {}",
+                    o.code(),
+                    if o.timed_out {
+                        ", Zeitüberschreitung"
+                    } else {
+                        ""
+                    },
+                    first_line(&o.stderr)
+                ));
+            }
+            Err(e) => {
+                return self.unavailable(format!(
+                    "clamscan nicht startbar ({}): {e}",
+                    self.cfg.clamscan.display()
+                ));
+            }
+        }
+        if let Some(db) = self.cfg.database.clone() {
+            match db_files(&db).and_then(|f| database_digest(&f).map(|d| (f, d))) {
+                Ok((files, digest)) => {
+                    self.content_version = digest;
+                    let (kind, note) = classify_database(&files);
+                    self.content_kind = kind;
+                    self.content_note = note;
+                }
+                Err(e) => {
+                    return self.unavailable(format!(
+                        "Signaturdatenbank {} nicht lesbar: {e}",
+                        db.display()
+                    ));
+                }
+            }
+        }
+        // Echter Funktionstest: leere Eingabe muss sauber geprüft werden.
+        // Schlägt fehl, wenn z. B. keine Signaturdatenbank vorhanden ist.
+        let mut c = self.base_command();
+        c.arg("-");
+        match run(c, Some(Vec::new()), &self.limits(Duration::from_secs(120))) {
+            Ok(o) if o.clean_success() => self.health = EngineHealth::Ready,
+            Ok(o) if o.timed_out => self
+                .unavailable("Funktionstest: Zeitüberschreitung beim Laden der Datenbank".into()),
+            Ok(o) => {
+                let mut msg = first_line(&o.stderr);
+                if msg.is_empty() {
+                    msg = first_line(&o.stdout);
+                }
+                if o.descendants_terminated {
+                    msg = format!("Engine hinterließ laufende Nachkommen. {msg}");
+                }
+                self.unavailable(format!(
+                    "Funktionstest fehlgeschlagen (Status {:?}): {msg}",
+                    o.code()
+                ))
+            }
+            Err(e) => self.unavailable(format!("Funktionstest nicht startbar: {e}")),
+        }
+    }
+
+    fn outcome(&self, start: Instant) -> EngineOutcome {
         EngineOutcome {
             engine: "clamav".into(),
             engine_version: self.engine_version.clone(),
             content_version: self.content_version.clone(),
-            verdict,
+            verdict: Verdict::NoDetection,
             detections: Vec::new(),
-            note,
+            gaps: Vec::new(),
+            note: None,
             duration_ms: start.elapsed().as_millis() as u64,
+        }
+    }
+
+    fn failed(
+        &self,
+        start: Instant,
+        state: Verdict,
+        reason: GapReason,
+        detail: String,
+    ) -> EngineOutcome {
+        let mut o = self.outcome(start);
+        o.verdict = state;
+        o.note = Some(detail.clone());
+        o.gaps.push(Gap::new(state, reason, "clamav", detail));
+        o
+    }
+
+    /// Wertet einen begrenzten Prozesslauf aus. Öffentlich für Tests.
+    pub fn interpret(&self, run: &RunOutcome, start: Instant, budget: Duration) -> EngineOutcome {
+        if run.timed_out {
+            return self.failed(
+                start,
+                Verdict::Timeout,
+                GapReason::EngineTimeout,
+                format!(
+                    "gemeinsames Zeitbudget von {} ms überschritten (Prozess, Eingabe oder Ausgabe); Prozessbaum beendet",
+                    budget.as_millis()
+                ),
+            );
+        }
+        if run.output_truncated {
+            return self.failed(
+                start,
+                Verdict::Error,
+                GapReason::OutputLimit,
+                format!(
+                    "Ausgabe über {} Bytes; Prozess beendet, Ergebnis verworfen",
+                    self.cfg.max_output_bytes
+                ),
+            );
+        }
+        if run.descendants_terminated {
+            return self.failed(
+                start,
+                Verdict::Error,
+                GapReason::EngineError,
+                "Engine-Prozess hinterließ laufende Nachkommen; diese wurden beendet, Ergebnis verworfen".into(),
+            );
+        }
+        if run.stdin_incomplete {
+            return self.failed(
+                start,
+                Verdict::Error,
+                GapReason::EngineError,
+                "Inhalt konnte nicht vollständig an die Engine übergeben werden".into(),
+            );
+        }
+        let stdout = String::from_utf8_lossy(&run.stdout);
+        let mut out = self.outcome(start);
+        let mut saw_ok = false;
+        let mut verdicts = Vec::new();
+        for line in stdout.lines() {
+            let Some(rest) = line.strip_prefix("stdin: ") else {
+                continue;
+            };
+            if rest.trim() == "OK" {
+                saw_ok = true;
+            } else if let Some(name) = rest.strip_suffix(" FOUND") {
+                let name = name.trim().to_string();
+                let (verdict, severity, confidence) = classify(&name);
+                verdicts.push(verdict);
+                if verdict.is_detection() {
+                    out.detections.push(Detection {
+                        evidence: vec![format!("ClamAV-Signatur {name}")],
+                        test_signature: is_test_signature(&name),
+                        rule_id: Some(name.clone()),
+                        name,
+                        verdict,
+                        severity,
+                        confidence,
+                    });
+                } else {
+                    let reason = if verdict == Verdict::Encrypted {
+                        GapReason::Encrypted
+                    } else {
+                        GapReason::EngineLimitExceeded
+                    };
+                    out.gaps.push(Gap::new(
+                        verdict,
+                        reason,
+                        "clamav",
+                        format!("ClamAV meldet {name}"),
+                    ));
+                }
+            }
+        }
+        match run.code() {
+            Some(0) if saw_ok && verdicts.is_empty() => out,
+            Some(1) if !verdicts.is_empty() => {
+                out.verdict = aggregate(verdicts);
+                out
+            }
+            status => self.failed(
+                start,
+                Verdict::Error,
+                GapReason::EngineError,
+                format!(
+                    "Unerwartetes Ergebnis (Status {status:?}): {}",
+                    first_line(&run.stderr)
+                ),
+            ),
         }
     }
 }
@@ -318,71 +492,32 @@ impl Engine for ClamAvEngine {
             content_version: self.content_version.clone(),
             health: self.health.clone(),
             license: "GPL-2.0 (separat installiert, nicht mitgeliefert)".into(),
+            content_kind: self.content_kind,
+            content_note: self.content_note.clone(),
+            inspects_contents_of: VERIFIED_CONTENT_FORMATS.to_vec(),
         }
     }
 
     fn scan(&self, input: &ScanInput<'_>) -> EngineOutcome {
         let start = Instant::now();
         if let EngineHealth::Unavailable { reason } = &self.health {
-            return self.outcome(Verdict::Error, Some(reason.clone()), start);
+            return self.failed(
+                start,
+                Verdict::Error,
+                GapReason::EngineUnavailable,
+                reason.clone(),
+            );
         }
         let mut c = self.base_command();
         c.arg("-");
-        let o = match run(&mut c, Some(input.data), input.timeout) {
-            Ok(o) => o,
-            Err(e) => {
-                return self.outcome(
-                    Verdict::Error,
-                    Some(format!("Start fehlgeschlagen: {e}")),
-                    start,
-                )
-            }
-        };
-        if o.timed_out {
-            return self.outcome(
-                Verdict::Timeout,
-                Some("Zeitbudget überschritten, Prozess beendet".into()),
+        match run(c, Some(input.data.to_vec()), &self.limits(input.timeout)) {
+            Ok(r) => self.interpret(&r, start, input.timeout),
+            Err(e) => self.failed(
                 start,
-            );
-        }
-        let mut dets = Vec::new();
-        let mut saw_ok = false;
-        for line in o.stdout.lines() {
-            let Some(rest) = line.strip_prefix("stdin: ") else {
-                continue;
-            };
-            if rest.trim() == "OK" {
-                saw_ok = true;
-            } else if let Some(name) = rest.strip_suffix(" FOUND") {
-                let name = name.trim().to_string();
-                let (verdict, severity, confidence) = classify(&name);
-                dets.push(Detection {
-                    evidence: vec![format!("ClamAV-Signatur {name}")],
-                    test_signature: is_test_signature(&name),
-                    rule_id: Some(name.clone()),
-                    name,
-                    verdict,
-                    severity,
-                    confidence,
-                });
-            }
-        }
-        match o.status {
-            Some(0) if saw_ok && dets.is_empty() => self.outcome(Verdict::NoDetection, None, start),
-            Some(1) if !dets.is_empty() => {
-                let verdict = aggregate(dets.iter().map(|d| d.verdict));
-                let mut out = self.outcome(verdict, None, start);
-                out.detections = dets;
-                out
-            }
-            status => {
-                let msg = first_line(&o.stderr);
-                self.outcome(
-                    Verdict::Error,
-                    Some(format!("Unerwartetes Ergebnis (Status {status:?}): {msg}")),
-                    start,
-                )
-            }
+                Verdict::Error,
+                GapReason::EngineError,
+                format!("Start fehlgeschlagen: {e}"),
+            ),
         }
     }
 }
@@ -390,40 +525,6 @@ impl Engine for ClamAvEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axsafe_core::filetype::FileKind;
-    use md5::Md5;
-
-    fn eicar() -> Vec<u8> {
-        let a = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$";
-        let b = "EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
-        format!("{a}{b}").into_bytes()
-    }
-
-    fn clamscan_available() -> bool {
-        Command::new("clamscan")
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    }
-
-    /// Erzeugt eine ClamAV-Hashsignatur (.hdb) für EICAR zur Laufzeit.
-    fn test_db(dir: &std::path::Path) -> PathBuf {
-        let e = eicar();
-        let md5 = hex::encode(Md5::digest(&e));
-        let p = dir.join("axsafe-test.hdb");
-        std::fs::write(&p, format!("{md5}:{}:AXSafe.Test.EICAR.HDB\n", e.len())).unwrap();
-        p
-    }
-
-    fn input(data: &[u8], timeout: Duration) -> ScanInput<'_> {
-        ScanInput {
-            data,
-            kind: &FileKind::Unknown,
-            sha256: "",
-            timeout,
-        }
-    }
 
     #[test]
     fn classify_maps_gaps_and_detections() {
@@ -444,132 +545,43 @@ mod tests {
             ..Default::default()
         });
         assert!(matches!(e.info().health, EngineHealth::Unavailable { .. }));
+    }
+
+    #[test]
+    fn database_classification() {
+        let dir = std::env::temp_dir().join(format!("axsafe-dbcls-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let t = dir.join("t.hdb");
+        std::fs::write(
+            &t,
+            "44d88612fea8a8f36de82e1278abb02f:68:AXSafe.Test.EICAR.HDB\n",
+        )
+        .unwrap();
         assert_eq!(
-            e.scan(&input(b"x", Duration::from_secs(5))).verdict,
-            Verdict::Error
+            classify_database(std::slice::from_ref(&t)).0,
+            ContentKind::TestOnly
         );
+        let c = dir.join("c.hdb");
+        std::fs::write(&c, "00000000000000000000000000000000:1:Firma.Eigene.Sig\n").unwrap();
+        assert_eq!(classify_database(&[t, c]).0, ContentKind::CustomSignatures);
+        let o = dir.join("daily.cvd");
+        std::fs::write(&o, b"ClamAV-VDB:binary").unwrap();
+        assert_eq!(classify_database(&[o]).0, ContentKind::OfficialSignatures);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn real_clamav_positive_and_benign() {
-        if !clamscan_available() {
-            eprintln!("clamscan nicht installiert: Integrationstest übersprungen (in CI Pflicht)");
-            return;
+    fn verified_formats_exclude_unproven_ones() {
+        for f in [
+            ContentFormat::Rar,
+            ContentFormat::Iso,
+            ContentFormat::Rtf,
+            ContentFormat::Vhdx,
+        ] {
+            assert!(
+                !VERIFIED_CONTENT_FORMATS.contains(&f),
+                "{f:?} ohne Nachweis"
+            );
         }
-        let dir = tempfile::tempdir().unwrap();
-        let e = ClamAvEngine::new(ClamAvConfig {
-            database: Some(test_db(dir.path())),
-            ..Default::default()
-        });
-        assert_eq!(e.info().health, EngineHealth::Ready, "{:?}", e.info());
-        assert!(e.info().engine_version.starts_with("ClamAV "));
-        assert!(e.info().content_version.starts_with("db-sha256:"));
-
-        let pos = e.scan(&input(&eicar(), Duration::from_secs(60)));
-        assert_eq!(pos.verdict, Verdict::Malicious, "{pos:?}");
-        assert!(pos.detections[0].name.starts_with("AXSafe.Test.EICAR"));
-        assert!(pos.detections[0].test_signature);
-
-        let neg = e.scan(&input(
-            b"Hallo Welt, ganz harmlos.",
-            Duration::from_secs(60),
-        ));
-        assert_eq!(neg.verdict, Verdict::NoDetection, "{neg:?}");
-    }
-
-    #[test]
-    fn real_clamav_without_database_is_unavailable() {
-        if !clamscan_available() {
-            return;
-        }
-        let dir = tempfile::tempdir().unwrap();
-        let empty = dir.path().join("leer");
-        std::fs::create_dir(&empty).unwrap();
-        let e = ClamAvEngine::new(ClamAvConfig {
-            database: Some(empty),
-            ..Default::default()
-        });
-        assert!(
-            matches!(e.info().health, EngineHealth::Unavailable { .. }),
-            "{:?}",
-            e.info()
-        );
-    }
-
-    #[cfg(unix)]
-    fn fake_clamscan(dir: &std::path::Path, body: &str) -> PathBuf {
-        // Testdoppel nur für Fehlerpfade (Absturz, Hänger). Nie im Produkt.
-        use std::os::unix::fs::PermissionsExt;
-        let p = dir.join("fake-clamscan");
-        std::fs::write(&p, format!("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'ClamAV 0.0-test'; exit 0; fi\ncat >/dev/null\n{body}\n")).unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-        // Linux meldet kurz nach dem Schreiben gelegentlich ETXTBSY („Text file
-        // busy“), wenn ein parallel laufender Test gerade einen Prozess startet
-        // und dabei den Schreib-Handle erbt. Warten, bis das Skript startbar ist,
-        // damit der Test das Zeitlimit prüft und nicht diesen Nebeneffekt.
-        for _ in 0..100 {
-            match Command::new(&p).arg("--version").output() {
-                Ok(o) if o.status.success() => return p,
-                _ => std::thread::sleep(Duration::from_millis(20)),
-            }
-        }
-        panic!("Testskript nicht startbar");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn engine_crash_is_error_not_clean() {
-        let dir = tempfile::tempdir().unwrap();
-        // Funktionstest bestehen, danach abstürzen: Zähler über Datei.
-        let flag = dir.path().join("probed");
-        let body = format!(
-            "if [ -f {f} ]; then kill -SEGV $$; fi\ntouch {f}\necho 'stdin: OK'\nexit 0",
-            f = flag.display()
-        );
-        let e = ClamAvEngine::new(ClamAvConfig {
-            clamscan: fake_clamscan(dir.path(), &body),
-            ..Default::default()
-        });
-        assert_eq!(e.info().health, EngineHealth::Ready);
-        let o = e.scan(&input(b"x", Duration::from_secs(10)));
-        assert_eq!(o.verdict, Verdict::Error, "{o:?}");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn hanging_engine_is_timeout() {
-        let dir = tempfile::tempdir().unwrap();
-        let flag = dir.path().join("probed");
-        let body = format!(
-            "if [ -f {f} ]; then sleep 30; fi\ntouch {f}\necho 'stdin: OK'\nexit 0",
-            f = flag.display()
-        );
-        let e = ClamAvEngine::new(ClamAvConfig {
-            clamscan: fake_clamscan(dir.path(), &body),
-            ..Default::default()
-        });
-        let t = Instant::now();
-        let o = e.scan(&input(b"x", Duration::from_millis(500)));
-        assert_eq!(o.verdict, Verdict::Timeout);
-        assert!(t.elapsed() < Duration::from_secs(10));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn status_zero_without_ok_line_is_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let flag = dir.path().join("probed");
-        let body = format!(
-            "if [ -f {f} ]; then exit 0; fi\ntouch {f}\necho 'stdin: OK'\nexit 0",
-            f = flag.display()
-        );
-        let e = ClamAvEngine::new(ClamAvConfig {
-            clamscan: fake_clamscan(dir.path(), &body),
-            ..Default::default()
-        });
-        assert_eq!(
-            e.scan(&input(b"x", Duration::from_secs(5))).verdict,
-            Verdict::Error
-        );
     }
 }

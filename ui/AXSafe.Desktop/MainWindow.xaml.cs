@@ -3,8 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using AXSafe.Desktop.Models;
-using AXSafe.Desktop.Services;
+using AXSafe.Client;
 using Microsoft.Win32;
 
 namespace AXSafe.Desktop;
@@ -16,7 +15,7 @@ namespace AXSafe.Desktop;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private readonly AxsafeCli _cli = new();
+    private readonly AxsafeCliClient? _cli = CliLocator.Create();
     private CancellationTokenSource? _scanCts;
 
     public sealed record ModuleState(string Name, string State, Brush Brush);
@@ -72,7 +71,7 @@ public partial class MainWindow : Window
             await RefreshEnginesAsync();
             await RunCommandLineScanAsync();
         };
-        ReportsDirText.Text = $"Ablage: {_cli.ReportsDir}";
+        ReportsDirText.Text = $"Ablage: {CliLocator.ReportsDir}";
     }
 
     /// <summary>
@@ -105,33 +104,38 @@ public partial class MainWindow : Window
         // Beim ersten Start prüfen, ob ClamAV überhaupt vorhanden ist. Fehlt es,
         // wird es abgewählt und der kleinere Prüfumfang sichtbar erklärt,
         // statt jeden Scan mit „Fehler“ enden zu lassen.
-        if (!_clamavDecided && _cli.Available)
+        if (!_clamavDecided && _cli is not null)
         {
-            var probe = await _cli.GetEnginesAsync(true, CancellationToken.None);
+            var probe = await _cli.GetEnginesAsync(true, CancellationToken.None) ?? new List<EngineInfo>();
             var clamProbe = probe.FirstOrDefault(e => e.Name == "clamav");
-            if (clamProbe is not null && clamProbe.Health.State != "ready")
+            if (clamProbe is not null && !clamProbe.Ready)
             {
                 UseClamav.IsChecked = false;
                 ClamavHint.Visibility = Visibility.Visible;
             }
             _clamavDecided = true;
         }
-        var engines = _cli.Available
-            ? await _cli.GetEnginesAsync(UseClamav.IsChecked == true, CancellationToken.None)
-            : new List<EngineInfo>();
+        var engines = _cli is null
+            ? new List<EngineInfo>()
+            : await _cli.GetEnginesAsync(UseClamav.IsChecked == true, CancellationToken.None) ?? new List<EngineInfo>();
         EngineList.ItemsSource = engines;
         EngineEmpty.Visibility = engines.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Befund 7: Bereitschaft, Regelbestand und Abdeckung getrennt; Testregeln unübersehbar.
+        var ready = engines.Where(e => e.Ready).ToList();
+        var testOnly = ready.Count > 0 && ready.All(e => e.TestOnly);
+        TestRulesNotice.Visibility = testOnly ? Visibility.Visible : Visibility.Collapsed;
 
         var yara = engines.FirstOrDefault(e => e.Name == "yara-x");
         var clam = engines.FirstOrDefault(e => e.Name == "clamav");
         string EngState(EngineInfo? e) => e is null
             ? (UseClamav.IsChecked == true ? "nicht gefunden" : "abgewählt")
-            : e.Health.State == "ready" ? "bereit" : "Fehler";
-        Brush EngBrush(EngineInfo? e) => e?.Health.State == "ready" ? B("Green") : B("Red");
+            : !e.Ready ? "Fehler" : e.TestOnly ? "bereit · nur Testregeln" : "bereit";
+        Brush EngBrush(EngineInfo? e) => e is null || !e.Ready ? B("Red") : e.TestOnly ? B("Amber") : B("Green");
 
         ModuleList.ItemsSource = new List<ModuleState>
         {
-            new("Dateiprüfung auf Anforderung", _cli.Available ? "verfügbar" : "CLI fehlt", _cli.Available ? B("Green") : B("Red")),
+            new("Dateiprüfung auf Anforderung", _cli is not null ? "verfügbar" : "CLI fehlt", _cli is not null ? B("Green") : B("Red")),
             new("Eigene Regeln (YARA-X)", EngState(yara), EngBrush(yara)),
             new("ClamAV-Signaturen", EngState(clam), clam is null ? B("Muted") : EngBrush(clam)),
             new("Echtzeitschutz", "fehlt · P08", B("Amber")),
@@ -146,17 +150,19 @@ public partial class MainWindow : Window
         };
 
         // Gesundheit: nie grün, solange kein Echtzeitschutz und kein Dienst existiert.
-        if (!_cli.Available || yara?.Health.State != "ready")
+        if (_cli is null || yara is null || !yara.Ready)
         {
             HealthDot.Fill = B("Red");
             HealthText.Text = "Nicht betriebsbereit";
-            HealthDetail.Text = !_cli.Available ? "axsafe.exe nicht gefunden" : "Regelsatz nicht geladen";
+            HealthDetail.Text = _cli is null ? "axsafe.exe nicht gefunden" : "Regelsatz nicht geladen";
         }
         else
         {
             HealthDot.Fill = B("Amber");
             HealthText.Text = "Eingeschränkt";
-            HealthDetail.Text = "Nur Scan auf Anforderung · Dienst fehlt (P02)";
+            HealthDetail.Text = testOnly
+                ? "Nur Scan auf Anforderung · nur Testregeln · Dienst fehlt (P02)"
+                : "Nur Scan auf Anforderung · Dienst fehlt (P02)";
         }
     }
 
@@ -173,7 +179,7 @@ public partial class MainWindow : Window
             InfoTitle.Text = p.Title;
             InfoState.Text = p.State;
             InfoNow.Text = tag == "settings"
-                ? $"axsafe.exe: {_cli.ExePath ?? "nicht gefunden"}\nBerichte: {_cli.ReportsDir}"
+                ? $"axsafe.exe: {_cli?.ExePath ?? "nicht gefunden"}\nBerichte: {CliLocator.ReportsDir}"
                 : p.Now;
             InfoNeeded.Text = p.Needed;
             InfoLimit.Text = p.Limit;
@@ -211,29 +217,26 @@ public partial class MainWindow : Window
 
     private async Task RunScanAsync(IReadOnlyList<string> paths)
     {
-        if (!_cli.Available)
+        if (_cli is null)
         {
             ScanStatus.Text = "axsafe.exe wurde nicht gefunden. Siehe Hilfe.";
             return;
         }
         _scanCts = new CancellationTokenSource();
         SetBusy(true);
+        // Altes Ergebnis sofort entfernen: Es darf nie als Ergebnis des neuen Auftrags erscheinen.
         ResultList.ItemsSource = null;
         ScanSummary.Text = "";
         ScanStatus.Text = $"Prüfe {paths.Count} Auswahl(en) …";
         try
         {
             var r = await _cli.ScanAsync(paths, UseClamav.IsChecked == true, _scanCts.Token);
-            if (r.Report is null)
-            {
-                ScanStatus.Text = $"Fehler: {r.Error}";
-                return;
-            }
-            ShowReport(r.Report);
-        }
-        catch (OperationCanceledException)
-        {
-            ScanStatus.Text = "Abgebrochen. Es liegt kein vollständiges Ergebnis vor.";
+            if (r.Cancelled)
+                ScanStatus.Text = "Abgebrochen. Es liegt kein Ergebnis vor.";
+            else if (!r.Success || r.Report is null)
+                ScanStatus.Text = $"Fehler (Auftrag {r.JobId:D}): {r.Error}";
+            else
+                ShowReport(r.Report);
         }
         finally
         {
@@ -242,23 +245,29 @@ public partial class MainWindow : Window
         }
     }
 
+    private static int SortKey(FileResult f) => f.Status switch
+    {
+        "detection_incomplete" => 0,
+        "detection" => 1,
+        "incomplete" => 2,
+        _ => 3,
+    };
+
     private void ShowReport(ScanReport rep)
     {
         // Funde und Lücken zuerst, damit nichts in langen Listen untergeht.
-        ResultList.ItemsSource = rep.Files
-            .OrderBy(f => VerdictText.IsDetection(f.Verdict) ? 0 : f.Verdict == "NoDetection" ? 2 : 1)
-            .ToList();
+        ResultList.ItemsSource = rep.Files.OrderBy(SortKey).ToList();
         var s = rep.Summary;
-        ScanStatus.Text = VerdictText.IsDetection(rep.Overall)
-            ? $"Fund: {VerdictText.Label(rep.Overall)}. AXSafe hat nichts verändert (Vorversion meldet nur)."
-            : !rep.Complete
-                ? "Unvollständig: Einige Objekte konnten nicht vollständig geprüft werden."
-                : "Nichts erkannt – nur im geprüften Umfang, kein Beweis für Harmlosigkeit.";
-        ScanSummary.Text = $"{s.Objects} Objekte · {s.Detections} mit Fund · {s.Incomplete} unvollständig · {s.NoDetection} ohne Fund · {s.BytesRead:N0} Bytes · {rep.DurationMs} ms";
+        ScanStatus.Text = Texts.Outcome(rep.Outcome);
+        ScanSummary.Text =
+            $"{s.ObjectsTotal} Objekte · {s.ObjectsRead} gelesen · {s.WithDetection} mit Fund · {s.Incomplete} mit Prüflücke " +
+            $"(davon {s.DetectionAndIncomplete} mit Fund) · {s.NoDetectionComplete} ohne Fund vollständig · {s.BytesRead:N0} Bytes · {rep.DurationMs} ms";
+        if (rep.JobGaps.Count > 0)
+            ScanSummary.Text += "\nAuftragslücken: " + string.Join("; ", rep.JobGaps.Select(g => $"{Texts.GapReason(g.Reason)} ({g.Source})"));
 
         StatLast.Text = DateTime.TryParse(rep.FinishedUtc, out var t) ? t.ToLocalTime().ToString("dd.MM. HH:mm") : "unbekannt";
-        StatObjects.Text = s.Objects.ToString("N0");
-        StatDetections.Text = s.Detections.ToString("N0");
+        StatObjects.Text = s.ObjectsTotal.ToString("N0");
+        StatDetections.Text = s.WithDetection.ToString("N0");
         StatIncomplete.Text = s.Incomplete.ToString("N0");
     }
 
@@ -266,11 +275,11 @@ public partial class MainWindow : Window
     {
         try
         {
-            ReportList.ItemsSource = Directory.Exists(_cli.ReportsDir)
-                ? Directory.GetFiles(_cli.ReportsDir, "*.json").OrderDescending().Select(Path.GetFileName).ToList()
+            ReportList.ItemsSource = Directory.Exists(CliLocator.ReportsDir)
+                ? Directory.GetFiles(CliLocator.ReportsDir, "*.json").OrderDescending().Select(Path.GetFileName).ToList()
                 : new List<string?> { "Noch keine Berichte." };
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             ReportList.ItemsSource = new List<string> { $"Fehler: {ex.Message}" };
         }
@@ -280,7 +289,14 @@ public partial class MainWindow : Window
 
     private void OpenReports_Click(object sender, RoutedEventArgs e)
     {
-        Directory.CreateDirectory(_cli.ReportsDir);
-        Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { _cli.ReportsDir }, UseShellExecute = false });
+        try
+        {
+            Directory.CreateDirectory(CliLocator.ReportsDir);
+            Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { CliLocator.ReportsDir }, UseShellExecute = false });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            ReportsDirText.Text = $"Berichtsordner nicht nutzbar: {ex.Message}";
+        }
     }
 }
