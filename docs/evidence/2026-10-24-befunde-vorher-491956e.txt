@@ -1,0 +1,27 @@
+Reproduktion der Befunde auf Commit 491956e00add56471188fb9c4bfa557b9691fbf4
+Datum (UTC): 2026-10-24T16:13:32Z · Linux x86_64 · rustc 1.97.0 (2d8144b78 2026-07-07)
+
+=== Befund 1: dieselbe Datei als Scanobjekt und --json-Ziel
+  vorher:  8b88c5b23215e14c
+  exit=0
+  nachher: 5f75d3f4e3837db8
+=== Befund 2: YARA-X Fund + ClamAV Fehler
+  exit=1
+  schema=axsafe.scan-report/1, overall=Malicious, complete=True
+  summary: {'objects': 1, 'bytes_read': 68, 'detections': 1, 'incomplete': 0, 'no_detection': 0}
+  e.com: detection/verdict=Malicious gaps=[]
+=== Befund 3: normales und passwortgeschütztes ZIP ohne ClamAV
+  exit=0
+  schema=axsafe.scan-report/1, overall=NoDetection, complete=True
+  summary: {'objects': 2, 'bytes_read': 360, 'detections': 0, 'incomplete': 0, 'no_detection': 2}
+  geheim.zip: detection/verdict=NoDetection gaps=[]
+  normal.zip: detection/verdict=NoDetection gaps=[]
+=== Befund 4: Budget 1 s, Elternprozess endet, Nachkomme hält Pipes 4 s
+  exit=0 Dauer=8057 ms
+  schema=axsafe.scan-report/1, overall=NoDetection, complete=True
+  summary: {'objects': 1, 'bytes_read': 2, 'detections': 0, 'incomplete': 0, 'no_detection': 1}
+  x.txt: detection/verdict=NoDetection gaps=[]
+=== Befund 6: leerer Ordner, beauftragte Engine (ClamAV) fehlt
+  exit=0
+  schema=axsafe.scan-report/1, overall=NoDetection, complete=True
+  summary: {'objects': 0, 'bytes_read': 0, 'detections': 0, 'incomplete': 0, 'no_detection': 0}

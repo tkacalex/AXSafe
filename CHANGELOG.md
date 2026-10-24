@@ -4,7 +4,34 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
-### Behoben
+Noch nichts.
+
+## [0.2.0] – 2026-10-24 · Korrektur unabhängiger Befunde (Release-Entwurf, nicht veröffentlicht)
+
+Grundlage: acht unabhängig gefundene Befunde zu Stand `491956e`. Reproduktion vorher/nachher in `docs/evidence/`.
+
+### Sicherheit / Datenintegrität
+- **Befund 1 – kein Datenverlust mehr beim JSON-Bericht:** Das Berichtsziel wird vor dem Scan exklusiv neu angelegt (`O_EXCL` bzw. `CREATE_NEW`); bestehende Dateien, Links, Junctions und Ordner werden nie überschrieben (Exit 3 mit verständlicher Meldung). Das reservierte Ziel wird über seine Datei-ID (Volume + Index) vom Scan ausgeschlossen – auch über Hardlinks, Symlinks und Reparsepunkte – und im Bericht als Ausschluss genannt. Geschrieben wird über das gehaltene Handle, ohne erneute Pfadauflösung.
+- **Befund 4 – ein gemeinsames Ablaufdatum für den ganzen Engine-Aufruf:** neues Crate `axsafe-proc`. Keine unbegrenzten Joins mehr; Nachkommen, die Pipes offen halten, werden beendet und als Lücke gemeldet. Windows: Start angehalten, Job Object (Kill-on-close, kein Breakaway, Speicher- und Prozessgrenze), dann Fortsetzen. Unix: eigene Prozessgruppe, `RLIMIT_AS`. Ausgabe je Kanal begrenzt. Zeitüberschreitung ist immer „unvollständig“.
+
+### Geändert (Berichtsschema v2, Exitcodes)
+- **Befund 2 – Fund und Prüfabdeckung getrennt:** Schema `axsafe.scan-report/2` mit `detection` und `gaps[]` je Objekt, Status `detection_incomplete` („Fund vorhanden; zusätzliche Prüflücke“), Auftrags-`outcome`, `complete`, `job_gaps` und eindeutig definierten, überlappenden Zählern. CLI, Client und WPF synchron. Exitcode 4 = Fund und unvollständig.
+- **Befund 3 – Containerabdeckung ehrlich:** Engines melden, welche Containerformate sie inhaltlich prüfen. Für ClamAV nur die 7 mit echtem ClamAV belegten Formate (ZIP, OOXML, OLE/CFB, 7z, GZIP, CAB, PDF). Sonst Lücke `content_not_inspected`; `Encrypted` nur bei sicherer Feststellung durch die Engine. YARA-X gilt als „nur Rohbytes“.
+- **Befund 5 – Berichte eindeutig zugeordnet:** neues, plattformneutrales `AXSafe.Client`: zufällige Auftrags-ID (`--job-id`), eigenes Berichtsziel mit ID im Namen, Prüfung von Schema, ID, Pfaden, Exitcode und Zählern; alte oder fremde Berichte werden nie angezeigt; Datei-, Rechte- und Lesefehler werden kontrolliert gemeldet.
+- **Befund 6 – leere Aufträge:** `nothing_scanned` („Keine prüfbaren Objekte“, Exit 5), unabhängig von Engine- und Auftragsfehlern.
+- **Befund 7 – Testregeln unübersehbar:** Regelbestand (`test_only`, `production`, `official_signatures`, `custom_signatures`) getrennt von Bereitschaft und Containerfähigkeit; CLI warnt, die Oberfläche zeigt „NUR FUNKTIONSTEST-REGELN GELADEN“. Eigener CI-Job für offizielle ClamAV-Signaturen über FreshClam.
+
+### Tests und Release-Nachweise (Befund 8)
+- Tests mit externer Vorbedingung sind `#[ignore = "Grund"]` und scheitern laut, statt still zu bestehen; Linux-CI führt sie verpflichtend aus (ClamAV, Nicht-root) und bricht ab, wenn trotzdem ein Test ausgelassen wurde. Zusammenfassung zählt bestanden/fehlgeschlagen/ausgelassen getrennt (`scripts/ci/test_summary.py`).
+- 16 xUnit-Tests für den Client gegen die echte CLI (Linux und Windows).
+- UI-Prüfung per UI Automation statt nur Screenshots (`scripts/ci/ui_check.ps1`).
+- Windows Server (CI) wird nirgends mehr als LTSC-Nachweis geführt.
+- Release nur manuell und nur für einen Commit mit erfolgreicher CI; SBOM mit Commit gestempelt, Inventar, Lizenzhinweise und SHA256SUMS über alle Assets.
+- `THIRD-PARTY-NOTICES.txt` aus dem echten Abhängigkeitsgraphen der Windows-CLI (167 Pakete) plus Lizenzdateien der eingebetteten .NET-Laufzeit im Paket; fehlende Crate-Lizenzdateien versionsgenau aus Upstream (`licenses/upstream/SOURCES.json`). `ascii_tree` ohne upstream Copyright-Vermerk → B-14.
+- Inventar-Selbsttests für künstliches Schlüsselmaterial (Inhalt und `.pem`) und fehlende Lizenzhinweise; Testhelfer dürfen nicht ins Paket.
+- `bincode` (RUSTSEC-2025-0141) bleibt eine **dokumentierte Ausnahme**, nicht behoben (B-13).
+
+### Behoben (vor den Befunden)
 - Wackeltest `hanging_engine_is_timeout`: Linux meldete beim sofortigen Start des frisch geschriebenen Testskripts gelegentlich „Text file busy“. Der Adapter meldete korrekt `Error`; der Test wartet jetzt, bis das Skript startbar ist (8 Wiederholungen ohne Fehler).
 - Paket: `axsafe.exe` (CLI) überschrieb unter Windows `AXSafe.exe` (Oberfläche), weil Windows Groß-/Kleinschreibung nicht unterscheidet. CLI liegt jetzt in `cli\`; die Oberfläche schließt sich bei der CLI-Suche selbst aus. Paketbau prüft, dass die Oberfläche enthalten ist.
 - Oberfläche stürzte beim Start ab: einer `Background`-Eigenschaft wurde eine Farbe statt eines Pinsels zugewiesen (vom Windows-CI-Screenshot-Schritt aufgedeckt).
@@ -12,7 +39,7 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 - Inventarprüfung las den Wert von `--inventory` als zweiten Paketpfad (erster Windows-CI-Lauf schlug deshalb fehl); jetzt argparse, UTF-8-Ausgabe unter Windows.
 - Gitleaks-Fehlalarm auf die PEM-Suchmuster im Inventarskript: Muster werden zur Laufzeit gebildet, alter Fund begründet in `.gitleaksignore`.
 
-### Neu
+### Neu (vor den Befunden)
 - README zeigt echte Screenshots der Oberfläche, automatisch auf dem Windows-Runner aufgenommen.
 - Oberfläche wählt ClamAV automatisch ab, wenn es nicht installiert ist, und erklärt den kleineren Prüfumfang.
 - Selbsttest 3 in der CI: Inventarprüfung muss EICAR erkennen und saubere Pakete durchlassen (T-012).

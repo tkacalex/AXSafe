@@ -1,0 +1,38 @@
+# Reproduktion nach der Korrektur
+# Commit-Basis: 491956e + Arbeitsstand Branch fix/befunde-2026-10-24 (2026-10-24T16:47:54Z)
+# Plattform: Linux 6.18.44-fc-v153, rustc 1.97.0 (2d8144b78 2026-07-07), ClamAV 1.5.4
+
+=== Befund 1: dieselbe Datei als Scanobjekt und --json-Ziel
+  vorher:  8b88c5b23215e14c
+  exit=3
+  nachher: 8b88c5b23215e14c
+  stderr: Berichtsziel existiert bereits: nutz.txt
+  stderr: AXSafe überschreibt keine vorhandenen Dateien (auch keine Links oder Ordner). Bitte einen neuen, noch nicht vorhandenen Dateinamen angeben.
+=== Befund 2: YARA-X Fund + ClamAV Fehler
+  exit=4
+  schema=axsafe.scan-report/2, outcome=detection_incomplete, complete=False
+  summary: {'objects_total': 1, 'objects_read': 1, 'bytes_read': 68, 'with_detection': 1, 'incomplete': 1, 'detection_and_incomplete': 1, 'no_detection_complete': 0}
+  e.com: detection/verdict=Malicious gaps=['Error']
+=== Befund 3: normales und passwortgeschütztes ZIP ohne ClamAV
+  exit=2
+  schema=axsafe.scan-report/2, outcome=incomplete, complete=False
+  summary: {'objects_total': 2, 'objects_read': 2, 'bytes_read': 360, 'with_detection': 0, 'incomplete': 2, 'detection_and_incomplete': 0, 'no_detection_complete': 0}
+  geheim.zip: detection/verdict=NoDetection gaps=['Unsupported']
+  normal.zip: detection/verdict=NoDetection gaps=['Unsupported']
+=== Befund 4: Budget 1 s, Elternprozess endet, Nachkomme hält Pipes 4 s
+  exit=2 Dauer=94 ms
+  schema=axsafe.scan-report/2, outcome=incomplete, complete=False
+  summary: {'objects_total': 1, 'objects_read': 1, 'bytes_read': 2, 'with_detection': 0, 'incomplete': 1, 'detection_and_incomplete': 0, 'no_detection_complete': 0}
+  x.txt: detection/verdict=NoDetection gaps=['Error']
+  job_gap: Error engine_unavailable
+=== Befund 4b: wie 4, Nachkomme entsteht erst beim eigentlichen Scan
+  exit=2 Dauer=95 ms
+  schema=axsafe.scan-report/2, outcome=incomplete, complete=False
+  summary: {'objects_total': 1, 'objects_read': 1, 'bytes_read': 2, 'with_detection': 0, 'incomplete': 1, 'detection_and_incomplete': 0, 'no_detection_complete': 0}
+  x.txt: detection/verdict=NoDetection gaps=['Error']
+  Lücke: engine_error - Engine-Prozess hinterließ laufende Nachkommen; diese wurden beendet, Ergebnis verworfen
+=== Befund 6: leerer Ordner, beauftragte Engine (ClamAV) fehlt
+  exit=5
+  schema=axsafe.scan-report/2, outcome=nothing_scanned, complete=False
+  summary: {'objects_total': 0, 'objects_read': 0, 'bytes_read': 0, 'with_detection': 0, 'incomplete': 0, 'detection_and_incomplete': 0, 'no_detection_complete': 0}
+  job_gap: Error engine_unavailable

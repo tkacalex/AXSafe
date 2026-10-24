@@ -2,7 +2,7 @@
 <style>text{font-family:"Segoe UI",Helvetica,Arial,sans-serif;fill:#E8EEF8}.m{fill:#94A7C6}</style>
 <rect width="920" height="642" rx="16" fill="#0A1426"/>
 <text x="28" y="40" font-size="20" font-weight="600">AXSafe V1 – Fortschritt der 100 Anforderungen</text>
-<text x="28" y="64" font-size="13" class="m">Nur belegter Stand. Erzeugt aus docs/status/requirements-status.json · 0 erfüllt, 9 teilweise belegt, 19 begonnen/Entwurf, 71 geplant</text>
+<text x="28" y="64" font-size="13" class="m">Nur belegter Stand. Erzeugt aus docs/status/requirements-status.json · 0 erfüllt, 10 teilweise belegt, 18 begonnen/Entwurf, 71 geplant</text>
 <text x="28" y="107" font-size="13">P00  Ziel und Voraussetzungen klären</text>
 <rect x="300.0" y="94" width="91.3" height="18" rx="4" fill="#22D3EE"><title>1 teilweise belegt</title></rect>
 <rect x="393.3" y="94" width="464.7" height="18" rx="4" fill="#818CF8"><title>5 Entwurf</title></rect>
@@ -18,8 +18,8 @@
 <rect x="650.0" y="154" width="208.0" height="18" rx="4" fill="#2A3B5E"><title>3 geplant</title></rect>
 <text x="874" y="167" font-size="12" class="m">8</text>
 <text x="28" y="197" font-size="13">P03  Dateiprüfung und Erkennungskern umsetzen</text>
-<rect x="300.0" y="184" width="208.0" height="18" rx="4" fill="#22D3EE"><title>3 teilweise belegt</title></rect>
-<rect x="510.0" y="184" width="208.0" height="18" rx="4" fill="#3B82F6"><title>3 begonnen</title></rect>
+<rect x="300.0" y="184" width="278.0" height="18" rx="4" fill="#22D3EE"><title>4 teilweise belegt</title></rect>
+<rect x="580.0" y="184" width="138.0" height="18" rx="4" fill="#3B82F6"><title>2 begonnen</title></rect>
 <rect x="720.0" y="184" width="138.0" height="18" rx="4" fill="#2A3B5E"><title>2 geplant</title></rect>
 <text x="874" y="197" font-size="12" class="m">8</text>
 <text x="28" y="227" font-size="13">P04  Sichere Updates und Regelpflege bauen</text>

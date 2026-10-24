@@ -24,8 +24,8 @@
     "AXS-003": {
       "status": "entwurf",
       "where": "docs/adr/ADR-0001-engine-strategie.md, docs/adr/ADR-0003-lizenzen.md",
-      "evidence": "ADR Eigenentwicklung/OEM; Lizenzinventar 209 Rust-Pakete",
-      "rest": "Projektlizenz D-01"
+      "evidence": "ADR Eigenentwicklung/OEM; ausgelieferte Windows-CLI: 167 Drittpakete, Lizenztexte vollständig in THIRD-PARTY-NOTICES.txt (14 aus versionsgenauen Upstream-Quellen, ascii_tree ohne upstream Copyright-Vermerk, B-14)",
+      "rest": "Projektlizenz D-01; ascii_tree-Urheber anfragen (B-14)"
     },
     "AXS-004": {
       "status": "entwurf",
@@ -66,62 +66,62 @@
     "AXS-010": {
       "status": "teilweise",
       "where": ".github/workflows/ci.yml, deny.toml",
-      "evidence": "CI: cargo-deny, Gitleaks über gesamten Verlauf, SBOM; Selbsttests (Testgeheimnis, manipulierte Prüfsumme, Inventar) schlagen wie gefordert an; Release-Job getrennt ohne Schlüssel",
-      "rest": "SHA-Pinning der Actions, Schutzregeln für main"
+      "evidence": "CI: cargo-deny, Gitleaks über gesamten Verlauf, SBOM; Selbsttests (Testgeheimnis, manipulierte Prüfsumme, EICAR, künstliches Schlüsselmaterial, fehlende Lizenzhinweise) schlagen an; Release nur manuell, nur für Commit mit erfolgreicher CI, SBOM mit Commit gestempelt, SHA256SUMS über alle Assets",
+      "rest": "SHA-Pinning der Actions, Schutzregeln für main (B-16), Code-Signatur (B-15)"
     },
     "AXS-011": {
       "status": "teilweise",
       "where": "crates/*/src, crates/axsafe-cli/tests",
-      "evidence": "Jeder Scanpfad hat Positiv-, Gutartig- und Ausfalltest",
-      "rest": "Windows-Integrationstests"
+      "evidence": "Jeder Scanpfad hat Positiv-, Gutartig- und Ausfalltest; Tests mit externer Vorbedingung sind #[ignore = Grund] und in Linux-CI Pflicht (--include-ignored, Abbruch bei Auslassung); Testzusammenfassung zählt bestanden/fehlgeschlagen/ausgelassen getrennt; 89 Rust- und 16 C#-Tests lokal unter Linux als Nicht-root mit ClamAV 1.5.4 bestanden",
+      "rest": "Windows-Integrationstests auf Windows 10 LTSC (B-02, B-10)"
     },
     "AXS-012": {
       "status": "teilweise",
       "where": "scripts/check_release_inventory.py",
-      "evidence": "Inventarprüfung in CI auf jedem Windows-Paket; Selbsttest erkennt EICAR und Schlüsselmaterial",
+      "evidence": "Inventarprüfung in CI und Release; verbietet Testhelfer, Testdoppel, .hdb, Schlüssel; Selbsttests erkennen EICAR, künstliches Schlüsselmaterial (Inhalt und .pem) und fehlende Lizenzhinweise",
       "rest": "automatischer Paketvergleich zwischen Releases"
     },
     "AXS-013": {
       "status": "begonnen",
       "where": "ui/AXSafe.Desktop/app.manifest",
-      "evidence": "UI asInvoker; ClamAV als getrennter Prozess",
-      "rest": "B-05 Worker mit eingeschränktem Token"
+      "evidence": "UI asInvoker; Engines als getrennte Prozesse unter axsafe-proc: Windows Job Object (Kill-on-close, kein Breakaway, Speicher-/Prozessgrenze), Unix Prozessgruppe + RLIMIT_AS; gemeinsames Ablaufdatum",
+      "rest": "P02: Worker mit eingeschränktem Token/AppContainer ohne Netz (B-05)"
     },
     "AXS-015": {
       "status": "teilweise",
       "where": "crates/axsafe-core/src/verdict.rs, report.rs",
-      "evidence": "10 Zustände, Aggregation getestet, UI ohne grünen Status",
-      "rest": "UI-Tests auf Windows"
+      "evidence": "Berichtsschema v2: Fund (detection) und Prüflücken (gaps) je Objekt getrennt, Ergebnis detection_incomplete, Zählinvariante; CLI, Client und WPF synchron; Kombinationen getestet",
+      "rest": "UI-Assertions auf Windows 10 LTSC (B-10)"
     },
     "AXS-016": {
       "status": "begonnen",
       "where": "crates/axsafe-core/src/report.rs",
-      "evidence": "UTC-Zeit, Job-ID, Engine-/Regelversion je Befund",
-      "rest": "Korrelations-ID, Prozessidentität"
+      "evidence": "UTC-Zeit, zufällige Auftrags-ID (UUID) je UI-Auftrag, im Bericht und Dateinamen; Engine-/Regelversion je Befund",
+      "rest": "Korrelations-ID über Dienst, Prozessidentität"
     },
     "AXS-018": {
       "status": "begonnen",
       "where": "crates/axsafe-core/src/identity.rs, scan.rs",
-      "evidence": "Identität über Handle; Austausch/Änderung erkannt (Linux); Symlink unter Windows als nicht geprüft gemeldet (CI-Screenshot)",
-      "rest": "Windows-Test, ADS, 128-Bit-IDs"
+      "evidence": "Identität über Handle (Volume + Datei-ID); Austausch/Änderung als Lücke ChangedDuringScan; Berichtsziel per Identität vom Scan ausgeschlossen; Hardlink/Symlink/Ordner/Junction als Berichtsziel abgelehnt",
+      "rest": "Junction-/Symlink-Test auf Windows 10 LTSC, ADS, 128-Bit-IDs"
     },
     "AXS-019": {
       "status": "begonnen",
       "where": "crates/axsafe-core/src/engine.rs, ui",
-      "evidence": "Engine-Gesundheit; Ausfall ergibt nie sauber",
+      "evidence": "Engine-Gesundheit, Regelbestand (test_only/production/official/custom) und Containerfähigkeit getrennt; nicht verfügbare Engine ist Auftragslücke, nie sauber",
       "rest": "Dienst-/Sensorstatus"
     },
     "AXS-021": {
       "status": "teilweise",
       "where": "crates/axsafe-engine-clamav",
-      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; Absturz/Hänger → Error/Timeout",
-      "rest": "B-05, Windows-Test"
+      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen)",
+      "rest": "B-05 isolierter Worker (P02), Windows-Laufzeitnachweis der Job Objects in CI, LTSC (B-02)"
     },
     "AXS-022": {
       "status": "teilweise",
       "where": "crates/axsafe-engine-yarax, rules/",
-      "evidence": "Pflichtmetadaten, Mindestversion, Zeitlimit; Positiv/Gutartig/Timeout getestet",
-      "rest": "Regelsignatur (P04), Speicherlimit"
+      "evidence": "Pflichtmetadaten, Mindestversion, Zeitlimit; Regelbestand nur Testregeln wird als test_only gemeldet und in UI/CLI unübersehbar angezeigt",
+      "rest": "Regelsignatur (P04), produktiver Regelbestand, Speicherlimit"
     },
     "AXS-023": {
       "status": "teilweise",
@@ -130,15 +130,15 @@
       "rest": "Skriptsprachen, MSI vs. Office"
     },
     "AXS-024": {
-      "status": "begonnen",
+      "status": "teilweise",
       "where": "crates/axsafe-engine-clamav",
-      "evidence": "ClamAV-Limits; Passwort-ZIP → Encrypted (Demo)",
-      "rest": "Archivbomben-/Pfadausbruchtests"
+      "evidence": "Containerinhalt gilt nur als geprüft, wenn eine bereite Engine das Format nachweislich inspiziert; sonst Lücke content_not_inspected; Passwort-ZIP mit echtem ClamAV → Encrypted; Rekursionsgrenze → Lücke; normale/verschlüsselte/verschachtelte harmlose Archive getestet",
+      "rest": "RAR/ISO/VHDX ohne belegte Inhaltsprüfung; Archivbomben-Tests mit echter Engine; Windows-Nachweis"
     },
     "AXS-026": {
       "status": "begonnen",
       "where": "crates/axsafe-core/src/scan.rs, crates/axsafe-cli",
-      "evidence": "Eigener Scan mit Abbruch; Zählungen aus Manifest",
+      "evidence": "Eigener Scan mit Abbruch; leerer Auftrag = nothing_scanned (Exit 5), unabhängig von Engine-/Auftragsfehlern",
       "rest": "Schnell-/Vollscan, Zeitplan, Fortsetzen"
     },
     "AXS-028": {
@@ -186,40 +186,57 @@
   },
   "tests": {
     "T-015": [
-      "axsafe-core verdict::tests::no_incomplete_state_becomes_clean",
-      "verdict::tests::empty_is_error_not_clean",
-      "scan::tests::unavailable_engine_never_yields_clean",
-      "cli::clean_scan_exit_zero_and_broken_rules_exit_two"
+      "report::tests::combinations_keep_invariant",
+      "report::tests::outcome_table",
+      "scan::tests::detection_and_engine_gap_are_both_visible",
+      "scan::tests::unavailable_engine_never_yields_clean_and_is_job_gap",
+      "verdict::tests::no_incomplete_state_becomes_clean",
+      "detection_plus_engine_error_is_exit_4_and_visible"
     ],
     "T-018": [
       "identity::tests::swapped_file_with_same_name_is_detected",
       "identity::tests::appended_file_is_changed",
-      "scan::tests::symlink_is_not_followed"
+      "scan::tests::symlink_is_not_followed",
+      "report_target_hardlink_to_scan_object_is_refused",
+      "new_report_inside_scan_root_is_excluded_by_identity"
     ],
     "T-021": [
-      "clamav tests::real_clamav_positive_and_benign",
-      "tests::engine_crash_is_error_not_clean",
-      "tests::hanging_engine_is_timeout",
-      "tests::real_clamav_without_database_is_unavailable"
+      "positive_benign_and_test_only_content",
+      "content_formats_are_backed_by_real_clamav",
+      "crash_is_error_gap",
+      "hang_is_timeout_within_budget",
+      "orphan_holding_pipes_does_not_extend_call_and_is_flagged",
+      "without_database_is_unavailable",
+      "parent_exits_but_descendant_holds_pipes"
     ],
     "T-022": [
-      "yarax tests::eicar_positive",
+      "tests::eicar_positive",
       "tests::benign_counterexamples",
       "tests::timeout_is_reported_as_timeout",
-      "tests::rule_without_required_meta_is_rejected"
+      "tests::rule_without_required_meta_is_rejected",
+      "tests::repo_rules_are_marked_test_only"
     ],
     "T-023": [
       "filetype::tests::renaming_does_not_change_type",
-      "cli::filetype_uses_content_not_extension",
+      "filetype_uses_content_not_extension",
       "filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic"
+    ],
+    "T-024": [
+      "harmless_archives_normal_encrypted_nested",
+      "recursion_limit_is_reported_as_gap",
+      "scan::tests::container_without_capable_engine_is_content_gap",
+      "scan::tests::capable_engine_that_fails_does_not_count_as_inspected",
+      "archives_without_container_engine_are_incomplete"
     ],
     "T-026": [
       "scan::tests::positive_benign_and_counts",
-      "scan::tests::cancel_marks_incomplete"
+      "scan::tests::cancel_marks_incomplete",
+      "scan::tests::empty_scope_is_nothing_scanned_even_with_engine_failure",
+      "empty_folder_is_nothing_scanned_exit_5"
     ],
     "T-028": [
       "filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic",
-      "scan::tests::fifo_does_not_block_and_is_unsupported"
+      "scan::tests::fifo_does_not_block_and_is_gap"
     ]
   }
 }
