@@ -71,7 +71,17 @@ Was du hier siehst: Die Testdatei wird von **beiden** Engines erkannt. Das passw
 **Oberfläche (WPF, .NET 10):**
 
 <!-- UI-SCREENSHOTS:START -->
-<p align="center"><i>Die Screenshots der Oberfläche werden automatisch auf einem Windows-Runner der CI erzeugt und hier ergänzt.</i></p>
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/ui-overview.png" alt="AXSafe Übersicht: gelbes Banner 'Schutzstatus eingeschränkt', echte Engine-Zustände, Schutzmodule mit ehrlichem Stand"></td>
+    <td width="50%"><img src="docs/images/ui-scan.png" alt="AXSafe Virenscan: Ergebnisliste mit 'Ohne Fund' und 'Nicht geprüft' für eine Verknüpfung, ClamAV automatisch abgewählt, weil nicht installiert"></td>
+  </tr>
+  <tr>
+    <td><b>Übersicht</b> – kein grünes Fake-Schild: Der Status bleibt <i>eingeschränkt</i>, solange es keinen Echtzeitschutz gibt. Fehlende Module sind mit ihrer Phase markiert.</td>
+    <td><b>Virenscan</b> – ClamAV fehlt auf diesem Rechner und wird deshalb sichtbar abgewählt. Die Verknüpfung wird nicht verfolgt und erscheint als <i>nicht geprüft</i>.</td>
+  </tr>
+</table>
+<p align="center"><sub>Automatisch aufgenommen von der CI auf einem Windows-Runner (Windows Server, 1024×768) mit einem Ordner harmloser Testdateien.</sub></p>
 <!-- UI-SCREENSHOTS:END -->
 
 ## Schnellstart

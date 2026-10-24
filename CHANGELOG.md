@@ -12,6 +12,8 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 - Gitleaks-Fehlalarm auf die PEM-Suchmuster im Inventarskript: Muster werden zur Laufzeit gebildet, alter Fund begründet in `.gitleaksignore`.
 
 ### Neu
+- README zeigt echte Screenshots der Oberfläche, automatisch auf dem Windows-Runner aufgenommen.
+- Oberfläche wählt ClamAV automatisch ab, wenn es nicht installiert ist, und erklärt den kleineren Prüfumfang.
 - Selbsttest 3 in der CI: Inventarprüfung muss EICAR erkennen und saubere Pakete durchlassen (T-012).
 - ADR-0006 (Entwurf): isolierter Scanworker mit Job Object/AppContainer und Named-Pipe-IPC `axsafe.ipc/1` als Plan für Phase P02.
 
