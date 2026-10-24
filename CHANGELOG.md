@@ -5,6 +5,8 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 ## [Unveröffentlicht]
 
 ### Behoben
+- Oberfläche stürzte beim Start ab: einer `Background`-Eigenschaft wurde eine Farbe statt eines Pinsels zugewiesen (vom Windows-CI-Screenshot-Schritt aufgedeckt).
+- Absturzprotokoll nach `%LOCALAPPDATA%\AXSafe\logs` mit verständlicher Meldung statt stillem Beenden.
 - Inventarprüfung las den Wert von `--inventory` als zweiten Paketpfad (erster Windows-CI-Lauf schlug deshalb fehl); jetzt argparse, UTF-8-Ausgabe unter Windows.
 - Gitleaks-Fehlalarm auf die PEM-Suchmuster im Inventarskript: Muster werden zur Laufzeit gebildet, alter Fund begründet in `.gitleaksignore`.
 

@@ -26,8 +26,13 @@ $startArgs = @{ FilePath = $Exe; PassThru = $true }
 if ($AppArgs.Count -gt 0) { $startArgs.ArgumentList = $AppArgs }
 $p = Start-Process @startArgs
 $deadline = (Get-Date).AddSeconds(60)
-while ($p.MainWindowHandle -eq 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500; $p.Refresh() }
-if ($p.MainWindowHandle -eq 0) { throw "Kein Hauptfenster gefunden" }
+while ($p.MainWindowHandle -eq 0 -and -not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500; $p.Refresh() }
+if ($p.MainWindowHandle -eq 0) {
+    $logs = Join-Path $env:LOCALAPPDATA 'AXSafe\logs'
+    if (Test-Path $logs) { Get-ChildItem $logs -Filter 'crash-*.log' | ForEach-Object { Write-Host "--- $($_.Name)"; Get-Content $_.FullName } }
+    if ($p.HasExited) { throw "AXSafe.exe wurde beendet (Exitcode $($p.ExitCode)) bevor ein Fenster erschien" }
+    throw "Kein Hauptfenster gefunden"
+}
 [Win]::ShowWindow($p.MainWindowHandle, 3) | Out-Null   # maximieren
 [Win]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
 Start-Sleep -Seconds $WaitSeconds
