@@ -6,6 +6,11 @@ name: Release (Vorversion)
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version mit v, z. B. v0.1.0 (Tag wird beim Veröffentlichen des Entwurfs angelegt)"
+        required: true
 
 permissions:
   contents: write
@@ -14,6 +19,8 @@ jobs:
   windows-package:
     runs-on: windows-latest
     environment: release
+    env:
+      VERSION: ${{ inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - name: Rust-Toolchain
@@ -39,7 +46,7 @@ jobs:
           Get-ChildItem *.pdb -Path dist/AXSafe -Recurse | Remove-Item
           python scripts/check_release_inventory.py dist/AXSafe --allow-test-rules --inventory dist/inventory.json
           if ($LASTEXITCODE -ne 0) { throw "Inventarprüfung fehlgeschlagen" }
-          $zip = "AXSafe-${{ github.ref_name }}-windows-x64-vorversion.zip"
+          $zip = "AXSafe-$env:VERSION-windows-x64-vorversion.zip"
           Compress-Archive -Path dist/AXSafe/* -DestinationPath $zip
           (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + $zip | Out-File -Encoding ascii SHA256SUMS.txt
       - name: Release-Entwurf anlegen
@@ -47,7 +54,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release create "${{ github.ref_name }}" --draft --prerelease `
-            --title "AXSafe ${{ github.ref_name }} (Vorversion, kein Echtzeitschutz)" `
+          if ($env:VERSION -notmatch '^v\d+\.\d+\.\d+') { throw "Ungültige Version: $env:VERSION" }
+          gh release create "$env:VERSION" --draft --prerelease --target "${{ github.sha }}" `
+            --title "AXSafe $env:VERSION (Vorversion, kein Echtzeitschutz)" `
             --notes-file CHANGELOG.md `
             (Get-ChildItem AXSafe-*.zip).FullName SHA256SUMS.txt dist/inventory.json
