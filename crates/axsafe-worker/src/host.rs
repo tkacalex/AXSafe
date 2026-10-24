@@ -186,15 +186,34 @@ struct ProbeSetup {
 
 impl ProbeSetup {
     fn new() -> std::io::Result<Self> {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!(
-            "axsafe-isolationsprobe-{}-{nanos}",
-            std::process::id()
-        ));
-        std::fs::create_dir(&dir)?;
+        // Eindeutig je Prozess und Aufruf (Zähler), Anlegen exklusiv mit
+        // Wiederholung: parallele Engines im selben Prozess kollidierten
+        // sonst bei gleicher Zeitmarke (in der CI beobachtet).
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let mut dir = PathBuf::new();
+        let mut last = None;
+        for _ in 0..16 {
+            let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            dir = std::env::temp_dir().join(format!(
+                "axsafe-isolationsprobe-{}-{n}-{nanos}",
+                std::process::id()
+            ));
+            match std::fs::create_dir(&dir) {
+                Ok(()) => {
+                    last = None;
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(e),
+                Err(e) => return Err(e),
+            }
+        }
+        if let Some(e) = last {
+            return Err(e);
+        }
         let file = dir.join("probe.txt");
         std::fs::write(&file, b"AXSafe Isolationsprobe")?;
         let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
