@@ -1164,3 +1164,16 @@ pub fn restricted_grant_read(dir: &std::path::Path) -> io::Result<()> {
         CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE,
     )
 }
+
+/// Gibt Prozessen mit [`Sandbox::Restricted`] Lesen/Ausführen auf GENAU eine
+/// Programmdatei (z. B. die Zugriffsprobe, wenn sie im Benutzerprofil liegt).
+pub fn restricted_grant_execute(file: &std::path::Path) -> io::Result<()> {
+    use windows_sys::Win32::Security::WinRestrictedCodeSid;
+    let restricted = well_known_sid(WinRestrictedCodeSid)?;
+    grant_access_psid(
+        file.as_os_str(),
+        restricted.as_ptr() as PSID,
+        FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+        NO_INHERITANCE,
+    )
+}

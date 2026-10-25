@@ -134,6 +134,46 @@ pub struct ClamAvEngine {
     /// Arbeitsordner für entpackte Archivinhalte (AppContainer: dessen
     /// eigener Ordner).
     tempdir: Option<std::path::PathBuf>,
+    /// Arbeitsordner gehört dieser Instanz und wird beim Ende entfernt.
+    owns_tempdir: bool,
+}
+
+impl Drop for ClamAvEngine {
+    fn drop(&mut self) {
+        if self.owns_tempdir {
+            if let Some(t) = &self.tempdir {
+                let _ = std::fs::remove_dir_all(t);
+            }
+        }
+    }
+}
+
+/// Legt einen NEUEN Arbeitsordner für clamscan mit eingeschränktem Token an
+/// (je Engine-Instanz eigener Ordner – parallele Instanzen setzen sonst
+/// gleichzeitig Rechte auf denselben Ordner; in CI beobachtet: „Can't write
+/// to temporary directory“). Integrität Niedrig, Ändern nur für RESTRICTED.
+#[cfg(windows)]
+pub fn new_restricted_work_dir() -> std::io::Result<std::path::PathBuf> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    let base = std::env::var_os("LOCALAPPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("AXSafe")
+        .join("ClamAV-Arbeitsordner");
+    std::fs::create_dir_all(&base)?;
+    let dir = base.join(format!(
+        "{}-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_micros())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir(&dir)?;
+    axsafe_proc::restricted_work_dir(&dir)?;
+    Ok(dir)
 }
 
 fn first_line(s: &[u8]) -> String {
@@ -338,6 +378,7 @@ impl ClamAvEngine {
                 reason: "nicht geprüft".into(),
             },
             tempdir: None,
+            owns_tempdir: false,
         };
         if let Err(e) = engine.prepare_sandbox() {
             engine.unavailable(format!(
@@ -358,12 +399,9 @@ impl ClamAvEngine {
             // Eigener Arbeitsordner (Integritätsstufe Niedrig, nur dort
             // schreibbar); Datenbank lesbar für RESTRICTED, falls der Ordner
             // uns gehört (der Standardordner ist für Benutzer bereits lesbar).
-            let base = std::env::var_os("LOCALAPPDATA")
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(std::env::temp_dir);
-            let tmp = base.join("AXSafe").join("ClamAV-Arbeitsordner");
-            axsafe_proc::restricted_work_dir(&tmp)?;
+            let tmp = new_restricted_work_dir()?;
             self.tempdir = Some(tmp);
+            self.owns_tempdir = true;
             if let Some(db) = &self.cfg.database {
                 let dir = if db.is_dir() {
                     db.clone()

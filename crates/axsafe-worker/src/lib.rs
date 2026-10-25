@@ -16,6 +16,7 @@
 #![deny(unsafe_code)]
 
 pub mod host;
+pub mod probe;
 pub mod protocol;
 mod sandbox;
 mod worker;

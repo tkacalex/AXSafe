@@ -33,7 +33,8 @@ mod sys;
 pub use session::{Session, SessionError};
 #[cfg(windows)]
 pub use sys::{
-    appcontainer_folder, appcontainer_grant, restricted_grant_read, restricted_work_dir,
+    appcontainer_folder, appcontainer_grant, restricted_grant_execute, restricted_grant_read,
+    restricted_work_dir,
 };
 
 /// Minimale Umgebung für abgeschottete Kindprozesse: unter Windows nur

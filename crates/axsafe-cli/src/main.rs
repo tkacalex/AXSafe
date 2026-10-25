@@ -109,6 +109,30 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// ClamAV-Abschottung prüfen (Windows): startet eine Zugriffsprobe mit
+    /// GENAU dem eingeschränkten Token, das clamscan bekommt, und prüft
+    /// Datenbank, Zertifikatsordner, Arbeitsordner, Benutzerdateien und
+    /// optional das Netzwerk
+    ClamavAbschottung {
+        /// clamscan (Standard: fester Windows-Pfad)
+        #[arg(long)]
+        clamscan: Option<PathBuf>,
+        /// Signaturdatenbank (Standard: fester Windows-Pfad)
+        #[arg(long)]
+        clamav_db: Option<PathBuf>,
+        /// Ausgehende TCP-Verbindung prüfen, z. B. database.clamav.net:443
+        #[arg(long)]
+        netz_ziel: Option<String>,
+        /// Erwartung für --netz-ziel: gesperrt | erlaubt
+        #[arg(long, default_value = "gesperrt")]
+        netz_erwartet: String,
+        /// Nur die Netzprüfung ausführen
+        #[arg(long)]
+        nur_netz: bool,
+        /// Maschinenlesbar als JSON ausgeben
+        #[arg(long)]
+        json: bool,
+    },
     /// Dateityp nach Inhalt bestimmen (ohne Engine)
     Filetype {
         #[arg(required = true)]
@@ -416,6 +440,234 @@ fn print_summary(rep: &ScanReport) {
     println!("Aktion:          keine (Vorversion meldet nur; keine Quarantäne, kein Löschen)");
 }
 
+/// `axsafe clamav-abschottung`: Zugriffsprobe mit dem eingeschränkten Token.
+#[cfg(windows)]
+fn clamav_isolation_check(
+    clamscan: Option<PathBuf>,
+    clamav_db: Option<PathBuf>,
+    netz_ziel: Option<String>,
+    netz_erwartet: &str,
+    nur_netz: bool,
+    json: bool,
+) -> ExitCode {
+    use axsafe_proc::{run_sandboxed, Limits, Sandbox};
+    use std::net::ToSocketAddrs;
+    let (def_scan, def_db) = axsafe_engine_clamav::windows_default_paths();
+    let clamscan = clamscan.unwrap_or(def_scan);
+    let db = clamav_db.or(def_db);
+    let expect_net_open = match netz_erwartet {
+        "gesperrt" => false,
+        "erlaubt" => true,
+        other => {
+            eprintln!("--netz-erwartet: gesperrt oder erlaubt, nicht '{other}'");
+            return ExitCode::from(2);
+        }
+    };
+    // (Kennung, Probe-Argument, erwartet erlaubt?)
+    let mut plan: Vec<(String, String, bool)> = Vec::new();
+    let mut cleanup: Vec<PathBuf> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    if !nur_netz {
+        match &db {
+            Some(d) => {
+                let dir = if d.is_dir() {
+                    d.clone()
+                } else {
+                    d.parent().map(PathBuf::from).unwrap_or_default()
+                };
+                plan.push((
+                    "datenbank_lesbar".into(),
+                    format!("lesen:{}", dir.display()),
+                    true,
+                ));
+            }
+            None => notes.push("keine Signaturdatenbank im Standardpfad".into()),
+        }
+        let certs = clamscan
+            .parent()
+            .map(|p| p.join("certs"))
+            .unwrap_or_default();
+        plan.push((
+            "zertifikate_aufloesbar".into(),
+            format!("aufloesen:{}", certs.display()),
+            true,
+        ));
+        plan.push((
+            "zertifikate_lesbar".into(),
+            format!("lesen:{}", certs.display()),
+            true,
+        ));
+        match axsafe_engine_clamav::new_restricted_work_dir() {
+            Ok(w) => {
+                plan.push((
+                    "arbeitsordner_schreibbar".into(),
+                    format!("anlegen:{}", w.display()),
+                    true,
+                ));
+                cleanup.push(w);
+            }
+            Err(e) => notes.push(format!("Arbeitsordner nicht anlegbar: {e}")),
+        }
+        // Eine Datei, die nur der Benutzer lesen darf (Benutzer-Temp im Profil).
+        let tmp = std::env::temp_dir();
+        let secret = tmp.join(format!("axsafe-abschottung-{}.txt", std::process::id()));
+        if std::fs::write(&secret, b"nur fuer den Benutzer").is_ok() {
+            plan.push((
+                "benutzerdatei_unlesbar".into(),
+                format!("lesen:{}", secret.display()),
+                false,
+            ));
+            cleanup.push(secret);
+        } else {
+            notes.push("Testdatei im Benutzer-Temp nicht anlegbar".into());
+        }
+        plan.push((
+            "benutzer_temp_unbeschreibbar".into(),
+            format!("anlegen:{}", tmp.display()),
+            false,
+        ));
+        if let Some(pd) = clamscan.parent() {
+            plan.push((
+                "programmordner_unbeschreibbar".into(),
+                format!("anlegen:{}", pd.display()),
+                false,
+            ));
+        }
+    }
+    if let Some(t) = &netz_ziel {
+        // Namensauflösung hier (ohne Einschränkung), damit die Probe nur die
+        // Verbindung prüft und nicht an DNS scheitert.
+        match t
+            .to_socket_addrs()
+            .ok()
+            .and_then(|mut a| a.find(|x| x.is_ipv4()))
+        {
+            Some(addr) => plan.push((
+                if expect_net_open {
+                    "netz_erlaubt".into()
+                } else {
+                    "netz_gesperrt".into()
+                },
+                format!("tcp:{addr}"),
+                expect_net_open,
+            )),
+            None => notes.push(format!(
+                "Netzziel {t} nicht auflösbar – Netzprüfung nicht ausführbar"
+            )),
+        }
+    }
+    let worker = default_worker();
+    // Liegt die Probe im Benutzerprofil (z. B. Desktop), darf das
+    // eingeschränkte Token sie sonst nicht starten: nur diese eine Datei freigeben.
+    if let Err(e) = axsafe_proc::restricted_grant_execute(&worker) {
+        notes.push(format!("Probe {} nicht freigebbar: {e}", worker.display()));
+    }
+    let mut c = std::process::Command::new(&worker);
+    c.arg("--zugriffsprobe");
+    for (_, a, _) in &plan {
+        c.arg(a);
+    }
+    c.env_clear();
+    for (k, v) in axsafe_proc::minimal_env() {
+        c.env(k, v);
+    }
+    let limits = Limits {
+        timeout: std::time::Duration::from_secs(30),
+        ..Limits::default()
+    };
+    let run = run_sandboxed(c, None, &limits, &Sandbox::Restricted);
+    for p in &cleanup {
+        let _ = if p.is_dir() {
+            std::fs::remove_dir_all(p)
+        } else {
+            std::fs::remove_file(p)
+        };
+    }
+    let mut checks = Vec::new();
+    let mut all_ok = notes.is_empty();
+    match run {
+        Err(e) => {
+            all_ok = false;
+            notes.push(format!(
+                "Probe mit eingeschränktem Token nicht startbar: {e}"
+            ));
+        }
+        Ok(o) => {
+            let out = String::from_utf8_lossy(&o.stdout).to_string();
+            let lines: Vec<serde_json::Value> = out
+                .lines()
+                .filter_map(|l| serde_json::from_str(l).ok())
+                .collect();
+            if lines.len() != plan.len() || o.timed_out {
+                all_ok = false;
+                notes.push(format!(
+                    "Probe unvollständig ({} von {} Ergebnissen, Zeitüberschreitung: {}): {}",
+                    lines.len(),
+                    plan.len(),
+                    o.timed_out,
+                    String::from_utf8_lossy(&o.stderr)
+                ));
+            }
+            for ((id, arg, expected), l) in plan.iter().zip(lines.iter()) {
+                let allowed = l["allowed"].as_bool().unwrap_or(!expected);
+                let ok = allowed == *expected;
+                all_ok &= ok;
+                checks.push(serde_json::json!({
+                    "id": id, "probe": arg, "expected_allowed": expected,
+                    "allowed": allowed, "ok": ok, "detail": l["detail"],
+                }));
+            }
+        }
+    }
+    let rep = serde_json::json!({
+        "sandbox": "eingeschränktes Token (wie clamscan): keine Privilegien, Integrität Niedrig, Einschränkungs-SIDs RESTRICTED/Jeder/Benutzer/Anmelde-SID; Token vor dem Start geprüft",
+        "probe": worker.display().to_string(),
+        "ok": all_ok, "checks": checks, "notes": notes,
+    });
+    if json {
+        println!("{}", serde_json::to_string_pretty(&rep).unwrap_or_default());
+    } else {
+        for c in rep["checks"].as_array().into_iter().flatten() {
+            println!(
+                "{} {}: {} ({})",
+                if c["ok"].as_bool() == Some(true) {
+                    "OK  "
+                } else {
+                    "FEHL"
+                },
+                c["id"].as_str().unwrap_or(""),
+                if c["allowed"].as_bool() == Some(true) {
+                    "erlaubt"
+                } else {
+                    "verweigert"
+                },
+                c["detail"].as_str().unwrap_or("")
+            );
+        }
+        for n in &notes {
+            println!("HINWEIS {n}");
+        }
+    }
+    if all_ok {
+        ExitCode::from(0)
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+#[cfg(not(windows))]
+fn clamav_isolation_check(
+    _: Option<PathBuf>,
+    _: Option<PathBuf>,
+    _: Option<String>,
+    _: &str,
+    _: bool,
+    _: bool,
+) -> ExitCode {
+    eprintln!("Die ClamAV-Abschottung mit eingeschränktem Token gibt es nur unter Windows.");
+    ExitCode::from(2)
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
@@ -440,6 +692,21 @@ fn main() -> ExitCode {
             }
         }
         Cmd::Dienst { cmd } => dienst(cmd),
+        Cmd::ClamavAbschottung {
+            clamscan,
+            clamav_db,
+            netz_ziel,
+            netz_erwartet,
+            nur_netz,
+            json,
+        } => clamav_isolation_check(
+            clamscan,
+            clamav_db,
+            netz_ziel,
+            &netz_erwartet,
+            nur_netz,
+            json,
+        ),
         Cmd::Filetype { files } => {
             let mut code = 0u8;
             for f in files {

@@ -239,8 +239,9 @@ try {
             Log "Nicht mehr benötigtes AppContainer-Leserecht entfernt: $d"
         }
     }
-    $usersRead = { param($dir) @((Get-Acl $dir).Access | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-32-545' -and (($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::ReadAndExecute) -eq [Security.AccessControl.FileSystemRights]::ReadAndExecute) }).Count -gt 0 }
-    Check 'eingeschraenkt_lesbar' ((& $usersRead $DbDir) -and (& $usersRead (Join-Path $InstallDir 'certs'))) "Benutzer (und damit das eingeschränkte Token) lesen $DbDir und $InstallDir\certs"
+    # Ob das eingeschränkte Token Datenbank, Zertifikate und Arbeitsordner
+    # wirklich nutzen kann, prüft AXSafe weiter unten MIT DIESEM TOKEN
+    # (axsafe clamav-abschottung) – nicht anhand von ACL-Einträgen.
 
     # Netzwerk: Das eingeschränkte Token sperrt kein Netzwerk. Ausgehende
     # Verbindungen von clamscan.exe sperrt eine eigene Firewall-Regel
@@ -248,11 +249,16 @@ try {
     $fwName = 'AXSafe: clamscan ohne Netzwerk'
     Get-NetFirewallRule -DisplayName $fwName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     New-NetFirewallRule -DisplayName $fwName -Direction Outbound -Action Block -Program $clamscan -Profile Any -Description 'AXSafe: clamscan prüft nur übergebene Daten und braucht kein Netzwerk.' | Out-Null
-    $fw = Get-NetFirewallRule -DisplayName $fwName -ErrorAction SilentlyContinue
-    $fwApp = if ($fw) { ($fw | Get-NetFirewallApplicationFilter).Program } else { '' }
-    $fwOn = (Get-NetFirewallProfile | Where-Object { -not $_.Enabled }).Count -eq 0
-    Check 'firewall_clamscan' ($fw -and $fw.Enabled -eq 'True' -and $fw.Action -eq 'Block' -and $fwApp -eq $clamscan) "Ausgehend gesperrt: $fwApp (Regel '$fwName'; Firewall-Profile alle aktiv: $fwOn)"
-    if (-not $fwOn) { Log 'WARNUNG: Mindestens ein Firewall-Profil ist ausgeschaltet – dort wirkt die Sperrregel nicht.' }
+    $fw = @(Get-NetFirewallRule -DisplayName $fwName -ErrorAction SilentlyContinue)
+    $fwApp = if ($fw.Count -eq 1) { ($fw[0] | Get-NetFirewallApplicationFilter).Program } else { '' }
+    Check 'firewall_regel_clamscan' ($fw.Count -eq 1 -and "$($fw[0].Enabled)" -eq 'True' -and "$($fw[0].Action)" -eq 'Block' -and "$($fw[0].Direction)" -eq 'Outbound' -and $fwApp -eq $clamscan) "Regel '$fwName': ausgehend gesperrt für $fwApp"
+    # Eine Regel wirkt nur in eingeschalteten Profilen. AXSafe schaltet die
+    # Firewall NICHT selbst ein; ein ausgeschaltetes Profil ist ein Fehler.
+    $profiles = @(Get-NetFirewallProfile)
+    $off = @($profiles | Where-Object { "$($_.Enabled)" -ne 'True' } | ForEach-Object { $_.Name })
+    Check 'firewall_profile_aktiv' ($profiles.Count -gt 0 -and $off.Count -eq 0) $(if ($off.Count -gt 0) { "Ausgeschaltete Firewall-Profile: $($off -join ', ') – dort wirkt die Sperrregel NICHT. Bitte in den Windows-Sicherheitseinstellungen einschalten." } else { 'Domäne, Privat und Öffentlich eingeschaltet' })
+    $fc = @(Get-NetFirewallApplicationFilter -Program $freshclam -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object { "$($_.Action)" -eq 'Block' -and "$($_.Direction)" -eq 'Outbound' -and "$($_.Enabled)" -eq 'True' })
+    Check 'freshclam_nicht_gesperrt' ($fc.Count -eq 0) $(if ($fc.Count) { 'Sperrregel für freshclam.exe: ' + (($fc | ForEach-Object { $_.DisplayName }) -join ', ') } else { 'keine ausgehende Sperrregel für freshclam.exe' })
 
     # --- 5. FreshClam-Konfiguration ----------------------------------------
     if (Test-Path $ConfFile) {
@@ -373,6 +379,45 @@ try {
         $ok = $c -and $c.health.state -eq 'ready' -and $c.content_kind -eq 'official_signatures'
         Check 'e_axsafe' $ok "axsafe engines: clamav=$($c.health.state) $($c.content_kind) $($c.content_version) – $($c.content_note) $($c.health.reason)"
         Check 'e_axsafe_abschottung' ($c -and $c.isolation.enforced) "ClamAV-Isolation: $($c.isolation.kind) / $($c.isolation.detail)"
+
+        # Mit GENAU dem Token, das clamscan bekommt: Datenbank und Zertifikate
+        # lesbar, eigener Arbeitsordner beschreibbar, Benutzerdateien und
+        # Programmordner nicht.
+        $pr = Run $AxsafeCli @('clamav-abschottung', '--json', '--clamscan', $clamscan, '--clamav-db', $DbDir)
+        $pj = $null; try { $pj = $pr.Out | ConvertFrom-Json } catch { }
+        foreach ($k in @($(if ($pj) { $pj.checks } else { @() }))) {
+            Check ("token_" + $k.id) ([bool]$k.ok) ("{0}: {1} (erwartet {2}) – {3}" -f $k.probe, $(if ($k.allowed) { 'erlaubt' } else { 'verweigert' }), $(if ($k.expected_allowed) { 'erlaubt' } else { 'verweigert' }), $k.detail)
+        }
+        Check 'token_probe_vollstaendig' ($pr.Code -eq 0 -and $pj -and $pj.ok -and @($pj.notes).Count -eq 0) ("Exitcode {0}; Hinweise: {1} {2}" -f $pr.Code, $(if ($pj) { @($pj.notes) -join '; ' } else { '' }), $pr.Err.Trim())
+
+        # Netzsperre wirksam nachweisen. Die Firewall wirkt nicht auf
+        # Loopback, deshalb ein echtes Ziel (das auch FreshClam nutzt). Die
+        # Probe läuft mit demselben Token wie clamscan; eine vorübergehende,
+        # gleich gebaute Regel für die Probe zeigt, dass die Regelart greift.
+        $target = 'database.clamav.net:443'
+        $probeExe = Join-Path (Split-Path $AxsafeCli) 'axsafe-worker.exe'
+        $base = Run $AxsafeCli @('clamav-abschottung', '--json', '--nur-netz', '--netz-ziel', $target, '--netz-erwartet', 'erlaubt')
+        $bj = $null; try { $bj = $base.Out | ConvertFrom-Json } catch { }
+        $baseOpen = $bj -and @($bj.checks).Count -eq 1 -and $bj.checks[0].allowed
+        $tmpRule = 'AXSafe: Probe Netzsperre (vorübergehend)'
+        Get-NetFirewallRule -DisplayName $tmpRule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+        New-NetFirewallRule -DisplayName $tmpRule -Direction Outbound -Action Block -Program $probeExe -Profile Any | Out-Null
+        try {
+            Start-Sleep -Seconds 2
+            $blk = Run $AxsafeCli @('clamav-abschottung', '--json', '--nur-netz', '--netz-ziel', $target, '--netz-erwartet', 'gesperrt')
+            $kj = $null; try { $kj = $blk.Out | ConvertFrom-Json } catch { }
+        } finally {
+            Get-NetFirewallRule -DisplayName $tmpRule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+        }
+        $blocked = $kj -and @($kj.checks).Count -eq 1 -and -not $kj.checks[0].allowed
+        $detail = "ohne Regel: $(if ($bj -and @($bj.checks).Count) { $bj.checks[0].detail } else { 'keine Messung ' + (@($bj.notes) -join '; ') }) | mit gleich gebauter Regel: $(if ($kj -and @($kj.checks).Count) { $kj.checks[0].detail } else { 'keine Messung' })"
+        if (-not $bj -or @($bj.checks).Count -ne 1) {
+            Check 'netzsperre_wirksam' $false "Netzprüfung nicht ausführbar (Ziel $target nicht erreichbar oder nicht auflösbar): $detail"
+        } elseif ($baseOpen) {
+            Check 'netzsperre_wirksam' ($blocked -and (Test-Path $probeExe)) "Ziel $target – $detail"
+        } else {
+            Check 'netzsperre_wirksam' $blocked "Ziel $target bereits ohne Regel nicht erreichbar (Token oder Netz): $detail"
+        }
         $running = Get-Process AXSafe -ErrorAction SilentlyContinue
         if ($running) { Log 'Hinweis: Die AXSafe-Oberfläche läuft bereits; sie prüft Engines beim Start – bitte neu starten.' }
     } else {
