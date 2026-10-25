@@ -23,6 +23,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod persistent;
+
 use axsafe_core::engine::{
     ContentKind, Detection, Engine, EngineHealth, EngineInfo, EngineOutcome, Gap, GapReason,
     ScanInput,
@@ -136,6 +138,20 @@ pub struct ClamAvEngine {
     tempdir: Option<std::path::PathBuf>,
     /// Arbeitsordner gehört dieser Instanz und wird beim Ende entfernt.
     owns_tempdir: bool,
+    /// Höchster gemessener Speicherbedarf eines clamscan-Laufs (Windows: Job
+    /// Object; nur für Messungen).
+    peak_memory: std::sync::atomic::AtomicU64,
+}
+
+impl ClamAvEngine {
+    /// Höchster Speicherbedarf eines clamscan-Laufs, soweit das System ihn
+    /// misst (Windows: Job Object). `None` = nicht gemessen.
+    pub fn peak_memory_bytes(&self) -> Option<u64> {
+        match self.peak_memory.load(std::sync::atomic::Ordering::Relaxed) {
+            0 => None,
+            p => Some(p),
+        }
+    }
 }
 
 impl Drop for ClamAvEngine {
@@ -365,6 +381,63 @@ fn classify_database(files: &[PathBuf]) -> (ContentKind, String) {
     }
 }
 
+/// Stand einer Signaturdatenbank, aus den Dateien bestimmt (ohne ClamAV).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DbContent {
+    /// z. B. `main-63/daily-28164/bytecode-339` oder `db-sha256:…`.
+    pub version: String,
+    pub kind: ContentKind,
+    pub note: String,
+    /// Version der daily-Datenbank laut Dateikopf (nur offizielle Datenbank).
+    pub daily: Option<u64>,
+}
+
+/// Liest den Stand einer Datenbank (Ordner oder Datei). Offizielle
+/// Datenbanken nur über die Dateiköpfe (schnell), eigene über eine Prüfsumme.
+pub fn database_content(db: &Path) -> Result<DbContent, String> {
+    let files = db_files(db)
+        .map_err(|e| format!("Signaturdatenbank {} nicht lesbar: {e}", db.display()))?;
+    let official = official_versions(&files);
+    if let Some((_, d)) = official.iter().find(|(n, _)| n == "daily") {
+        let daily = d.version;
+        let version = official
+            .iter()
+            .map(|(n, h)| format!("{n}-{}", h.version))
+            .collect::<Vec<_>>()
+            .join("/");
+        let details = official
+            .iter()
+            .map(|(n, h)| {
+                format!(
+                    "{n} {} ({} Signaturen, {})",
+                    h.version, h.signatures, h.built
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        let (kind, _) = classify_database(&files);
+        return Ok(DbContent {
+            version,
+            kind,
+            note: format!(
+                "offizielle ClamAV-Signaturen: {details}; Pfad {}. Aktualisierung über \
+                 FreshClam (geplanter Auftrag), Stand siehe state\\last-update.json",
+                db.display()
+            ),
+            daily: Some(daily),
+        });
+    }
+    let d = database_digest(&files)
+        .map_err(|e| format!("Signaturdatenbank {} nicht lesbar: {e}", db.display()))?;
+    let (kind, note) = classify_database(&files);
+    Ok(DbContent {
+        version: d,
+        kind,
+        note,
+        daily: None,
+    })
+}
+
 impl ClamAvEngine {
     /// Prüft Programm und Datenbank sofort. Fehler ergeben `Unavailable`.
     pub fn new(cfg: ClamAvConfig) -> Self {
@@ -379,6 +452,7 @@ impl ClamAvEngine {
             },
             tempdir: None,
             owns_tempdir: false,
+            peak_memory: std::sync::atomic::AtomicU64::new(0),
         };
         if let Err(e) = engine.prepare_sandbox() {
             engine.unavailable(format!(
@@ -586,56 +660,13 @@ impl ClamAvEngine {
             }
         }
         if let Some(db) = self.cfg.database.clone() {
-            let official = db_files(&db).map(|f| official_versions(&f));
-            let res = match official {
-                // Offizielle Datenbank: Stand aus den Köpfen (ohne alle
-                // Signaturdaten bei jedem Start einzulesen).
-                Ok(o) if o.iter().any(|(n, _)| n == "daily") => db_files(&db).map(|files| {
-                    let version = o
-                        .iter()
-                        .map(|(n, h)| format!("{n}-{}", h.version))
-                        .collect::<Vec<_>>()
-                        .join("/");
-                    let details = o
-                        .iter()
-                        .map(|(n, h)| {
-                            format!(
-                                "{n} {} ({} Signaturen, {})",
-                                h.version, h.signatures, h.built
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("; ");
-                    let (kind, _) = classify_database(&files);
-                    (
-                        files,
-                        version,
-                        kind,
-                        format!(
-                            "offizielle ClamAV-Signaturen: {details}; Pfad {}. Aktualisierung über \
-                             FreshClam (geplanter Auftrag), Stand siehe state\\last-update.json",
-                            db.display()
-                        ),
-                    )
-                }),
-                _ => db_files(&db).and_then(|f| {
-                    let d = database_digest(&f)?;
-                    let (kind, note) = classify_database(&f);
-                    Ok((f, d, kind, note))
-                }),
-            };
-            match res {
-                Ok((_files, version, kind, note)) => {
-                    self.content_version = version;
-                    self.content_kind = kind;
-                    self.content_note = note;
+            match database_content(&db) {
+                Ok(c) => {
+                    self.content_version = c.version;
+                    self.content_kind = c.kind;
+                    self.content_note = c.note;
                 }
-                Err(e) => {
-                    return self.unavailable(format!(
-                        "Signaturdatenbank {} nicht lesbar: {e}",
-                        db.display()
-                    ));
-                }
+                Err(e) => return self.unavailable(e),
             }
         }
         // Echter Funktionstest: leere Eingabe muss sauber geprüft werden.
@@ -830,7 +861,13 @@ impl Engine for ClamAvEngine {
             &self.limits(input.timeout),
             &self.cfg.sandbox,
         ) {
-            Ok(r) => self.interpret(&r, start, input.timeout),
+            Ok(r) => {
+                if let Some(p) = r.peak_memory_bytes {
+                    self.peak_memory
+                        .fetch_max(p, std::sync::atomic::Ordering::Relaxed);
+                }
+                self.interpret(&r, start, input.timeout)
+            }
             Err(e) => self.failed(
                 start,
                 Verdict::Error,

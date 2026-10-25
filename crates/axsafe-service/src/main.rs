@@ -79,7 +79,13 @@ mod service {
                 ..ClamAvConfig::default()
             },
             log: Some(Arc::clone(&log)),
+            clamav_worker: Some(exe_dir.join("axsafe-clamav-worker.exe")).filter(|p| p.is_file()),
+            shared_clamav: Arc::new(Mutex::new(None)),
         };
+        log.line(match &runner.clamav_worker {
+            Some(_) => "ClamAV: dauerhaft geladene Engine (axsafe-clamav-worker)",
+            None => "ClamAV: axsafe-clamav-worker fehlt – clamscan je Objekt (langsam, B-18)",
+        });
         log.line(&format!(
             "Dienst startet: {} (Programm {}, Daten {})",
             axsafe_core::AXSAFE_VERSION,

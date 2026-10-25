@@ -46,11 +46,16 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Clippy (Warnungen sind Fehler)
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Lizenzprüfung GPL-Bestandteil (axsafe-clamav-worker lädt libclamav, GPL-2.0-only)
+        run: python3 scripts/check_gpl_component.py | tee lizenz-clamav-worker.txt
       - name: Tests (alle, auch mit externer Vorbedingung)
+        # Ausnahme: der Test mit der offiziellen ClamAV-Datenbank läuft im Job
+        # clamav-signatures (dort ist sie vorhanden) und unter Windows.
         shell: bash
         run: |
           set -o pipefail
-          cargo test --workspace --locked --no-fail-fast -- --include-ignored 2>&1 | tee cargo-test.log
+          cargo test --workspace --locked --no-fail-fast -- --include-ignored \
+            --skip worker_with_mismatching_official_db_version_is_rejected 2>&1 | tee cargo-test.log
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: ui/global.json
@@ -83,6 +88,7 @@ jobs:
             cargo-test.log
             trx/
             repro-befunde.txt
+            lizenz-clamav-worker.txt
 
   clamav-signatures:
     name: ClamAV · offizielle Signaturen und Updatepfad (eigener Nachweis)
@@ -140,6 +146,23 @@ jobs:
           print("Ergebnis:", r["outcome"], "Exit", rc, "– ClamAV-Fund:", clam(by["probe.com"])["detections"][0]["name"])
           assert rc == 1 and r["outcome"] == "detection", (rc, r["outcome"])
           PY
+      - name: Dauerhaft geladene Engine mit offizieller Datenbank (B-18, echte libclamav)
+        if: steps.fresh.outcome == 'success'
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p axsafe-clamav-worker --no-fail-fast -- --include-ignored 2>&1 | tee worker-offiziell.log
+      - name: Vorher/Nachher-Messung clamscan je Objekt gegen dauerhaft (identische Dateimenge)
+        if: steps.fresh.outcome == 'success'
+        shell: bash
+        run: |
+          cargo build --locked -p axsafe-cli -p axsafe-clamav-worker
+          D=$(mktemp -d)
+          python3 scripts/ci/messdateien.py "$D"
+          set +e; target/debug/axsafe clamav-messung "$D" --json messung-clamav-linux.json | tee messung-clamav-linux.txt; rc=${PIPESTATUS[0]}; set -e
+          rm -rf "$D"
+          cat messung-clamav-linux.txt >> "$GITHUB_STEP_SUMMARY"
+          test "$rc" = 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -147,6 +170,9 @@ jobs:
           path: |
             freshclam.log
             engines.json
+            worker-offiziell.log
+            messung-clamav-linux.json
+            messung-clamav-linux.txt
           if-no-files-found: ignore
 
   windows-clamav:
@@ -180,7 +206,7 @@ jobs:
           }
           if ($clash) { throw "Funktionsname kollidiert mit Alias: $($clash -join ', ')" }
       - name: AXSafe-CLI bauen (Release)
-        run: cargo build --release --locked -p axsafe-cli -p axsafe-service
+        run: cargo build --release --locked -p axsafe-cli -p axsafe-service -p axsafe-clamav-worker
       - name: ClamAV einrichten (Skript, wie auf dem PC)
         shell: powershell
         run: |
@@ -211,7 +237,17 @@ jobs:
         run: |
           set -o pipefail
           export PATH="/c/Program Files/ClamAV:$PATH"
-          cargo test --locked -p axsafe-engine-clamav -p axsafe-cli --no-fail-fast -- --include-ignored --skip report_target_windows_symlink 2>&1 | tee cargo-test-clamav.log
+          cargo test --locked -p axsafe-engine-clamav -p axsafe-cli -p axsafe-clamav-worker --no-fail-fast -- --include-ignored --skip report_target_windows_symlink 2>&1 | tee cargo-test-clamav.log
+      - name: Vorher/Nachher-Messung clamscan je Objekt gegen dauerhaft (identische Dateimenge)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          D="$RUNNER_TEMP/messdateien"
+          python scripts/ci/messdateien.py "$D"
+          set +e; target/release/axsafe.exe clamav-messung "$D" --json messung-clamav-windows.json | tee messung-clamav-windows.txt; rc=${PIPESTATUS[0]}; set -e
+          rm -rf "$D"
+          cat messung-clamav-windows.txt >> "$GITHUB_STEP_SUMMARY"
+          test "$rc" = 0
       - name: Dienst + echte ClamAV-Engine auf derselben Maschine (harmlos und EICAR über den Dienst)
         if: ${{ !cancelled() }}
         shell: powershell
@@ -238,6 +274,8 @@ jobs:
             clamav-nachweis/
             cargo-test-clamav.log
             appcontainer-pfad.log
+            messung-clamav-windows.json
+            messung-clamav-windows.txt
           if-no-files-found: ignore
 
   windows-service:

@@ -9,7 +9,8 @@ use crate::protocol::*;
 use crate::sandbox;
 use axsafe_core::engine::{Engine, ScanInput};
 use axsafe_engine_yarax::{YaraXEngine, YARAX_VERSION};
-use std::io::{self, Read, Write};
+use axsafe_workerproto::run_probe;
+use std::io::{self, Write};
 use std::time::Duration;
 
 fn send(out: &mut dyn Write, kind: u8, v: &impl serde::Serialize) -> io::Result<()> {
@@ -235,69 +236,4 @@ fn inject(
             }
         }
     }
-}
-
-fn check(action: &str, target: &str, r: Result<(), io::Error>) -> ProbeCheck {
-    ProbeCheck {
-        action: action.into(),
-        target: target.into(),
-        denied: r.is_err(),
-        detail: match r {
-            Ok(()) => "ERLAUBT".into(),
-            Err(e) => format!("verweigert: {e}"),
-        },
-    }
-}
-
-/// Versucht verbotene Aktionen. Schreibt und sendet nichts; eine
-/// versehentlich angelegte Probedatei wird sofort wieder entfernt.
-fn run_probe(p: &Probe) -> Vec<ProbeCheck> {
-    let mut v = Vec::new();
-    for path in &p.read_paths {
-        let r = std::fs::File::open(path).and_then(|mut f| {
-            let mut b = [0u8; 1];
-            f.read(&mut b).map(|_| ())
-        });
-        v.push(check("lesen", path, r));
-    }
-    for path in &p.write_paths {
-        let r = std::fs::OpenOptions::new()
-            .write(true)
-            .open(path)
-            .map(|_| ());
-        v.push(check("zum Schreiben öffnen", path, r));
-    }
-    for dir in &p.create_in {
-        let target =
-            std::path::Path::new(dir).join(format!("axsafe-probe-{}.tmp", std::process::id()));
-        let r = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&target)
-            .map(|_| {
-                let _ = std::fs::remove_file(&target);
-            });
-        v.push(check("Datei anlegen", dir, r));
-    }
-    for addr in &p.connect {
-        let r = addr
-            .parse::<std::net::SocketAddr>()
-            .map_err(io::Error::other)
-            .and_then(|a| std::net::TcpStream::connect_timeout(&a, Duration::from_secs(3)))
-            .map(|_| ());
-        v.push(check("TCP-Verbindung", addr, r));
-    }
-    for prog in &p.spawn {
-        let r = std::process::Command::new(prog)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map(|mut c| {
-                let _ = c.kill();
-                let _ = c.wait();
-            });
-        v.push(check("Programm starten", prog, r));
-    }
-    v
 }

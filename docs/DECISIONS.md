@@ -14,13 +14,14 @@
 | 2026-10-25 | E-08 | Dienstkonto **LocalService** statt LocalSystem: Der Dienst braucht nur `SeImpersonatePrivilege` (Dateien mit den Rechten des Auftraggebers lesen) und `SeChangeNotifyPrivilege`; alles andere wird über `sc privs` entzogen. Eigene Dienst-SID für die Ordner-ACLs | [ADR-0006](adr/ADR-0006-worker-isolation.md) |
 | 2026-10-25 | E-09 | Identität eines Pipe-Clients nur aus dem Token (Impersonation → Thread-Token → RevertToSelf), nie aus Nachrichtenfeldern; Eigentum = Benutzer-SID + Anmeldesitzung | ADR-0006 |
 | 2026-10-25 | E-10 | ClamAV unter Windows nur mit Rechtebeschränkung: eingeschränktes Token (Integrität Niedrig) plus ausgehende Firewall-Sperrregel, weil ClamAV 1.5 im AppContainer nicht startet (Pfadauflösung dort verweigert, gemessen). Ohne Abschottung „nicht verfügbar“; ungeschützter Betrieb nur per ausdrücklichem CLI-Schalter mit sichtbarem Hinweis, nie automatisch | ADR-0006, Test `appcontainer_path_resolution_is_measured` |
-| 2026-10-25 | E-11 | ClamAV wird **nicht mitgeliefert**, sondern vom Einrichtungsskript aus der offiziellen Quelle installiert – gilt, bis Alex D-07 entscheidet; AXSafe-Pakete enthalten damit keinen GPL-Code | `scripts/windows/setup-clamav.ps1` |
+| 2026-10-25 | E-11 | ClamAV wird **nicht mitgeliefert**, sondern vom Einrichtungsskript aus der offiziellen Quelle installiert – gilt, bis Alex D-07 entscheidet; AXSafe-Pakete enthalten damit keinen GPL-Code (der eigene `axsafe-clamav-worker` enthält keinen ClamAV-Code, lädt libclamav aber zur Laufzeit – siehe E-12) | `scripts/windows/setup-clamav.ps1` |
+| 2026-10-25 | E-12 | B-18: libclamav wird **dauerhaft in einem eigenen, abgeschotteten Worker** (`axsafe-clamav-worker`) geladen (Wahl von Alex, Option 2) statt clamd. Kein TCP-Port, nur eine anonyme Pipe zum startenden Prozess; dieselbe Abschottung wie clamscan (eingeschränktes Token, Integrität Niedrig, Job Object, Firewall-Sperrregel; Linux Landlock). Der Worker enthält nur GPL-2.0-verträgliche Abhängigkeiten, CI-geprüft. clamscan bleibt als Vergleichs- und Ausweichweg (`--clamav-modus clamscan`) | [LICENSE-REVIEW-libclamav.md](LICENSE-REVIEW-libclamav.md), ADR-0006 |
 
 ## Offen (Entscheidung durch Alex)
 
 | ID | Frage | Optionen | Blockiert |
 | --- | --- | --- | --- |
-| D-01 | Welche Projektlizenz? | Apache-2.0 · MIT · GPL · keine | Beiträge Dritter, Paketierung (B-08) |
+| D-01 | Welche Projektlizenz? | Apache-2.0 · MIT · GPL · keine | Beiträge Dritter, Paketierung (B-08). **Neu (B-18):** Die Crates im ClamAV-Worker (`axsafe-clamav-worker`, `axsafe-workerproto`, `axsafe-core`) brauchen vor einer Weitergabe eine GPL-2.0-verträgliche Lizenz (z. B. GPL-2.0-only oder zusätzlich MIT); reines Apache-2.0 genügt dort nicht ([LICENSE-REVIEW-libclamav.md](LICENSE-REVIEW-libclamav.md)) |
 | D-02 | Privatprojekt oder öffentliche/kommerzielle Bereitstellung? | privat · kostenlos öffentlich · kommerziell | CRA-Pfad, Signierung, Budget |
 | D-03 | Laborhost? | zweites Gerät · VMs auf dem Alltagsrechner (nur ohne reale Proben) · Cloud-VM | AXS-008 (B-02) |
 | D-04 | Secure Boot auf dem Alltagsrechner aktivieren? | ja · nein | nur Empfehlung, AXSafe ändert nichts selbst |

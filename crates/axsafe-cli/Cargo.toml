@@ -34,6 +34,7 @@ axsafe-proc = { path = "../axsafe-proc" }
 clap.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

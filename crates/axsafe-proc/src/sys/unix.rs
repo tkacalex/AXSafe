@@ -178,3 +178,15 @@ fn group_members_except_leader(pgid: libc::pid_t) -> bool {
 fn group_members_except_leader(_pgid: libc::pid_t) -> bool {
     false
 }
+
+/// Größter residenter Speicher (Bytes) aller bisher beendeten und
+/// abgewarteten Kindprozesse dieses Prozesses (`getrusage(RUSAGE_CHILDREN)`).
+/// Nur für Messungen.
+pub fn children_peak_rss() -> Option<u64> {
+    // SAFETY: getrusage schreibt nur in die übergebene, vollständig
+    // initialisierte Struktur.
+    let mut u: libc::rusage = unsafe { std::mem::zeroed() };
+    let r = unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut u) };
+    let kb = u64::try_from(u.ru_maxrss).ok()?;
+    (r == 0 && kb > 0).then_some(kb * 1024)
+}

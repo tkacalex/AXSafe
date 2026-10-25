@@ -101,3 +101,33 @@ Abweichung vom Entwurf: Der Dienst läuft als **LocalService**, nicht als LocalS
 * Process-Mitigation-Policies (dynamischer Code, signierte Images) sind noch nicht gesetzt.
 * Für `clamscan` (fremdes Programm) ist die Abschottung über Token-Prüfung und einen Test mit demselben Token (Benutzerdatei unlesbar, Schreiben verweigert) belegt, nicht über eine Probe im laufenden clamscan. Das eingeschränkte Token ist schwächer als ein AppContainer: Dateien, die „Jeder“ oder „Benutzer“ lesen dürfen (z. B. `C:\Users\Public`), bleiben lesbar; Netzwerk hängt an der Firewall-Regel.
 * ClamAV im AppContainer wäre möglich, wenn ClamAV den Zertifikatsordner ohne DOS-Pfadauflösung prüfte – Meldung an das ClamAV-Projekt ist ein sinnvoller nächster Schritt.
+
+### Schritt 3 – Dauerhaft geladene ClamAV-Engine (B-18, 2026-10-25)
+
+**Problem:** `clamscan` lud die offizielle Datenbank für jedes Objekt neu (Zielrechner: ~16,8 s je Datei).
+
+**Geprüfte Wege:**
+
+1. **clamd:** lädt einmal, ist unter Windows aber nur über TCP erreichbar (`LocalSocket` nennt ClamAV dort „not supported“). Ein TCP-Port auf Loopback ist für jeden lokalen Prozess erreichbar, auch für andere Benutzer. Damit wäre die Zuordnung von Ergebnissen zu Aufträgen nicht mehr an den Prozess gebunden. Verworfen.
+2. **libclamav im eigenen Worker:** gewählt von Alex.
+
+**Aufbau:**
+
+| Punkt | Umsetzung | Nachweis |
+| --- | --- | --- |
+| Programm | `axsafe-clamav-worker` lädt libclamav dynamisch aus der ClamAV-Installation (`Program Files\ClamAV\libclamav.dll` bzw. `libclamav.so.12`); nur GPL-2.0-verträgliche Abhängigkeiten | `check_gpl_component.py` |
+| Kanal | anonyme Pipe stdin/stdout zum startenden Prozess, Rahmen mit Längenangabe (Steuerung ≤ 1 MiB, Antwort ≤ 1 MiB), genau eine offene Anfrage. Kein Netz, keine benannte Pipe, nichts, was ein anderer Benutzer öffnen könnte | `parallel_jobs_get_their_own_results` |
+| Daten | nur Bytes, die der Host (Dienst: unter Impersonation des Auftraggebers) gelesen hat; der Worker kennt keine Pfade | Code, ADR Schritt 2 |
+| Rechte (Windows) | wie clamscan: eingeschränktes Token, Integrität Niedrig, Job Object (1 Prozess, Speichergrenze 4 GiB), eigener Arbeitsordner, minimale Umgebung; der Worker prüft sein Token selbst, bevor er Eingaben liest. Netz: ausgehende Firewall-Sperrregel für das Worker-Programm (`install-service.ps1`, `setup-clamav.ps1`) | Zugriffsprobe bei jedem Start, `firewall_regel_clamav_worker`, `worker_ohne_netz` |
+| Rechte (Linux, Entwicklung) | Landlock nach dem Laden: nur der Arbeitsordner, kein Ausführen, TCP gesperrt (ABI ≥ 4) | Probe bei jedem Start |
+| Prüfung je Start | Protokollversion; Datenbank geladen; geladener daily-Stand = Dateiköpfe; nur festgelegte Umgebungsvariablen; Probe: fremde Datei lesen/schreiben, im Host-Temp anlegen, Prozess starten → verweigert (Loopback-TCP unter Windows nur ausgewiesen) | `worker_with_mismatching_official_db_version_is_rejected` |
+| Grenzen | Objektgröße (Standard 256 MiB), libclamav-Grenzen (Datei, Scan-Menge, Rekursion, Dateien, Scanzeit), Zeitbudget je Objekt + 5 s, Warteschlange 120 s, Neustarts 3 | Tests B-18 |
+| Ausfall | Absturz, Hänger, Protokollbruch → Lücke, Worker beendet, nächster Auftrag startet neu; danach „nicht verfügbar“ | Tests B-18 |
+| Update | neuer Datenbankstand → neuer Worker wird vollständig geprüft, erst dann Umschalten; sonst bleibt der alte Stand aktiv, Fehler in `content_note` | `signature_update_becomes_active_only_after_successful_load` |
+| Speicher | Leerlauf 10 min → Worker beendet | `idle_worker_is_stopped_and_restarted_on_demand` |
+
+**Grenzen:**
+
+* Loopback-TCP ist unter Windows für den Worker nicht gesperrt, wie bei clamscan: Das Token sperrt kein Netz, und die Firewall erfasst Loopback nicht. Die Probe weist das aus.
+* Ein Objekt, das libclamav sehr lange beschäftigt, blockiert die gemeinsame Engine bis zu seinem Zeitbudget. Andere Aufträge warten bis zur Warteschlangengrenze und bekommen danach die Lücke „ausgelastet“.
+* Der Abbruch eines Auftrags wirkt zwischen Objekten. Ein laufender libclamav-Scan endet erst an seiner Zeitgrenze.

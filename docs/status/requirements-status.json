@@ -114,8 +114,8 @@
     "AXS-021": {
       "status": "teilweise",
       "where": "crates/axsafe-engine-clamav",
-      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen); YARA-X-Worker: Absturz/Hänger/Protokollbruch bleiben im Worker, Neustart beim nächsten Objekt (Windows Server und Linux getestet); ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, nur eigener Arbeitsordner beschreibbar), Netzwerk per Firewall-Regel gesperrt",
-      "rest": "LTSC (B-02)"
+      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen); YARA-X-Worker: Absturz/Hänger/Protokollbruch bleiben im Worker, Neustart beim nächsten Objekt (Windows Server und Linux getestet); ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, nur eigener Arbeitsordner beschreibbar), Netzwerk per Firewall-Regel gesperrt; B-18: libclamav dauerhaft im abgeschotteten axsafe-clamav-worker (Datenbank einmal laden, Ausfall/Hänger/Warteschlange/Größe als Lücke, Update erst nach erfolgreichem Laden aktiv, Tests mit echter libclamav)",
+      "rest": "LTSC (B-02); Messung mit neuem Paket auf dem Zielrechner (B-18)"
     },
     "AXS-022": {
       "status": "teilweise",

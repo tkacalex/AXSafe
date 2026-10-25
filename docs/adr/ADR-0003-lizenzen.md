@@ -13,7 +13,7 @@ Fremder Code, Regeln, Daten, Modelle und Marken werden **getrennt** erfasst.
 | --- | --- |
 | Apache-2.0 | permissiv, Patentklausel, verträglich mit allen aktuellen Rust-Abhängigkeiten |
 | MIT | permissiv, sehr verbreitet |
-| GPL-2.0-or-later / GPL-3.0 | Copyleft; vereinfacht eine spätere Mitlieferung von ClamAV, schränkt aber kommerzielle Nutzung ein |
+| GPL-2.0-only / GPL-2.0-or-later / GPL-3.0 | Copyleft; kommerzielle Nutzung und Verkauf sind erlaubt, Weitergabe aber nur mit Quelltext unter derselben Lizenz (keine geschlossene Software). GPL-3.0 und Apache-2.0 sind vereinbar, GPL-2.0-only und Apache-2.0 nicht |
 | keine (Status quo) | maximale Kontrolle, aber keine Beiträge Dritter rechtssicher möglich |
 
 Die Wahl einer offenen Lizenz ist für veröffentlichte Stände **nicht rückholbar**. Sie wird daher bewusst vom Inhaber getroffen ([`DECISIONS.md`](../DECISIONS.md), D-01).
@@ -23,7 +23,7 @@ Die Wahl einer offenen Lizenz ist für veröffentlichte Stände **nicht rückhol
 | Komponente | Lizenz | Nutzung heute | Pflicht vor Weitergabe |
 | --- | --- | --- | --- |
 | YARA-X 1.22.0 | BSD-3-Clause | statisch eingebunden | Lizenztext + Copyright mitliefern |
-| ClamAV 1.5.4 | GPL-2.0 | **separat installiert**, Aufruf als Prozess, **nicht mitgeliefert** | Bei Mitlieferung: GPL-Pflichten (Quelltext, Lizenz) prüfen. *Ein separater Prozess ist keine pauschale Freistellung.* |
+| ClamAV 1.5.4 / libclamav | GPL-2.0-only (OpenSSL-Ausnahme) | **separat installiert, nicht mitgeliefert**; libclamav wird im eigenen Programm `axsafe-clamav-worker` geladen (B-18), clamscan bleibt als Vergleichsweg | Der Worker darf nur GPL-2.0-verträgliche Abhängigkeiten enthalten (CI: `scripts/check_gpl_component.py`); vor Weitergabe des Workers Lizenz der Worker-Crates festlegen (D-01). Siehe [`LICENSE-REVIEW-libclamav.md`](../LICENSE-REVIEW-libclamav.md). *Ein separater Prozess ist keine pauschale Freistellung.* |
 | Rust-Abhängigkeiten (209 Pakete) | MIT/Apache-2.0/BSD/Zlib/Unicode-3.0 u. a. | statisch eingebunden | Automatisch geprüft mit `cargo-deny` (`deny.toml`), SBOM je Release |
 | .NET 10 / WPF | MIT | Laufzeit | Hinweise mitliefern |
 

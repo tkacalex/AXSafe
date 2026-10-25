@@ -22,6 +22,7 @@ if ($svc) {
 } else {
     Write-Host "Dienst $Name nicht vorhanden."
 }
+Get-NetFirewallRule -DisplayName 'AXSafe: ClamAV-Worker (Dienst) ohne Netzwerk' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir; Write-Host "Programmordner entfernt: $InstallDir" }
 if ($RemoveData) {
     $d = Join-Path $env:ProgramData 'AXSafe\Service'

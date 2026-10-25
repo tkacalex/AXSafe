@@ -7,7 +7,10 @@ $ErrorActionPreference = 'Stop'
 
 # CLI in Unterordner: Windows unterscheidet axsafe.exe und AXSafe.exe nicht.
 New-Item -ItemType Directory "$Dist/cli/rules" -Force | Out-Null
-Copy-Item target/release/axsafe.exe, target/release/axsafe-worker.exe, target/release/axsafe-service.exe "$Dist/cli/"
+# axsafe-clamav-worker.exe lädt libclamav (GPL-2.0-only) aus der separat
+# installierten ClamAV-Installation; ClamAV selbst wird NICHT mitgeliefert
+# (docs/LICENSE-REVIEW-libclamav.md).
+Copy-Item target/release/axsafe.exe, target/release/axsafe-worker.exe, target/release/axsafe-clamav-worker.exe, target/release/axsafe-service.exe "$Dist/cli/"
 Copy-Item -Recurse rules/* "$Dist/cli/rules/"
 # Einrichtungsskripte (Dienst, ClamAV) – laufen nur nach ausdrücklicher UAC-Bestätigung.
 New-Item -ItemType Directory "$Dist/scripts/windows" -Force | Out-Null

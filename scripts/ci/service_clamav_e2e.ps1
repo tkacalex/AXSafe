@@ -50,6 +50,55 @@ try {
     $names = @($ec.detections | ForEach-Object { $_.name }) -join ', '
     Check 'eicar_durch_clamav' ($ec -and $ec.verdict -eq 'Malicious' -and $names -match 'Eicar' -and $names -notmatch 'AXSafe' -and @($ec.gaps).Count -eq 0) "eicar.com: clamav $($ec.verdict) ($names), Inhalt $($ec.content_version)"
     Check 'keine_luecken' ($rep.complete -eq $true -and @($rep.job_gaps).Count -eq 0 -and $rep.summary.incomplete -eq 0) "outcome $($rep.outcome), complete $($rep.complete), Auftragslücken $(@($rep.job_gaps).Count), Objekte mit Lücke $($rep.summary.incomplete)"
+    # B-18: dauerhaft geladene Engine im Dienst.
+    Check 'dauerhaft_geladen' ($sc.content_note -match 'dauerhaft geladen im ClamAV-Worker' -and $sc.isolation.enforced) "Auftrag: $($sc.content_note) / $($sc.isolation.detail)"
+    $cw = Join-Path $env:ProgramFiles 'AXSafe\service\axsafe-clamav-worker.exe'
+    $fw = @(Get-NetFirewallApplicationFilter -Program $cw -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object { "$($_.Action)" -eq 'Block' -and "$($_.Direction)" -eq 'Outbound' -and "$($_.Enabled)" -eq 'True' })
+    Check 'worker_ohne_netz' ($fw.Count -ge 1) "Firewall-Sperrregel für ${cw}: $(($fw | ForEach-Object { $_.DisplayName }) -join ', ')"
+    $dur1 = @($rep.files | ForEach-Object { ($_.engines | Where-Object { $_.engine -eq 'clamav' }).duration_ms })
+    Log "ClamAV-Dauer je Datei im ersten Auftrag (ms): $($dur1 -join ', ')"
+
+    # Zwei Aufträge gleichzeitig: jeder bekommt seine eigenen Ergebnisse,
+    # die Datenbank wird nicht neu geladen (Worker-Start Nr. bleibt gleich).
+    New-Item -ItemType Directory -Force -Path "$root\a", "$root\b" | Out-Null
+    1..15 | ForEach-Object { Set-Content "$root\a\harmlos$_.txt" ("Auftrag A Datei $_ " * 50) -Encoding ASCII }
+    1..15 | ForEach-Object { Set-Content "$root\b\harmlos$_.txt" ("Auftrag B Datei $_ " * 50) -Encoding ASCII }
+    Copy-Item "$root\eicar.com" "$root\b\eicar-b.com"
+    $pa = Start-Process $cli -ArgumentList @('dienst', 'scan', "$root\a", '--clamav', '--warten') -PassThru -WindowStyle Hidden -RedirectStandardOutput "$root\a.json"
+    $pb = Start-Process $cli -ArgumentList @('dienst', 'scan', "$root\b", '--clamav', '--warten') -PassThru -WindowStyle Hidden -RedirectStandardOutput "$root\b.json"
+    $pa.WaitForExit(600000) | Out-Null; $pb.WaitForExit(600000) | Out-Null
+    $ra = (Get-Content "$root\a.json" -Raw -Encoding UTF8 | ConvertFrom-Json).result.report
+    $rb = (Get-Content "$root\b.json" -Raw -Encoding UTF8 | ConvertFrom-Json).result.report
+    $ra | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $EvidenceDir 'dienst-clamav-parallel-a.json') -Encoding UTF8
+    $rb | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $EvidenceDir 'dienst-clamav-parallel-b.json') -Encoding UTF8
+    $aOk = $ra -and $ra.outcome -eq 'no_detection' -and $ra.complete -and @($ra.files).Count -eq 15 -and -not ($ra.files | Where-Object { $_.path -notlike "*axsafe-dienst-clamav\a\*" })
+    $bFund = @($rb.files | Where-Object { @($_.engines | Where-Object { $_.engine -eq 'clamav' -and $_.verdict -eq 'Malicious' }).Count -gt 0 } | ForEach-Object { Split-Path $_.path -Leaf })
+    $bOk = $rb -and $rb.outcome -eq 'detection' -and $rb.complete -and @($rb.files).Count -eq 16 -and ($bFund -join ',') -eq 'eicar-b.com' -and -not ($rb.files | Where-Object { $_.path -notlike "*axsafe-dienst-clamav\b\*" })
+    Check 'parallel_eigene_ergebnisse' ($aOk -and $bOk -and $ra.job_id -ne $rb.job_id) "A: $($ra.outcome) $(@($ra.files).Count) Dateien; B: $($rb.outcome) $(@($rb.files).Count) Dateien, ClamAV-Fund nur in $($bFund -join ',')"
+    $na = ($ra.scope.engines | Where-Object { $_.name -eq 'clamav' }).content_note
+    $nb = ($rb.scope.engines | Where-Object { $_.name -eq 'clamav' }).content_note
+    $start0 = if ($sc.content_note -match 'Worker-Start Nr\. (\d+)') { $Matches[1] } else { '?' }
+    $startA = if ($na -match 'Worker-Start Nr\. (\d+)') { $Matches[1] } else { '?' }
+    $startB = if ($nb -match 'Worker-Start Nr\. (\d+)') { $Matches[1] } else { '?' }
+    Check 'datenbank_einmal_geladen' ($start0 -ne '?' -and $start0 -eq $startA -and $startA -eq $startB) "Worker-Start Nr.: erster Auftrag $start0, parallel A $startA, B $startB"
+    $durA = @($ra.files | ForEach-Object { ($_.engines | Where-Object { $_.engine -eq 'clamav' }).duration_ms })
+    Log "ClamAV-Dauer je Datei, Auftrag A (ms): $($durA -join ', ')"
+
+    # Abbruch eines laufenden Auftrags; danach arbeitet die gemeinsame Engine weiter.
+    New-Item -ItemType Directory -Force -Path "$root\viele" | Out-Null
+    1..200 | ForEach-Object { Set-Content "$root\viele\f$_.txt" ("x$_ " * 500) -Encoding ASCII }
+    $st = Dienst @('scan', "$root\viele", '--clamav')
+    $jid = $st.Json.result.job_id
+    Start-Sleep -Milliseconds 300
+    $c = Dienst @('abbrechen', $jid)
+    $deadline = (Get-Date).AddSeconds(120)
+    do { Start-Sleep -Milliseconds 500; $j = Dienst @('auftrag', $jid) } while ($j.Json.result.state -in 'queued', 'running' -and (Get-Date) -lt $deadline)
+    $cr = (Dienst @('bericht', $jid)).Json.result.report
+    Check 'abbruch' ($c.Code -eq 0 -and $cr.cancelled -eq $true -and $cr.complete -eq $false -and $cr.outcome -ne 'no_detection') "Bericht: cancelled=$($cr.cancelled), complete=$($cr.complete), outcome=$($cr.outcome), geprüft $(@($cr.files).Count) von 200"
+    $r2 = Dienst @('scan', "$root\eicar.com", '--clamav', '--warten')
+    $e2 = ($r2.Json.result.report.files[0].engines | Where-Object { $_.engine -eq 'clamav' })
+    Check 'nach_abbruch_weiter' ($e2.verdict -eq 'Malicious' -and @($e2.gaps).Count -eq 0) "eicar.com nach Abbruch: clamav $($e2.verdict) $($e2.duration_ms) ms"
+
     $svcLog = Get-Content "$env:ProgramData\AXSafe\Service\logs\service.log" -Raw -Encoding UTF8
     $line = ($svcLog -split "`n" | Where-Object { $_ -match [regex]::Escape($rep.job_id) }) -join ' '
     Check 'dienstprotokoll' ($line -match 'clamav' -and $line -match 'main-\d+') "Protokoll: $line"

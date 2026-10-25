@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+mod messung;
 mod report_target;
 
 use axsafe_core::engine::{ContentKind, Engine, EngineHealth, EngineInfo, IsolationKind};
@@ -66,6 +67,22 @@ struct EngineArgs {
     /// wird in der Isolationsangabe sichtbar ausgewiesen)
     #[arg(long)]
     clamav_ohne_abschottung: bool,
+    /// ClamAV-Betriebsart: `dauerhaft` (libclamav einmal im isolierten
+    /// axsafe-clamav-worker laden, B-18), `clamscan` (je Objekt neu, langsam)
+    /// oder `auto` (dauerhaft, wenn der Worker vorhanden ist und kein
+    /// --clamscan angegeben wurde)
+    #[arg(long, value_enum, default_value_t = ClamAvModus::Auto)]
+    clamav_modus: ClamAvModus,
+    /// Pfad zum ClamAV-Worker. Standard: axsafe-clamav-worker neben axsafe
+    #[arg(long)]
+    clamav_worker: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum ClamAvModus {
+    Auto,
+    Dauerhaft,
+    Clamscan,
 }
 
 #[derive(Subcommand)]
@@ -132,6 +149,28 @@ enum Cmd {
         /// Maschinenlesbar als JSON ausgeben
         #[arg(long)]
         json: bool,
+    },
+    /// Vorher/Nachher-Messung (B-18): clamscan je Objekt gegen die dauerhaft
+    /// geladene ClamAV-Engine auf GENAU denselben Dateien des Ordners
+    ClamavMessung {
+        /// Ordner mit den Messdateien (nicht rekursiv)
+        #[arg(required = true)]
+        ordner: PathBuf,
+        #[arg(long)]
+        clamscan: Option<PathBuf>,
+        #[arg(long)]
+        clamav_db: Option<PathBuf>,
+        #[arg(long)]
+        clamav_worker: Option<PathBuf>,
+        /// Zeitbudget je Datei in Sekunden
+        #[arg(long, default_value_t = 120)]
+        zeit: u64,
+        /// Höchstzahl Dateien
+        #[arg(long, default_value_t = 200)]
+        max_dateien: usize,
+        /// Ergebnis als JSON in diese NEUE Datei schreiben
+        #[arg(long)]
+        json: Option<PathBuf>,
     },
     /// Dateityp nach Inhalt bestimmen (ohne Engine)
     Filetype {
@@ -301,9 +340,36 @@ fn build_engines(a: &EngineArgs, max_scan_bytes: Option<u64>) -> Vec<Box<dyn Eng
         if a.clamav_ohne_abschottung {
             cfg.sandbox = axsafe_proc::Sandbox::None;
         }
-        v.push(Box::new(ClamAvEngine::new(cfg)));
+        let worker = a
+            .clamav_worker
+            .clone()
+            .unwrap_or_else(default_clamav_worker);
+        let persistent = match a.clamav_modus {
+            ClamAvModus::Dauerhaft => true,
+            ClamAvModus::Clamscan => false,
+            ClamAvModus::Auto => a.clamscan.is_none() && worker.is_file(),
+        };
+        if persistent {
+            let ws = axsafe_engine_clamav::persistent::WorkerSettings::new(worker, &cfg);
+            v.push(Box::new(
+                axsafe_engine_clamav::persistent::ClamAvWorkerEngine::start(
+                    ws,
+                    cfg.clamscan.clone(),
+                ),
+            ));
+        } else {
+            v.push(Box::new(ClamAvEngine::new(cfg)));
+        }
     }
     v
+}
+
+fn default_clamav_worker() -> PathBuf {
+    let name = format!("axsafe-clamav-worker{}", std::env::consts::EXE_SUFFIX);
+    std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join(&name)))
+        .unwrap_or_else(|| PathBuf::from(name))
 }
 
 fn content_label(k: ContentKind) -> &'static str {
@@ -707,6 +773,56 @@ fn main() -> ExitCode {
             nur_netz,
             json,
         ),
+        Cmd::ClamavMessung {
+            ordner,
+            clamscan,
+            clamav_db,
+            clamav_worker,
+            zeit,
+            max_dateien,
+            json,
+        } => {
+            let mut cfg = ClamAvConfig::default();
+            if let Some(p) = clamscan {
+                cfg.clamscan = p;
+            }
+            if clamav_db.is_some() {
+                cfg.database = clamav_db;
+            }
+            let r = messung::measure(messung::Args {
+                dir: ordner,
+                cfg,
+                worker: clamav_worker.unwrap_or_else(default_clamav_worker),
+                timeout: std::time::Duration::from_secs(zeit),
+                max_files: max_dateien,
+            });
+            match r {
+                Ok(r) => {
+                    messung::print(&r);
+                    if let Some(p) = json {
+                        let t = serde_json::to_string_pretty(&r).unwrap_or_default();
+                        let w = std::fs::OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .open(&p)
+                            .and_then(|mut f| std::io::Write::write_all(&mut f, t.as_bytes()));
+                        if let Err(e) = w {
+                            eprintln!("{}: {e}", p.display());
+                            return ExitCode::from(3);
+                        }
+                    }
+                    if r.results_identical {
+                        ExitCode::from(0)
+                    } else {
+                        ExitCode::from(1)
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::from(2)
+                }
+            }
+        }
         Cmd::Filetype { files } => {
             let mut code = 0u8;
             for f in files {

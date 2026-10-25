@@ -1224,3 +1224,109 @@ pub fn restricted_grant_execute(file: &std::path::Path) -> io::Result<()> {
         NO_INHERITANCE,
     )
 }
+
+/// Wem eine Probedatei gehören soll (nur diese SIDs erhalten Zugriff).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeOwner {
+    /// Nur der aktuelle Benutzer (Prozesstoken-Benutzer).
+    CurrentUser,
+    /// Nur SYSTEM und Administratoren (wie die Datei eines fremden Benutzers
+    /// aus Sicht eines Dienstkontos).
+    SystemAndAdmins,
+}
+
+/// Legt eine Datei an und setzt eine GESCHÜTZTE DACL, die nur `owner` Zugriff
+/// gibt (Isolationsprobe: „darf ein eingeschränkter Prozess das lesen?“).
+pub fn create_probe_file(path: &std::path::Path, data: &[u8], owner: ProbeOwner) -> io::Result<()> {
+    use windows_sys::Win32::Security::Authorization::{
+        SetEntriesInAclW, SetNamedSecurityInfoW as SetSec, EXPLICIT_ACCESS_W, SET_ACCESS,
+    };
+    use windows_sys::Win32::Security::{
+        WinBuiltinAdministratorsSid, WinLocalSystemSid, PROTECTED_DACL_SECURITY_INFORMATION,
+    };
+    use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+    std::fs::write(path, data)?;
+    let mut sids: Vec<Vec<u64>> = Vec::new();
+    match owner {
+        ProbeOwner::CurrentUser => {
+            use windows_sys::Win32::Security::TOKEN_QUERY;
+            let mut tok: HANDLE = std::ptr::null_mut();
+            // SAFETY: eigenes Prozesstoken, nur lesen.
+            if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut tok) } == 0 {
+                return Err(last_err("OpenProcessToken"));
+            }
+            let _g = Handle(tok);
+            sids.push(token_user_sid(tok)?);
+        }
+        ProbeOwner::SystemAndAdmins => {
+            for k in [WinLocalSystemSid, WinBuiltinAdministratorsSid] {
+                let b = well_known_sid(k)?;
+                let mut v = vec![0u64; b.len().div_ceil(8)];
+                // SAFETY: Puffer groß genug.
+                unsafe {
+                    std::ptr::copy_nonoverlapping(b.as_ptr(), v.as_mut_ptr() as *mut u8, b.len())
+                };
+                sids.push(v);
+            }
+        }
+    }
+    let entries: Vec<EXPLICIT_ACCESS_W> = sids
+        .iter()
+        .map(|sid| EXPLICIT_ACCESS_W {
+            grfAccessPermissions: FILE_ALL_ACCESS,
+            grfAccessMode: SET_ACCESS,
+            grfInheritance: NO_INHERITANCE,
+            Trustee: TRUSTEE_W {
+                pMultipleTrustee: std::ptr::null_mut(),
+                MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
+                TrusteeForm: TRUSTEE_IS_SID,
+                TrusteeType: TRUSTEE_IS_WELL_KNOWN_GROUP,
+                ptstrName: sid.as_ptr() as *mut u16,
+            },
+        })
+        .collect();
+    let p = wide(path.as_os_str());
+    // SAFETY: Einträge und SIDs leben bis nach den Aufrufen; neue ACL wird freigegeben.
+    unsafe {
+        let mut acl: *mut ACL = std::ptr::null_mut();
+        let rc = SetEntriesInAclW(
+            entries.len() as u32,
+            entries.as_ptr(),
+            std::ptr::null(),
+            &mut acl,
+        );
+        if rc != 0 {
+            return Err(io::Error::from_raw_os_error(rc as i32));
+        }
+        let rc = SetSec(
+            p.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            acl,
+            std::ptr::null(),
+        );
+        LocalFree(acl as _);
+        if rc != 0 {
+            return Err(io::Error::from_raw_os_error(rc as i32));
+        }
+    }
+    Ok(())
+}
+
+/// Ob der aktuelle Prozess unter LocalService oder NetworkService läuft.
+pub fn running_as_service_account() -> bool {
+    use windows_sys::Win32::Security::TOKEN_QUERY;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+    let mut tok: HANDLE = std::ptr::null_mut();
+    // SAFETY: eigenes Prozesstoken, nur lesen.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut tok) } == 0 {
+        return false;
+    }
+    let _g = Handle(tok);
+    token_user_sid(tok)
+        .map(|b| is_service_account(b.as_ptr() as PSID))
+        .unwrap_or(false)
+}

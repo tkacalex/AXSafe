@@ -7,15 +7,22 @@
 //! * ClamAV läuft – wenn beauftragt – mit eingeschränktem Token (siehe
 //!   axsafe-engine-clamav); scheitert die Abschottung, ist ClamAV nicht
 //!   verfügbar (Lücke), nie unbeschränkt.
+//! * B-18: Ist `axsafe-clamav-worker` vorhanden, teilen sich alle Aufträge
+//!   EINE dauerhaft geladene ClamAV-Engine (Signaturen einmal laden). Der
+//!   Worker bekommt nur Bytes, die der Dienst mit den Rechten des
+//!   Auftraggebers gelesen hat; Antworten gehören zur jeweils einen offenen
+//!   Anfrage (synchron über eine anonyme Pipe).
 
 use crate::jobs::{JobRunner, JobSpec};
 use axsafe_core::engine::Engine;
 use axsafe_core::report::{ExecutedBy, ScanLimits, ScanReport};
 use axsafe_core::scan::{NoProgress, Scanner};
+use axsafe_engine_clamav::persistent::{ClamAvWorkerEngine, WorkerSettings};
 use axsafe_engine_clamav::{ClamAvConfig, ClamAvEngine};
 use axsafe_worker::host::{WorkerConfig, WorkerEngine};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct ServiceRunner {
@@ -25,6 +32,10 @@ pub struct ServiceRunner {
     pub clamav: ClamAvConfig,
     /// Dienstprotokoll: eine Zeile je Auftrag mit Engines und Lücken.
     pub log: Option<std::sync::Arc<crate::log::Log>>,
+    /// Dauerhafter ClamAV-Worker (B-18). `None` = clamscan je Objekt.
+    pub clamav_worker: Option<PathBuf>,
+    /// Gemeinsame ClamAV-Engine aller Aufträge (erst beim ersten Bedarf).
+    pub shared_clamav: Arc<Mutex<Option<Arc<ClamAvWorkerEngine>>>>,
 }
 
 impl ServiceRunner {
@@ -38,9 +49,27 @@ impl ServiceRunner {
         cfg.memory_bytes = Some(axsafe_worker::host::memory_for(self.limits.max_file_size));
         let mut v: Vec<Box<dyn Engine>> = vec![Box::new(WorkerEngine::start(cfg))];
         if use_clamav {
-            v.push(Box::new(ClamAvEngine::new(self.clamav.clone())));
+            match &self.clamav_worker {
+                Some(_) => v.push(Box::new(self.clamav_engine())),
+                None => v.push(Box::new(ClamAvEngine::new(self.clamav.clone()))),
+            }
         }
         v
+    }
+
+    /// Die gemeinsame, dauerhaft geladene ClamAV-Engine (beim ersten Aufruf
+    /// gestartet). Fällt ihr Worker aus oder ändert sich die Datenbank,
+    /// ersetzt die Engine ihn selbst.
+    pub fn clamav_engine(&self) -> Arc<ClamAvWorkerEngine> {
+        let mut g = self.shared_clamav.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(e) = &*g {
+            return Arc::clone(e);
+        }
+        let exe = self.clamav_worker.clone().unwrap_or_default();
+        let ws = WorkerSettings::new(exe, &self.clamav);
+        let e = Arc::new(ClamAvWorkerEngine::start(ws, self.clamav.clamscan.clone()));
+        *g = Some(Arc::clone(&e));
+        e
     }
 }
 

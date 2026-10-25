@@ -1,0 +1,12 @@
+[package]
+name = "axsafe-workerproto"
+description = "AXSafe: gemeinsame Rahmen, Probe und Abschottungsbericht für isolierte Worker (ohne Engine-Abhängigkeiten)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+axsafe-core = { path = "../axsafe-core" }
+serde.workspace = true

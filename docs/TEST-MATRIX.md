@@ -85,6 +85,16 @@ Spalten: **Linux** = lokal und Linux-CI · **Win Server** = `windows-latest` in 
 | T-023 / T-028 | core · `filetype::tests::*` (5); cli · `filetype_uses_content_not_extension` | Typ nach Inhalt; gekürzte PE ohne Panic | ✅ | ✅ | offen |
 | T-026 | core · `positive_benign_and_counts`, `cancel_marks_incomplete`, `size_limit_is_reported_not_clean` | Zählungen, Abbruch, Größenlimit | ✅ | ✅ | offen |
 | T-028 | core · `scan::tests::fifo_does_not_block_and_is_gap` | Named Pipe → kein Hängen, Lücke | ✅ | n/a (FIFO) | offen |
+| B-18 | clamav-worker · `loads_once_and_scans_many_objects` | echte libclamav, Testsignatur → 40 Scans, Datenbank genau 1× geladen, EICAR erkannt, harmlos ohne Fund | ✅ lokal | CI `windows-clamav` | offen |
+| B-18 | clamav-worker · `parallel_jobs_get_their_own_results` | 8 Threads × 15 Objekte, gemischt EICAR/harmlos → jedes Ergebnis gehört zu seinem Objekt, 1 Laden | ✅ lokal | CI | offen |
+| B-18 | clamav-worker · `crash_is_a_gap_and_worker_restarts`, `hanging_engine_times_out_and_is_replaced`, `repeated_failures_disable_the_engine` | Absturz → `Error`-Lücke, Hänger → `Timeout` in Zeitbudget; danach neuer Worker; nach `max_restarts` „nicht verfügbar“, nie sauber | ✅ lokal | CI | offen |
+| B-18 | clamav-worker · `full_queue_is_a_visible_gap`, `object_size_limit_is_a_gap` | Warteschlange voll → `Timeout` „ausgelastet“; Objekt über Grenze → `SizeLimit` | ✅ lokal | CI | offen |
+| B-18 | clamav-worker · `signature_update_becomes_active_only_after_successful_load` | neue gültige DB → neuer Worker, erst danach aktiv; kaputte DB → alter Stand bleibt aktiv, Fehler sichtbar | ✅ lokal | CI | offen |
+| B-18 | clamav-worker · `idle_worker_is_stopped_and_restarted_on_demand`, `missing_library_is_unavailable_never_clean`, `broken_database_is_unavailable_never_clean` | Leerlauf beendet Worker, nächster Scan startet neu; fehlende Bibliothek/DB → `Error`, nie sauber | ✅ lokal | CI | offen |
+| B-18 | clamav-worker · `worker_with_mismatching_official_db_version_is_rejected` | offizielle DB, Worker meldet falschen daily-Stand → verworfen | CI `clamav-signatures` | CI `windows-clamav` | offen |
+| B-18 | `scripts/ci/service_clamav_e2e.ps1` | Dienst + dauerhafte Engine + offizielle Signaturen: harmlos/EICAR, 2 parallele Aufträge mit eigenen Ergebnissen, Datenbank 1× geladen, Abbruch, danach weiter, Firewall-Regel des Workers | n/a | CI `windows-clamav` | offen |
+| B-18 | `axsafe clamav-messung` + `scripts/ci/messdateien.py` | identische 31 Dateien (30 harmlos, 1 EICAR), clamscan je Objekt gegen dauerhaft: Start, erster Scan, Folgescans, Gesamt, Speicherspitze; Ergebnisse je Datei identisch | CI `clamav-signatures` | CI `windows-clamav` | offen |
+| B-18 / Lizenz | `scripts/check_gpl_component.py` | Worker-Abhängigkeiten GPL-2.0-verträglich; CLI/Dienst/Engine-Adapter binden den Worker nicht ein | ✅ CI | n/a | – |
 | T-010 | `scripts/ci/selftest_supply_chain.sh` (5 Selbsttests) | Testgeheimnis, manipulierte Prüfsumme, EICAR, künstliches Schlüsselmaterial (Inhalt, `.pem`), fehlende Lizenzhinweise → jeweils Ablehnung | ✅ CI (alle 5) | n/a (Linux-Job) | – |
 | T-012 | `scripts/check_release_inventory.py --require-notices` | Paket ohne Lizenzhinweise/mit Testhelfer/Schlüssel → Verstoß | ✅ | ✅ CI-Paket | – |
 

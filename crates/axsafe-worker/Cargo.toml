@@ -11,6 +11,7 @@ repository.workspace = true
 axsafe-core = { path = "../axsafe-core" }
 axsafe-engine-yarax = { path = "../axsafe-engine-yarax" }
 axsafe-proc = { path = "../axsafe-proc" }
+axsafe-workerproto = { path = "../axsafe-workerproto" }
 serde.workspace = true
 serde_json.workspace = true
 

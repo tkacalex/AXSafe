@@ -241,3 +241,29 @@ pub trait Engine: Send + Sync {
         (self.scan(input), None)
     }
 }
+
+/// Eine geteilte Engine (z. B. die dauerhaft geladene ClamAV-Engine des
+/// Dienstes, die mehrere Aufträge nacheinander nutzen).
+impl<T: Engine + ?Sized> Engine for std::sync::Arc<T> {
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+    fn info(&self) -> EngineInfo {
+        (**self).info()
+    }
+    fn scan(&self, input: &ScanInput<'_>) -> EngineOutcome {
+        (**self).scan(input)
+    }
+    fn classifies(&self) -> bool {
+        (**self).classifies()
+    }
+    fn scan_and_classify(
+        &self,
+        input: &ScanInput<'_>,
+    ) -> (
+        EngineOutcome,
+        Option<Result<crate::filetype::FileKind, String>>,
+    ) {
+        (**self).scan_and_classify(input)
+    }
+}

@@ -48,7 +48,7 @@ function Invoke-ScExe([string[]]$a) {
 
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw 'Installation nur als Administrator.' }
-foreach ($f in 'axsafe-service.exe', 'axsafe-worker.exe') {
+foreach ($f in 'axsafe-service.exe', 'axsafe-worker.exe', 'axsafe-clamav-worker.exe') {
     if (-not (Test-Path (Join-Path $SourceDir $f))) { throw "$f fehlt in $SourceDir" }
 }
 
@@ -61,10 +61,22 @@ if ($existing) {
 }
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-Copy-Item (Join-Path $SourceDir 'axsafe-service.exe'), (Join-Path $SourceDir 'axsafe-worker.exe') $InstallDir -Force
+Copy-Item (Join-Path $SourceDir 'axsafe-service.exe'), (Join-Path $SourceDir 'axsafe-worker.exe'), (Join-Path $SourceDir 'axsafe-clamav-worker.exe') $InstallDir -Force
 if (Test-Path (Join-Path $InstallDir 'rules')) { Remove-Item -Recurse -Force (Join-Path $InstallDir 'rules') }
 Copy-Item -Recurse $RulesDir (Join-Path $InstallDir 'rules')
 Log "Programmdateien nach $InstallDir kopiert."
+
+# B-18: Der ClamAV-Worker des Dienstes braucht kein Netzwerk. Das
+# eingeschränkte Token sperrt kein Netzwerk, deshalb eine ausgehende
+# Sperrregel für genau dieses Programm (wie für clamscan.exe).
+$cw = Join-Path $InstallDir 'axsafe-clamav-worker.exe'
+$cwRule = 'AXSafe: ClamAV-Worker (Dienst) ohne Netzwerk'
+Get-NetFirewallRule -DisplayName $cwRule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+New-NetFirewallRule -DisplayName $cwRule -Direction Outbound -Action Block -Program $cw -Profile Any -Description 'AXSafe: Der ClamAV-Worker prüft nur übergebene Daten und braucht kein Netzwerk.' | Out-Null
+$r = @(Get-NetFirewallRule -DisplayName $cwRule -ErrorAction SilentlyContinue)
+$rApp = if ($r.Count -eq 1) { ($r[0] | Get-NetFirewallApplicationFilter).Program } else { '' }
+if (-not ($r.Count -eq 1 -and "$($r[0].Action)" -eq 'Block' -and "$($r[0].Direction)" -eq 'Outbound' -and $rApp -eq $cw)) { throw "Firewall-Sperrregel für $cw nicht wirksam angelegt" }
+Log "Firewall: ausgehende Verbindungen von $cw gesperrt (Regel '$cwRule')."
 
 $exe = Join-Path $InstallDir 'axsafe-service.exe'
 Invoke-ScExe @('create', $Name, 'binPath=', "`"$exe`" run", 'start=', 'auto', 'obj=', 'NT AUTHORITY\LocalService', 'DisplayName=', 'AXSafe Scan-Dienst')

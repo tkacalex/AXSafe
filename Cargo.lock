@@ -138,6 +138,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "axsafe-clamav-worker"
+version = "0.2.0"
+dependencies = [
+ "axsafe-core",
+ "axsafe-engine-clamav",
+ "axsafe-proc",
+ "axsafe-workerproto",
+ "hex",
+ "libc",
+ "md-5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "windows-sys",
+]
+
+[[package]]
 name = "axsafe-cli"
 version = "0.2.0"
 dependencies = [
@@ -150,6 +167,7 @@ dependencies = [
  "clap",
  "hex",
  "md-5",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",
@@ -178,11 +196,14 @@ version = "0.2.0"
 dependencies = [
  "axsafe-core",
  "axsafe-proc",
+ "axsafe-workerproto",
  "cab",
  "cfb",
  "flate2",
  "hex",
  "md-5",
+ "serde",
+ "serde_json",
  "sevenz-rust2",
  "sha2",
  "tempfile",
@@ -232,11 +253,20 @@ dependencies = [
  "axsafe-core",
  "axsafe-engine-yarax",
  "axsafe-proc",
+ "axsafe-workerproto",
  "libc",
  "serde",
  "serde_json",
  "tempfile",
  "windows-sys",
+]
+
+[[package]]
+name = "axsafe-workerproto"
+version = "0.2.0"
+dependencies = [
+ "axsafe-core",
+ "serde",
 ]
 
 [[package]]

@@ -17,6 +17,9 @@ doc = false
 [dependencies]
 axsafe-core = { path = "../axsafe-core" }
 axsafe-proc = { path = "../axsafe-proc" }
+axsafe-workerproto = { path = "../axsafe-workerproto" }
+serde_json.workspace = true
+serde.workspace = true
 sha2.workspace = true
 hex.workspace = true
 

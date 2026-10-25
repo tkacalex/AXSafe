@@ -411,12 +411,28 @@ try {
 
     # --- e) AXSafe ----------------------------------------------------------
     if ($AxsafeCli -and (Test-Path $AxsafeCli)) {
-        $ax = Run $AxsafeCli @('engines', '--json')
+        # B-18: dauerhaft geladene Engine im eigenen Worker. Wie clamscan
+        # braucht er kein Netzwerk: eigene ausgehende Sperrregel.
+        $clamWorker = Join-Path (Split-Path $AxsafeCli) 'axsafe-clamav-worker.exe'
+        if (Test-Path $clamWorker) {
+            $wfName = 'AXSafe: ClamAV-Worker ohne Netzwerk'
+            Get-NetFirewallRule -DisplayName $wfName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+            New-NetFirewallRule -DisplayName $wfName -Direction Outbound -Action Block -Program $clamWorker -Profile Any -Description 'AXSafe: Der ClamAV-Worker prüft nur übergebene Daten und braucht kein Netzwerk.' | Out-Null
+            $wf = @(Get-NetFirewallRule -DisplayName $wfName -ErrorAction SilentlyContinue)
+            $wfApp = if ($wf.Count -eq 1) { ($wf[0] | Get-NetFirewallApplicationFilter).Program } else { '' }
+            Check 'firewall_regel_clamav_worker' ($wf.Count -eq 1 -and "$($wf[0].Enabled)" -eq 'True' -and "$($wf[0].Action)" -eq 'Block' -and "$($wf[0].Direction)" -eq 'Outbound' -and $wfApp -eq $clamWorker) "Regel '$wfName': ausgehend gesperrt für $wfApp"
+        } else {
+            Check 'firewall_regel_clamav_worker' $false "axsafe-clamav-worker.exe fehlt neben $AxsafeCli – dauerhaft geladene Engine nicht verfügbar"
+        }
+        $ax = Run $AxsafeCli @('engines', '--json', '--clamav-modus', 'dauerhaft')
         $engines = $ax.Out | ConvertFrom-Json
         $c = $engines | Where-Object { $_.name -eq 'clamav' }
         $ok = $c -and $c.health.state -eq 'ready' -and $c.content_kind -eq 'official_signatures'
-        Check 'e_axsafe' $ok "axsafe engines: clamav=$($c.health.state) $($c.content_kind) $($c.content_version) – $($c.content_note) $(if ($c -and $c.health.PSObject.Properties['reason']) { $c.health.reason })"
-        Check 'e_axsafe_abschottung' ($c -and $c.isolation.enforced) "ClamAV-Isolation: $($c.isolation.kind) / $($c.isolation.detail)"
+        Check 'e_axsafe' $ok "axsafe engines (dauerhaft): clamav=$($c.health.state) $($c.content_kind) $($c.content_version) – $($c.content_note) $(if ($c -and $c.health.PSObject.Properties['reason']) { $c.health.reason })"
+        Check 'e_axsafe_abschottung' ($c -and $c.isolation.enforced) "ClamAV-Worker-Isolation: $($c.isolation.kind) / $($c.isolation.detail)"
+        $axc = Run $AxsafeCli @('engines', '--json', '--clamav-modus', 'clamscan')
+        $cc = ($axc.Out | ConvertFrom-Json) | Where-Object { $_.name -eq 'clamav' }
+        Check 'e_axsafe_clamscan' ($cc -and $cc.health.state -eq 'ready' -and $cc.isolation.enforced) "axsafe engines (clamscan je Objekt): clamav=$($cc.health.state) $($cc.content_version) / $($cc.isolation.detail)"
 
         # Mit GENAU dem Token, das clamscan bekommt: Datenbank und Zertifikate
         # lesbar, eigener Arbeitsordner beschreibbar, Benutzerdateien und
