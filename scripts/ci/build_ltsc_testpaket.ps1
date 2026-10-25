@@ -27,7 +27,8 @@ foreach ($l in $json) {
     $a = $l | ConvertFrom-Json
     if ($a.profile.test -and $a.executable) {
         $rel = $a.executable.Substring($Root.Length + 1)
-        $tests += [ordered]@{ name = "$($a.target.name) ($(($a.package_id -split '[#@ ]')[-2]))"; path = $rel }
+        $crate = (($a.package_id -replace '#.*$', '') -split '[/\\]')[-1]
+        $tests += [ordered]@{ name = "$crate/$($a.target.name)"; path = $rel }
     }
 }
 if ($tests.Count -lt 10) { throw "zu wenige Testprogramme gefunden: $($tests.Count)" }

@@ -25,6 +25,11 @@ jobs:
       - name: Testpaket bauen (unter C:\axsafe-ltsc)
         shell: powershell
         run: .\scripts\ci\build_ltsc_testpaket.ps1 -Out "$PWD\ltsc" -Commit "${{ github.sha }}" -RunId "${{ github.run_id }}"
+      - name: ClamAV einrichten (wie auf dem Zielrechner; Vorbedingung der ClamAV-Tests)
+        shell: powershell
+        run: |
+          .\scripts\windows\setup-clamav.ps1 -EvidenceDir "$PWD\ltsc\clamav-einrichtung" -AxsafeCli C:\axsafe-ltsc\target\release\axsafe.exe -SkipFileEicar
+          if ($LASTEXITCODE -ne 0) { throw "ClamAV-Einrichtung fehlgeschlagen" }
       - name: Paket hier ausführen (Selbstprüfung des Startskripts; Windows Server, kein LTSC)
         shell: powershell
         run: |

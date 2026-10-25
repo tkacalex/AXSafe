@@ -42,7 +42,12 @@ $before = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | ForEach-Object
 
 # ClamAV-Programme für Tests, die clamscan über PATH suchen.
 $clam = Join-Path $env:ProgramFiles 'ClamAV'
-if (Test-Path (Join-Path $clam 'clamscan.exe')) { $env:PATH = "$clam;$env:PATH" }
+if (Test-Path (Join-Path $clam 'clamscan.exe')) {
+    $env:PATH = "$clam;$env:PATH"
+    Log "ClamAV: $clam"
+} else {
+    Log "HINWEIS: ClamAV ist nicht installiert – alle ClamAV-Tests schlagen dann fehl (Vorbedingung: ClamAV-einrichten.cmd)."
+}
 
 $skipArgs = @()
 foreach ($k in $skips.Keys) { $skipArgs += @('--skip', $k) }
