@@ -78,6 +78,7 @@ mod service {
                 database,
                 ..ClamAvConfig::default()
             },
+            log: Some(Arc::clone(&log)),
         };
         log.line(&format!(
             "Dienst startet: {} (Programm {}, Daten {})",

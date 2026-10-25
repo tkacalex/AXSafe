@@ -14,7 +14,7 @@ public static class ServiceScan
         ReportValidator.ExitToOutcome.ToDictionary(kv => kv.Value, kv => kv.Key);
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    public static async Task<ScanResult> RunAsync(IReadOnlyList<string> paths, bool useClamav, CancellationToken ct)
+    public static async Task<ScanResult> RunAsync(IReadOnlyList<string> paths, bool useClamav, CancellationToken ct, string? saveDir = null)
     {
         var abs = paths.Select(Path.GetFullPath).ToList();
         using var c = ServiceClient.Connect(5000);
@@ -58,9 +58,30 @@ public static class ServiceScan
         if (report is null)
             return ScanResult.Failed(jobId, null, "Bericht ist leer.");
         var exit = OutcomeToExit.TryGetValue(report.Outcome, out var e) ? e : -1;
-        var problems = ReportValidator.Validate(report, jobId, abs, exit);
+        var problems = ReportValidator.Validate(report, jobId, abs, exit).ToList();
+        if (report.ExecutedBy?.Kind != "dienst")
+            problems.Add("Bericht nennt nicht den Dienst als Ausführenden.");
         if (problems.Count > 0)
             return ScanResult.Failed(jobId, exit, "Bericht abgelehnt: " + string.Join(" ", problems));
-        return new ScanResult(jobId, true, report, null, exit, null, false);
+        string? saved = null;
+        if (saveDir is not null)
+        {
+            // Geprüften Bericht unverändert ablegen (nie überschreiben), damit
+            // er später nachvollziehbar bleibt; der Dienstordner ist für
+            // Benutzer bewusst nicht lesbar.
+            try
+            {
+                Directory.CreateDirectory(saveDir);
+                saved = Path.Combine(saveDir, $"dienst-{jobId:D}.json");
+                using var fs = new FileStream(saved, FileMode.CreateNew, FileAccess.Write);
+                using var w = new StreamWriter(fs, new System.Text.UTF8Encoding(false));
+                w.Write(rep["result"]!["report"]!.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                saved = null;
+            }
+        }
+        return new ScanResult(jobId, true, report, saved, exit, null, false);
     }
 }

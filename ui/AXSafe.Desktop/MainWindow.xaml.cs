@@ -253,7 +253,7 @@ public partial class MainWindow : Window
                 _lastScanPath = "über den AXSafe-Dienst, mit deinen Benutzerrechten";
                 try
                 {
-                    r = await ServiceScan.RunAsync(paths, UseClamav.IsChecked == true, _scanCts.Token);
+                    r = await ServiceScan.RunAsync(paths, UseClamav.IsChecked == true, _scanCts.Token, CliLocator.ReportsDir);
                 }
                 catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException or InvalidDataException)
                 {
@@ -274,6 +274,8 @@ public partial class MainWindow : Window
             {
                 ShowReport(r.Report);
                 ScanSummary.Text += "\nPrüfweg: " + _lastScanPath;
+                if (r.ReportPath is not null)
+                    ScanSummary.Text += "\nBericht: " + r.ReportPath;
             }
         }
         finally

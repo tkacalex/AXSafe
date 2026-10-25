@@ -265,6 +265,7 @@ impl Scanner {
             summary,
             files,
             disclaimer: DISCLAIMER_DE.into(),
+            executed_by: None,
         }
     }
 

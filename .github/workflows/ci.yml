@@ -212,6 +212,12 @@ jobs:
           set -o pipefail
           export PATH="/c/Program Files/ClamAV:$PATH"
           cargo test --locked -p axsafe-engine-clamav -p axsafe-cli --no-fail-fast -- --include-ignored --skip report_target_windows_symlink 2>&1 | tee cargo-test-clamav.log
+      - name: Dienst + echte ClamAV-Engine auf derselben Maschine (harmlos und EICAR über den Dienst)
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: |
+          .\scripts\ci\service_clamav_e2e.ps1 -BinDir "$PWD\target\release" -RulesDir "$PWD\rules" -EvidenceDir "$PWD\clamav-nachweis\dienst"
+          if ($LASTEXITCODE -ne 0) { throw "Dienst+ClamAV-Integrationstest fehlgeschlagen" }
       - name: Messung Pfadauflösung im AppContainer (Ausgabe sichtbar)
         if: ${{ !cancelled() }}
         shell: bash

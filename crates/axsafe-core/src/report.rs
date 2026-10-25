@@ -275,6 +275,27 @@ pub struct ScanReport {
     pub summary: Summary,
     pub files: Vec<FileResult>,
     pub disclaimer: String,
+    /// Wer den Auftrag ausgeführt hat (Dienst oder CLI). Fehlt bei älteren
+    /// Berichten. Nur Herkunftsnachweis – keine Grundlage für Entscheidungen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executed_by: Option<ExecutedBy>,
+}
+
+/// Herkunft eines Berichts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutedBy {
+    /// `dienst` oder `cli`.
+    pub kind: String,
+    /// z. B. `AXSafeService` oder `axsafe`.
+    pub name: String,
+    /// Konto des ausführenden Prozesses (z. B. `NT AUTHORITY\LOCAL SERVICE`).
+    pub account: String,
+    pub process_id: u32,
+    /// Auftraggeber laut Windows-Token (nur beim Dienst).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_session: Option<u32>,
 }
 
 /// Höchste Fundbewertung über viele Werte.

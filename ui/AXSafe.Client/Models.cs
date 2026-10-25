@@ -23,6 +23,18 @@ public sealed class ScanReport
     [JsonPropertyName("job_gaps")] public List<Gap> JobGaps { get; set; } = new();
     [JsonPropertyName("summary")] public Summary Summary { get; set; } = new();
     [JsonPropertyName("files")] public List<FileResult> Files { get; set; } = new();
+    /// <summary>Herkunft (Dienst oder CLI); fehlt bei älteren Berichten.</summary>
+    [JsonPropertyName("executed_by")] public ExecutedBy? ExecutedBy { get; set; }
+}
+
+public sealed class ExecutedBy
+{
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("account")] public string Account { get; set; } = "";
+    [JsonPropertyName("process_id")] public uint ProcessId { get; set; }
+    [JsonPropertyName("client")] public string? Client { get; set; }
+    [JsonPropertyName("client_session")] public uint? ClientSession { get; set; }
 }
 
 public sealed class Summary
