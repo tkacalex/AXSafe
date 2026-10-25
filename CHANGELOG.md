@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Neu – Phase P02 abgeschlossen (Grundsystem)
+- **Prozess-Mitigationen** für alle abgeschotteten Worker (AXS-013), beim Start gesetzt und vor dem Fortsetzen geprüft; fehlt eine, startet der Worker nicht.
+- **Betriebszustand** (AXS-019): `axsafe zustand` und der Dienststatus melden Scanner, Echtzeitsensor, Richtlinie, Definitionen (Alter der ClamAV-Signaturen), Primärschutz und Dienst getrennt. Keine oder ungültige Antwort = „Unbekannt“, nie grün. Die Oberfläche zeigt diesen Zustand (Tooltip mit allen Bestandteilen).
+- **Richtlinie und Ausnahmen** (AXS-017): versionierte Datei `%ProgramData%\AXSafe\Policy\policy.json`, nur von Administratoren änderbar – sonst wird sie nicht angewandt. Ausnahmen nur für genaue Dateien oder eng begrenzte Ordner, mit Grund, Urheber und Ablauf (höchstens 90 Tage). Ausgenommenes steht im Bericht und macht den Auftrag unvollständig. `axsafe richtlinie` zeigt und prüft sie.
+- **Nachvollziehbarkeit** (AXS-016): Berichte nennen den ausführenden Prozess und – beim Dienst – den Prozess des Auftraggebers mit PID **und** Startzeit sowie die Zeitzone; das Dienstprotokoll führt beides je Auftrag.
+- **Dateiidentität** (AXS-018): 128-Bit-Datei-IDs; versteckte Datenströme (Alternate Data Streams) werden gefunden und einzeln geprüft; lange und Unicode-Pfade getestet.
+- **Lokale Daten** (AXS-020): Dienstberichte mit Aufbewahrungsgrenze (1000), Protokollzeilen bereinigt (keine Zeilenumbrüche, Länge begrenzt, Geheimnis-Werte geschwärzt), beschädigte Berichte werden gemeldet statt den Dienst zu stören.
+
 ### Neu – B-18: ClamAV-Signaturen bleiben geladen (dauerhafter, abgeschotteter Worker)
 - **`axsafe-clamav-worker`**: eigenes Programm, das libclamav aus der separat installierten ClamAV-Installation **einmal** lädt und danach beliebig viele Objekte prüft. Bisher lud `clamscan` die Datenbank für jedes Objekt neu (auf dem Zielrechner ~16,8 s je Datei). Der Worker bekommt nur Bytes über eine anonyme Pipe: keine Pfade, kein clamd, kein TCP-Port.
 - **Gleiche Abschottung wie bisher für clamscan:** eingeschränktes Token, Integrität Niedrig, Job Object (1 Prozess, Speichergrenze), eigener Arbeitsordner, minimale Umgebung, ausgehende Firewall-Sperrregel für das Worker-Programm (Einrichtung und Dienstinstallation legen sie an). Unter Linux sperrt Landlock nach dem Laden der Datenbank alles außer dem Arbeitsordner. Jeder Start wird vor der ersten Datenübergabe geprüft: Protokoll, geladener Datenbankstand passend zu den Dateiköpfen, Umgebung, Zugriffsprobe.

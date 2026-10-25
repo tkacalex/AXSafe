@@ -82,10 +82,10 @@
       "rest": "automatischer Paketvergleich zwischen Releases"
     },
     "AXS-013": {
-      "status": "teilweise",
+      "status": "erfuellt",
       "where": "crates/axsafe-worker, crates/axsafe-proc, crates/axsafe-service, crates/axsafe-engine-clamav, docs/adr/ADR-0006-worker-isolation.md",
-      "evidence": "YARA-X und Typerkennung im Scanworker (Windows AppContainer ohne Fähigkeiten + Job Object, Linux Landlock), Abschottungsprobe nach jedem (Neu-)Start; ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, geprüft vor dem Start) plus Firewall-Sperrregel; AppContainer für ClamAV 1.5 gemessen unmöglich; Dienst als LocalService mit nur SeImpersonate/SeChangeNotify; UI asInvoker",
-      "rest": "Process-Mitigation-Policies; LTSC-Nachweis (B-02)"
+      "evidence": "YARA-X und Typerkennung im Scanworker (Windows AppContainer ohne Fähigkeiten + Job Object, Linux Landlock), Abschottungsprobe nach jedem (Neu-)Start; ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, geprüft vor dem Start) plus Firewall-Sperrregel; AppContainer für ClamAV 1.5 gemessen unmöglich; Dienst als LocalService mit nur SeImpersonate/SeChangeNotify; UI asInvoker; Prozess-Mitigationen für alle isolierten Worker (keine Erweiterungspunkte, strikte Handles, keine Fremdschriften, keine DLLs von Netz/Integrität Niedrig, ASLR, Heap-Abbruch; AppContainer-Worker nur Microsoft-signierte DLLs) – beim Start gesetzt und vor dem Fortsetzen geprüft (fail closed), Windows-CI",
+      "rest": "LTSC-Lauf der automatischen Tests (B-02)"
     },
     "AXS-015": {
       "status": "teilweise",
@@ -94,22 +94,22 @@
       "rest": "UI-Assertions auf Windows Server bestanden (CI); Windows 10 LTSC offen (B-10)"
     },
     "AXS-016": {
-      "status": "begonnen",
-      "where": "crates/axsafe-core/src/report.rs",
-      "evidence": "UTC-Zeit, zufällige Auftrags-ID (UUID) je UI-Auftrag, im Bericht und Dateinamen; Engine-/Regelversion je Befund",
-      "rest": "Korrelations-ID über Dienst, Prozessidentität"
+      "status": "erfuellt",
+      "where": "crates/axsafe-core/src/report.rs, crates/axsafe-proc/src/identity.rs, crates/axsafe-service",
+      "evidence": "Auftrags-ID durchgehend (Client → Dienst → Bericht → Dienstprotokoll); Prozessidentität = PID + Startzeit für CLI, Dienst und Pipe-Client (GetNamedPipeClientProcessId); beendeter/Zombie-Prozess und gleiche PID mit anderer Startzeit gelten nie als derselbe; UTC-Zeiten plus utc_offset zur lokalen Anzeige; Fund mit Dateiidentität, Regel-ID, Engine-/Regelversion und Aktion; Protokollzeilen begrenzt",
+      "rest": "–"
     },
     "AXS-018": {
-      "status": "begonnen",
+      "status": "teilweise",
       "where": "crates/axsafe-core/src/identity.rs, scan.rs",
-      "evidence": "Identität über Handle (Volume + Datei-ID); Austausch/Änderung als Lücke ChangedDuringScan; Berichtsziel per Identität vom Scan ausgeschlossen; Hardlink/Symlink/Ordner/Junction als Berichtsziel abgelehnt",
-      "rest": "Junction-/Symlink-Test auf Windows 10 LTSC, ADS, 128-Bit-IDs"
+      "evidence": "Identität über Handle (Volume + Datei-ID); Austausch/Änderung als Lücke ChangedDuringScan; Berichtsziel per Identität vom Scan ausgeschlossen; Hardlink/Symlink/Ordner/Junction als Berichtsziel abgelehnt; 128-Bit-Datei-ID (FileIdInfo, ReFS); Alternate Data Streams über das Handle ermittelt und je als Datei:Strom geprüft; lange (>300 Zeichen) und Unicode-Pfade; Junction im Prüfbereich nicht verfolgt (Windows-CI)",
+      "rest": "mutierende Aktionen gibt es erst mit der Quarantäne (P05) – dort Abnahme 'trifft nur das validierte Objekt'"
     },
     "AXS-019": {
-      "status": "begonnen",
-      "where": "crates/axsafe-core/src/engine.rs, ui",
-      "evidence": "Engine-Gesundheit, Regelbestand (test_only/production/official/custom) und Containerfähigkeit getrennt; nicht verfügbare Engine ist Auftragslücke, nie sauber",
-      "rest": "Dienst-/Sensorstatus"
+      "status": "erfuellt",
+      "where": "crates/axsafe-core/src/health.rs, crates/axsafe-cli (axsafe zustand), crates/axsafe-service, ui/AXSafe.Client/Health.cs",
+      "evidence": "Scanner, Sensor, Richtlinie, Definitionen (Signaturalter), Primärschutz und Dienst getrennt; unknown bei fehlender/ungültiger Antwort; Gesamtzustand nie 'geschützt' ohne Sensor und Primärschutz; Dienststatus liefert health; Oberfläche grün nur bei vollständigem, gültigem Bericht; Tests: Dienstverlust, kaputte Engine, fehlende Antwort",
+      "rest": "Sensor existiert erst ab P08 (heute korrekt 'fehlt')"
     },
     "AXS-021": {
       "status": "teilweise",
@@ -184,10 +184,22 @@
       "rest": "Bedientest auf Windows 10 LTSC, Tastatur, Screenreader, 125–200 % Skalierung (B-10)"
     },
     "AXS-014": {
-      "status": "teilweise",
+      "status": "erfuellt",
       "where": "crates/axsafe-service, scripts/windows/install-service.ps1, scripts/ci/service_e2e.ps1, ui/AXSafe.Client/ServiceClient.cs",
       "evidence": "Named Pipe \\\\.\\pipe\\AXSafe.v1 mit DACL (keine Netzwerkanmeldung, interaktive Benutzer ohne Instanzanlage), PIPE_REJECT_REMOTE_CLIENTS; Identität aus dem Token, Eigentum = SID + Anmeldesitzung; 64-KiB-Grenze, Zeitgrenzen, Sequenz/Nonce, Ratenbegrenzung; nur fünf Befehle; Dateizugriff unter Impersonation. Unit-/Integrationstests (Linux) und Windows-Systemtest mit zweitem lokalen Benutzer",
-      "rest": "LTSC-Nachweis (B-02); Rollen für Richtlinien/Ausnahmen (AXS-017) folgen mit P05"
+      "rest": "LTSC-Lauf der automatischen Tests (B-02); Rollen für Richtlinien laufen über Dateirechte (AXS-017)"
+    },
+    "AXS-017": {
+      "status": "erfuellt",
+      "where": "crates/axsafe-core/src/policy.rs, scan.rs, scripts/windows/install-service.ps1",
+      "evidence": "Versionierte Richtlinie axsafe.policy/1 in ProgramData\\AXSafe\\Policy (nur Administratoren schreiben); angewandt nur, wenn Datei UND Ordner nur von Administratoren änderbar sind; Ausnahmen nur exakte Datei/eng begrenzter Ordner mit Grund, Urheber, Ablauf ≤ 90 Tage; globale Orte, Systemordner, Platzhalter abgelehnt; ungültig = sichere Vorgabe ohne Ausnahmen, sichtbar im Betriebszustand; Ausnahmen im Bericht und als Lücke excluded_by_policy; über die Pipe gibt es keine Ausnahme-Nachricht; Windows-E2E mit Standardbenutzer",
+      "rest": "Bearbeitungsoberfläche für Administratoren (später)"
+    },
+    "AXS-020": {
+      "status": "teilweise",
+      "where": "crates/axsafe-service (jobs.rs, log.rs), scripts/windows/install-service.ps1",
+      "evidence": "Dienstdaten nur SYSTEM/Administratoren/Dienst (Standardbenutzer: Lesen verweigert, Windows-E2E); Richtlinie nur Administratoren; Protokoll mit Rotation, Längengrenze, geschwärzten Geheimnis-Werten; Berichte mit Aufbewahrungsgrenze; beschädigter Bericht kontrolliert gemeldet, Dienst arbeitet weiter",
+      "rest": "Schlüssel und Quarantänemetadaten entstehen erst in P04/P05"
     }
   },
   "tests": {
@@ -204,7 +216,11 @@
       "identity::tests::appended_file_is_changed",
       "scan::tests::symlink_is_not_followed",
       "report_target_hardlink_to_scan_object_is_refused",
-      "new_report_inside_scan_root_is_excluded_by_identity"
+      "new_report_inside_scan_root_is_excluded_by_identity",
+      "scan::tests::long_and_unicode_paths_are_scanned",
+      "scan::tests::alternate_data_streams_are_scanned_separately (Windows)",
+      "scan::tests::junction_is_not_followed (Windows)",
+      "scan::tests::file_id_128_is_read_on_windows (Windows)"
     ],
     "T-021": [
       "positive_benign_and_test_only_content",
@@ -259,6 +275,36 @@
       "owner_can_scan_and_read_report_other_user_cannot",
       "service_accounts_and_session_zero_are_refused",
       "service_e2e.ps1 (Windows Server)"
+    ],
+    "T-016": [
+      "identity::tests::same_pid_other_start_is_another_process",
+      "identity::tests::exited_process_is_not_still_running",
+      "identity::tests::exited_but_not_released_process_is_not_running",
+      "detection_is_traceable_from_event_to_action",
+      "service_clamav_e2e.ps1 prozessidentitaet (Windows)"
+    ],
+    "T-017": [
+      "policy::tests::global_exclusions_are_refused",
+      "policy::tests::user_writable_policy_is_never_applied",
+      "policy::tests::invalid_file_falls_back_to_safe_default_visibly",
+      "scan::tests::policy_exclusion_is_reduced_coverage_never_complete",
+      "service_e2e.ps1 richtlinie_* / nicht_admin_richtlinie (Windows)"
+    ],
+    "T-019": [
+      "health::tests::missing_answers_are_unknown_never_green",
+      "health::tests::broken_engine_changes_status",
+      "health::tests::service_loss_changes_status",
+      "health::tests::without_sensor_never_protected",
+      "HealthViewTests (C#)",
+      "Real_health_report_is_parsed_and_never_green_without_sensor",
+      "service_e2e.ps1 betriebszustand (Windows)"
+    ],
+    "T-020": [
+      "jobs::tests::report_retention_removes_oldest_only",
+      "log::tests::log_lines_are_sanitized",
+      "log::tests::log_rotates_at_size_limit",
+      "damaged_report_is_reported_and_service_continues",
+      "service_e2e.ps1 nicht_admin_dienstdaten (Windows)"
     ]
   }
 }

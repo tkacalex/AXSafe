@@ -131,3 +131,21 @@ Abweichung vom Entwurf: Der Dienst läuft als **LocalService**, nicht als LocalS
 * Loopback-TCP ist unter Windows für den Worker nicht gesperrt, wie bei clamscan: Das Token sperrt kein Netz, und die Firewall erfasst Loopback nicht. Die Probe weist das aus.
 * Ein Objekt, das libclamav sehr lange beschäftigt, blockiert die gemeinsame Engine bis zu seinem Zeitbudget. Andere Aufträge warten bis zur Warteschlangengrenze und bekommen danach die Lücke „ausgelastet“.
 * Der Abbruch eines Auftrags wirkt zwischen Objekten. Ein laufender libclamav-Scan endet erst an seiner Zeitgrenze.
+
+### Schritt 4 – Abschluss P02 (2026-10-25)
+
+| Punkt | Umsetzung | Nachweis |
+| --- | --- | --- |
+| Prozess-Mitigationen (AXS-013) | Jeder isolierte Worker startet mit `PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY`: keine Erweiterungspunkte (AppInit-DLLs u. a.), strikte Handle-Prüfung, keine Fremdschriften, keine DLLs von Netzlaufwerken oder mit Integrität Niedrig (der Arbeitsordner ist Niedrig – dort abgelegte DLLs lädt der Worker nie), ASLR (bottom-up, hohe Entropie), Heap-Abbruch. Der AppContainer-Worker lädt zusätzlich nur Microsoft-signierte DLLs. Vor dem Fortsetzen liest AXSafe die Richtlinien mit `GetProcessMitigationPolicy` zurück; fehlt eine, startet der Worker nicht. **Bewusst nicht gesetzt:** kein dynamischer Code (YARA-X übersetzt mit wasmtime), keine Win32k-Aufrufe (für libclamav nicht belegt), nur Microsoft-DLLs für den ClamAV-Worker (libclamav ist nicht von Microsoft signiert). | `real_worker_is_isolated_and_scans` (Windows), Einrichtung `e_axsafe_abschottung` |
+| Prozessidentität (AXS-016) | PID **und** Startzeit (Windows `GetProcessTimes`, Linux `/proc/<pid>/stat`) für CLI, Dienst und Pipe-Client; beendete Prozesse (auch Zombie/offenes Handle) gelten nie als laufend. | `identity::tests::*`, Dienst-E2E `prozessidentitaet` |
+| Richtlinie (AXS-017) | `%ProgramData%\AXSafe\Policy\policy.json`, Ordner nur Administratoren/SYSTEM schreibbar. Angewandt nur, wenn Datei **und** Ordner nur von Administratoren änderbar sind (Besitzer + alle schreibenden ACEs geprüft); sonst sichere Vorgabe ohne Ausnahmen, sichtbar. | `policy::tests::*`, Dienst-E2E `richtlinie_*` |
+| Dateiidentität (AXS-018) | 128-Bit-ID (`FileIdInfo`), benannte Datenströme über das Handle (`FileStreamInfo`) und je als `Datei:Strom` geprüft. | `scan::tests::alternate_data_streams_are_scanned_separately` (Windows) |
+| Betriebszustand (AXS-019) | `axsafe-core::health`: sechs Bestandteile getrennt, `unknown` bei fehlender Antwort; Dienststatus und `axsafe zustand` liefern denselben Bericht. | `health::tests::*`, `HealthViewTests` |
+| Lokale Daten (AXS-020) | Dienstdaten ohne Benutzerzugriff, Protokoll bereinigt und rotiert, Berichte mit Aufbewahrungsgrenze, beschädigte Berichte kontrolliert. | `log::tests::*`, `damaged_report_is_reported_and_service_continues`, Dienst-E2E `nicht_admin_dienstdaten` |
+
+**P02-Gate** („ein normaler Benutzer kann den Dienst weder als beliebigen Dateileser noch als Löschdienst missbrauchen; Ausfälle werden korrekt gemeldet“):
+
+* Die Pipe kennt nur fünf Befehle. Lesen, Löschen, Verschieben, Ausnahmen und Ausführen gibt es nicht und werden abgewiesen (`p02_gate_service_is_no_file_reader_or_deleter`).
+* Dateien liest der Dienst nur unter Impersonation des Auftraggebers. Ein fremder, nicht lesbarer Ordner ergibt die Lücke `access_denied` (`unberechtigter_dateizugriff`).
+* Berichte enthalten keine Dateiinhalte, und geprüfte Dateien bleiben unverändert (Hash-Vergleich, `nutzdateien_unveraendert`).
+* Ausfälle werden gemeldet: Dienstabsturz, Engine-Ausfall und Worker-Hänger ergeben Lücken bzw. den Zustand „unbekannt/eingeschränkt“, nie „sauber“ oder „grün“.

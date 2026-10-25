@@ -366,3 +366,50 @@ fn damaged_report_is_reported_and_service_continues() {
         .unwrap();
     assert!(r2.ok, "{r2:?}");
 }
+
+/// P02-Gate: Der Dienst ist weder Dateileser noch Löschdienst. Es gibt keine
+/// Nachricht zum Lesen, Löschen, Verschieben oder Ausnehmen; ein Bericht
+/// enthält keine Dateiinhalte; geprüfte Dateien bleiben unverändert.
+#[test]
+fn p02_gate_service_is_no_file_reader_or_deleter() {
+    let (ctx, dir) = ctx(false, ConnLimits::default());
+    let id = identity("S-1-5-21-1-2-3-1001", 1);
+    for kind in [
+        "read_file",
+        "delete",
+        "quarantine",
+        "move",
+        "set_exclusion",
+        "policy_set",
+        "exec",
+    ] {
+        let (mut c, h) = connect(&ctx, id.clone());
+        let msg = format!(
+            r#"{{"protocol":"axsafe.ipc/1","seq":1,"nonce":"n-{kind}","body":{{"type":"{kind}","path":"/etc/shadow"}}}}"#
+        );
+        c.send_raw(msg.as_bytes()).unwrap();
+        let r = c.read_response().unwrap();
+        assert!(!r.ok, "{kind} wurde angenommen");
+        assert_eq!(r.error.unwrap().code, ErrorCode::Invalid, "{kind}");
+        assert_eq!(h.join().unwrap(), ConnEnd::Malformed);
+    }
+
+    let target = dir.path().join("daten");
+    std::fs::create_dir(&target).unwrap();
+    let secret = target.join("geheim.txt");
+    std::fs::write(&secret, b"GEHEIMER-INHALT-4711 Kontonummer").unwrap();
+    let before = std::fs::read(&secret).unwrap();
+    let (mut c, _) = connect(&ctx, id.clone());
+    let r = c
+        .call(Body::ScanStart {
+            paths: vec![target.display().to_string()],
+            use_clamav: false,
+        })
+        .unwrap();
+    let job = r.result["job_id"].as_str().unwrap().to_string();
+    assert_eq!(wait_finished(&mut c, &job)["state"], "finished");
+    let rep = c.call(Body::Report { job_id: job }).unwrap();
+    let text = serde_json::to_string(&rep).unwrap();
+    assert!(!text.contains("GEHEIMER-INHALT"), "Bericht enthält Dateiinhalt");
+    assert_eq!(std::fs::read(&secret).unwrap(), before, "Datei verändert");
+}

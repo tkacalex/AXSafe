@@ -78,6 +78,8 @@ Viele Sicherheitsprogramme zeigen große grüne Schilde, egal was im Hintergrund
 | Engines laufen mit hartem Zeit-, Speicher- und Ausgabelimit | Echte eigene Erkennungsregeln (heute nur Funktionstest) |
 | YARA-X und Typerkennung im **abgeschotteten Worker** (Windows: AppContainer ohne Netz und Dateizugriff) – Abschottung wird bei jedem Start nachgewiesen | Prüfung auf Windows 10 LTSC (Labor fehlt noch) |
 | **Hintergrunddienst** `AXSafeService` (LocalService, minimale Rechte) mit gesicherter Named Pipe: liest Dateien nur mit **deinen** Rechten, Berichte nur für dich | |
+| **Ehrlicher Betriebszustand** (`axsafe zustand`): Scanner, Sensor, Richtlinie, Definitionen, Primärschutz und Dienst einzeln – nie grün ohne Beleg | |
+| **Richtlinie mit Ausnahmen** nur durch Administratoren, eng begrenzt und befristet; Ausgenommenes erscheint im Bericht | |
 | Deutsche Oberfläche im dunklen Design, kein Konto nötig | Selbstschutz und Windows-Sicherheitscenter (P11) |
 
 Die vollständige Liste je Dateiformat steht in der [Fähigkeitsmatrix](docs/CAPABILITY-MATRIX.md).
@@ -186,12 +188,12 @@ docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 <!-- STATUS:START (automatisch erzeugt von scripts/gen_docs.py) -->
 | Status | Anzahl |
 | --- | ---: |
-| ✅ erfüllt | 0 |
+| ✅ erfüllt | 5 |
 | 🟢 teilweise belegt | 12 |
-| 🔵 begonnen | 12 |
+| 🔵 begonnen | 9 |
 | 📝 Entwurf | 5 |
 | ⛔ blockiert | 1 |
-| ⚪ geplant | 70 |
+| ⚪ geplant | 68 |
 <!-- STATUS:END -->
 
 **Ehrlich gezählt:** „erfüllt“ heißt, die Abnahme ist vollständig mit echten Belegen bestanden. Das ist bisher bei **keiner** der 100 Anforderungen der Fall – auch wenn viele Teile schon funktionieren und getestet sind. Was fehlt und warum, steht im [Blockerregister](docs/BLOCKERS.md).
