@@ -12,7 +12,7 @@ if not exist "%SRC%\axsafe-service.exe" (
   pause
   exit /b 1
 )
-powershell.exe -NoProfile -Command "Start-Process powershell.exe -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"%HERE%install-service.ps1\"','-SourceDir','\"%SRC%\"','-RulesDir','\"%SRC%\rules\"','-EvidenceDir','\"%EVID%\"'"
+powershell.exe -NoProfile -Command "Start-Process powershell.exe -Verb RunAs -Wait -ArgumentList '-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File','\"%HERE%install-service.ps1\"','-SourceDir','\"%SRC%\"','-RulesDir','\"%SRC%\rules\"','-EvidenceDir','\"%EVID%\"'"
 echo.
 echo Fertig. Bericht im Ordner: %EVID%
 pause

@@ -11,7 +11,7 @@ if not exist "%CLI%" (
   echo AXSafe-CLI nicht gefunden. ClamAV wird trotzdem eingerichtet; Nachweis e^) entfaellt.
   set "CLI="
 )
-powershell.exe -NoProfile -Command "Start-Process powershell.exe -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"%HERE%setup-clamav.ps1\"','-EvidenceDir','\"%EVID%\"','-AxsafeCli','\"%CLI%\"'"
+powershell.exe -NoProfile -Command "Start-Process powershell.exe -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"%HERE%setup-clamav.ps1\"','-EvidenceDir','\"%EVID%\"','-AxsafeCli','\"%CLI%\"','-Pause'"
 echo.
 echo Fertig. Bericht im Ordner: %EVID%
 pause

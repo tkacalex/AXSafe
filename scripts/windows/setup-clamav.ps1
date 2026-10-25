@@ -40,7 +40,9 @@ param(
     [string]$Version = '1.5.4',
     [string]$MsiSha256 = 'a025fa23a4b9d64fce448d5a211afcf30dc26ba6528186e6223d1b945f9d95d6',
     [string]$TalosFingerprint = '5BADCA2665EF59DCF8A23D8B707F0DB480836771',
-    [switch]$SkipFileEicar
+    [switch]$SkipFileEicar,
+    # Fenster am Ende offen halten (Start per Doppelklick über ClamAV-einrichten.cmd).
+    [switch]$Pause
 )
 
 Set-StrictMode -Version 2.0
@@ -84,6 +86,9 @@ function Run([string]$exe, [string[]]$argv, [byte[]]$stdin = $null, [int]$timeou
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
+    # axsafe.exe schreibt UTF-8; ohne diese Angabe entstünden Umlautfehler im Bericht.
+    $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding = [Text.Encoding]::UTF8
     $psi.RedirectStandardInput = ($null -ne $stdin)
     $psi.CreateNoWindow = $true
     # .NET Framework legt um stdin einen StreamWriter mit Console.InputEncoding;
@@ -310,33 +315,66 @@ try {
         $r = Run $clamscan @("--database=$DbDir", '--no-summary', $benign)
         Check 'c_harmlos' ($r.Code -eq 0) "Exitcode $($r.Code): $($r.Out.Trim())"
 
-        # EICAR nur zur Laufzeit aus zwei Teilen, über stdin – keine Datei.
-        $eicar = [Text.Encoding]::ASCII.GetBytes('X5O!P%@AP[4\PZX54(P^)7CC)7}$' + 'EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*')
-        $r = Run $clamscan @("--database=$DbDir", '--no-summary', '-') $eicar
-        Check 'd_eicar_stdin' ($r.Code -eq 1 -and $r.Out -match 'FOUND') "Exitcode $($r.Code): $($r.Out.Trim())"
-        if ($r.Code -ne 1) {
-            # Diagnose (nur bei Fehlschlag): Wie viele Bytes kamen über stdin an, was hat clamscan geprüft?
-            $dbg = Run $clamscan @("--database=$DbDir", '--debug', '-') $eicar
-            $lines = (($dbg.Out + "`n" + $dbg.Err) -split "`r?`n") | Where-Object { $_ -match 'Data read|Data scanned|Scanning|stdin|size|tmp|temp|Infected|FOUND|ERROR' } | Select-Object -First 25
-            Log ("Diagnose stdin (Exitcode $($dbg.Code)): " + ($lines -join ' | '))
-        }
+        # d) Fund durch die echte ClamAV-Engine, unabhängig von Defender:
+        # harmlose Zufallsdatei + eigene Testsignatur (MD5), zusammen mit den
+        # offiziellen Signaturen geladen. Datei- und stdin-Weg (stdin nutzt
+        # AXSafe).
+        $probe = Join-Path $t 'axsafe-selbsttest.txt'
+        Set-Content -Path $probe -Value ("AXSafe Selbsttest " + [guid]::NewGuid().ToString('N')) -Encoding ASCII
+        $pb = [IO.File]::ReadAllBytes($probe)
+        $md5 = ([BitConverter]::ToString([Security.Cryptography.MD5]::Create().ComputeHash($pb)) -replace '-', '').ToLowerInvariant()
+        $hdb = Join-Path $t 'axsafe-selbsttest.hdb'
+        Set-Content -Path $hdb -Value "${md5}:$($pb.Length):AXSafe.Selbsttest.UNOFFICIAL" -Encoding ASCII
+        $r = Run $clamscan @("--database=$DbDir", "--database=$hdb", '--no-summary', $probe)
+        Check 'd_engine_fund_datei' ($r.Code -eq 1 -and $r.Out -match 'AXSafe\.Selbsttest\.UNOFFICIAL FOUND') "Exitcode $($r.Code): $($r.Out.Trim())"
+        $r = Run $clamscan @("--database=$DbDir", "--database=$hdb", '--no-summary', '-') $pb
+        $stdinOk = ($r.Code -eq 1 -and $r.Out -match 'stdin: AXSafe\.Selbsttest\.UNOFFICIAL FOUND')
+        Check 'd_engine_fund_stdin' $stdinOk "Exitcode $($r.Code): $($r.Out.Trim())"
 
-        if (-not $SkipFileEicar) {
+        # EICAR nur zur Laufzeit aus zwei Teilen. Bei aktivem Defender kann
+        # Defender die Daten abfangen, bevor ClamAV sie liest (clamscan legt
+        # stdin als temporäre Datei ab). Das ist KEIN Erfolg von ClamAV und
+        # KEIN Fehler der Einrichtung: Es wird nur dann als "von Defender
+        # abgefangen" gewertet, wenn Defender selbst die EICAR-Erkennung
+        # protokolliert UND der stdin-Weg mit der harmlosen Testsignatur geht.
+        $eicar = [Text.Encoding]::ASCII.GetBytes('X5O!P%@AP[4\PZX54(P^)7CC)7}$' + 'EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*')
+        # Vorhandene Defender-Erkennungen merken; danach zählen nur NEUE.
+        $knownDet = @{}
+        try { Get-MpThreatDetection -ErrorAction Stop | ForEach-Object { $knownDet["$($_.DetectionID)"] = 1 } } catch { }
+        $outs = @()
+        $r = Run $clamscan @("--database=$DbDir", '--no-summary', '-') $eicar
+        $outs += "stdin: Exitcode $($r.Code): $($r.Out.Trim()) $($r.Err.Trim())"
+        $found = ($r.Code -eq 1 -and $r.Out -match 'Eicar.*FOUND')
+        if (-not $found -and -not $SkipFileEicar) {
             $ef = Join-Path $t 'eicar-test.com'
-            $wrote = $true
-            try { [IO.File]::WriteAllBytes($ef, $eicar) } catch { $wrote = $false; Log "EICAR-Datei: Schreiben verweigert ($($_.Exception.Message)) – vermutlich Defender." }
+            try { [IO.File]::WriteAllBytes($ef, $eicar) } catch { $outs += "Datei: Schreiben verweigert ($($_.Exception.Message))" }
             Start-Sleep -Seconds 3
-            if ($wrote -and (Test-Path $ef)) {
+            if (Test-Path $ef) {
                 $r = Run $clamscan @("--database=$DbDir", '--no-summary', $ef)
-                if ($r.Code -eq 1) {
-                    Check 'd_eicar_datei' $true "Exitcode 1: $($r.Out.Trim())"
-                } elseif ($r.Out -match 'Access denied|denied|cannot|Can.t open' -or -not (Test-Path $ef)) {
-                    Check 'd_eicar_datei' $true "Datei während der Prüfung von Defender gesperrt/entfernt (erwartet bei aktivem Defender): $($r.Out.Trim()) $($r.Err.Trim())"
-                } else {
-                    Check 'd_eicar_datei' $false "Exitcode $($r.Code): $($r.Out.Trim()) $($r.Err.Trim())"
-                }
+                $outs += "Datei: Exitcode $($r.Code): $($r.Out.Trim()) $($r.Err.Trim())"
+                $found = ($r.Code -eq 1 -and $r.Out -match 'Eicar.*FOUND')
             } else {
-                Check 'd_eicar_datei' $true 'Defender hat die EICAR-Datei vor der ClamAV-Prüfung abgefangen (erwartet; Defender bleibt aktiv). Engine-Nachweis über stdin (d_eicar_stdin).'
+                $outs += 'Datei: vor der Prüfung entfernt'
+            }
+        }
+        if ($found) {
+            Check 'd_eicar' $true ("ClamAV erkennt EICAR – " + ($outs -join ' | '))
+        } else {
+            $mp = @()
+            # Defender protokolliert mit Verzögerung: bis zu 20 s nachsehen.
+            for ($k = 0; $k -lt 10 -and $mp.Count -eq 0; $k++) {
+                Start-Sleep -Seconds 2
+                try {
+                    $mp = @(Get-MpThreatDetection -ErrorAction Stop | Where-Object { -not $knownDet.ContainsKey("$($_.DetectionID)") } |
+                        ForEach-Object { $id = $_.ThreatID; $n = (Get-MpThreat -ThreatID $id -ErrorAction SilentlyContinue).ThreatName; "$n ($($_.InitialDetectionTime.ToString('HH:mm:ss')), $(@($_.Resources) -join ', '))" } |
+                        Where-Object { $_ -match 'EICAR' })
+                } catch { $outs += "Defender-Protokoll nicht lesbar: $($_.Exception.Message)"; break }
+            }
+            if ($mp.Count -gt 0 -and $stdinOk) {
+                $result.defender_abgefangen = @($mp)
+                Log ("HINWEIS d_eicar: Von Microsoft Defender abgefangen, bevor ClamAV die Daten lesen konnte. Defender meldet: " + ($mp -join '; ') + ". ClamAV-Erkennung von EICAR ist auf diesem PC deshalb nicht nachweisbar (Nachweis: Windows-CI ohne Defender-Echtzeitschutz). Engine-Fund mit Testsignatur: siehe d_engine_fund_*. Ausgaben: " + ($outs -join ' | '))
+            } else {
+                Check 'd_eicar' $false ("weder ClamAV-Fund noch protokollierte Defender-Erkennung – " + ($outs -join ' | '))
             }
         }
     } finally {
@@ -430,7 +468,17 @@ try {
 } finally {
     Save
     $failed = @($result.checks.GetEnumerator() | Where-Object { -not $_.Value.ok }).Count
-    Log ("Fertig: {0} Prüfungen, {1} fehlgeschlagen{2}. Bericht: {3}" -f $result.checks.Count, $failed, $(if ($result.Contains('error')) { ', ABGEBROCHEN' } else { '' }), $ReportFile)
+    $intercept = if ($result.Contains('defender_abgefangen')) { '; EICAR von Defender abgefangen (siehe HINWEIS)' } else { '' }
+    Log ("Fertig: {0} Prüfungen, {1} fehlgeschlagen{2}{3}. Bericht: {4}" -f $result.checks.Count, $failed, $intercept, $(if ($result.Contains('error')) { ', ABGEBROCHEN' } else { '' }), $ReportFile)
 }
-if ($result.Contains('error') -or @($result.checks.GetEnumerator() | Where-Object { -not $_.Value.ok }).Count -gt 0) { exit 1 }
+$bad = $result.Contains('error') -or @($result.checks.GetEnumerator() | Where-Object { -not $_.Value.ok }).Count -gt 0
+if ($Pause) {
+    Write-Host ''
+    if ($bad) { Write-Host 'ERGEBNIS: NICHT ERFOLGREICH – Einzelheiten im Bericht (FEHL-Zeilen).' -ForegroundColor Red }
+    else { Write-Host 'ERGEBNIS: ERFOLGREICH – alle Prüfungen bestanden.' -ForegroundColor Green }
+    if ($result.Contains('defender_abgefangen')) { Write-Host 'Hinweis: Microsoft Defender hat den EICAR-Test abgefangen (erwartet bei aktivem Defender, siehe HINWEIS im Bericht).' -ForegroundColor Yellow }
+    Write-Host "Bericht: $ReportFile"
+    [void](Read-Host 'Eingabetaste drücken, um dieses Fenster zu schließen')
+}
+if ($bad) { exit 1 }
 exit 0
