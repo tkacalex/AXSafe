@@ -25,10 +25,49 @@ impl ProcessStart {
     /// einen anderen (später gestarteten) Prozess vergeben ist.
     pub fn still_running(&self) -> bool {
         match process_start(self.pid) {
-            Ok(now) => now.start_ticks == self.start_ticks,
+            Ok(now) => now.start_ticks == self.start_ticks && alive(self.pid),
             Err(_) => false,
         }
     }
+}
+
+/// Läuft der Prozess noch (nicht beendet, kein Zombie)? Unter Windows
+/// bleibt das Prozessobjekt nach dem Ende bestehen, solange jemand ein
+/// Handle hält – deshalb zählt der Exitcode.
+#[cfg(windows)]
+fn alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    // SAFETY: Handle wird geschlossen.
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(h, &mut code);
+        CloseHandle(h);
+        ok != 0 && code == 259 // STILL_ACTIVE
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn alive(pid: u32) -> bool {
+    // Zustand nach dem Kommandonamen: "Z" (Zombie) oder "X" (tot) = beendet.
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()
+        .and_then(|s| {
+            s.rfind(')')
+                .and_then(|i| s[i + 1..].split_whitespace().next().map(String::from))
+        })
+        .is_some_and(|st| st != "Z" && st != "X")
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn alive(_pid: u32) -> bool {
+    false
 }
 
 /// Identität des eigenen Prozesses.
@@ -154,5 +193,28 @@ mod tests {
         c.kill().unwrap();
         c.wait().unwrap();
         assert!(!id.still_running());
+    }
+
+    /// Unter Windows bleibt das Prozessobjekt bestehen, solange ein Handle
+    /// offen ist; unter Linux bleibt bis zum Abwarten ein Zombie. Beides
+    /// zählt nicht als laufend.
+    #[test]
+    fn exited_but_not_released_process_is_not_running() {
+        let mut c = if cfg!(windows) {
+            std::process::Command::new("cmd")
+                .args(["/C", "ping -n 30 127.0.0.1 >NUL"])
+                .spawn()
+                .unwrap()
+        } else {
+            std::process::Command::new("sleep").arg("30").spawn().unwrap()
+        };
+        let id = process_start(c.id()).unwrap();
+        c.kill().unwrap();
+        let t = std::time::Instant::now();
+        while id.still_running() && t.elapsed() < std::time::Duration::from_secs(5) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(!id.still_running());
+        c.wait().unwrap();
     }
 }
