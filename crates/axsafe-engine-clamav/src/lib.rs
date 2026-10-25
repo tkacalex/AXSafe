@@ -66,15 +66,36 @@ pub struct ClamAvConfig {
     pub max_output_bytes: usize,
 }
 
+/// Feste Windows-Pfade der von `scripts/windows/setup-clamav.ps1`
+/// eingerichteten Installation. AXSafe sucht ClamAV unter Windows bewusst
+/// NICHT über `PATH` (unkontrollierbar, und laufende Prozesse sehen
+/// PATH-Änderungen nicht), sondern nur hier oder über `--clamscan`.
+pub fn windows_default_paths() -> (PathBuf, Option<PathBuf>) {
+    let pf = std::env::var_os("ProgramW6432")
+        .or_else(|| std::env::var_os("ProgramFiles"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"));
+    let pd = std::env::var_os("ProgramData")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
+    let db = pd.join("AXSafe").join("ClamAV").join("database");
+    (
+        pf.join("ClamAV").join("clamscan.exe"),
+        db.is_dir().then_some(db),
+    )
+}
+
 impl Default for ClamAvConfig {
     fn default() -> Self {
+        let (clamscan, database) = if cfg!(windows) {
+            windows_default_paths()
+        } else {
+            // Entwicklung/CI unter Linux: Paketinstallation über PATH.
+            (PathBuf::from("clamscan"), None)
+        };
         ClamAvConfig {
-            clamscan: PathBuf::from(if cfg!(windows) {
-                "clamscan.exe"
-            } else {
-                "clamscan"
-            }),
-            database: None,
+            clamscan,
+            database,
             max_filesize_mb: 100,
             max_scansize_mb: 400,
             max_recursion: 17,
@@ -138,6 +159,66 @@ fn db_files(path: &Path) -> std::io::Result<Vec<PathBuf>> {
     }
     files.sort();
     Ok(files)
+}
+
+/// Kopf einer offiziellen Datenbankdatei (CVD/CLD): die ersten 512 Bytes,
+/// `ClamAV-VDB:<Erstellt>:<Version>:<Signaturen>:…`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CvdHeader {
+    pub built: String,
+    pub version: u64,
+    pub signatures: u64,
+}
+
+pub fn cvd_header(path: &Path) -> Option<CvdHeader> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut b = [0u8; 512];
+    let mut n = 0;
+    while n < b.len() {
+        match f.read(&mut b[n..]) {
+            Ok(0) => break,
+            Ok(k) => n += k,
+            Err(_) => return None,
+        }
+    }
+    let text = std::str::from_utf8(&b[..n]).ok()?;
+    let text = text.trim_end_matches(['\0', ' ']);
+    let mut it = text.split(':');
+    if it.next()? != "ClamAV-VDB" {
+        return None;
+    }
+    let built = it.next()?.trim().to_string();
+    let version = it.next()?.trim().parse().ok()?;
+    let signatures = it.next()?.trim().parse().ok()?;
+    Some(CvdHeader {
+        built,
+        version,
+        signatures,
+    })
+}
+
+/// Stand der offiziellen Datenbanken (main, daily, bytecode) eines Ordners.
+fn official_versions(files: &[PathBuf]) -> Vec<(String, CvdHeader)> {
+    let mut v = Vec::new();
+    for name in ["main", "daily", "bytecode"] {
+        // CLD (inkrementell aktualisiert) hat Vorrang vor CVD.
+        for ext in ["cld", "cvd"] {
+            if let Some(f) = files.iter().find(|f| {
+                f.file_stem().and_then(|s| s.to_str()) == Some(name)
+                    && f.extension()
+                        .and_then(|e| e.to_str())
+                        .map(|e| e.eq_ignore_ascii_case(ext))
+                        .unwrap_or(false)
+            }) {
+                if let Some(h) = cvd_header(f) {
+                    v.push((name.to_string(), h));
+                    break;
+                }
+            }
+        }
+    }
+    v
 }
 
 fn database_digest(files: &[PathBuf]) -> std::io::Result<String> {
@@ -315,10 +396,47 @@ impl ClamAvEngine {
             }
         }
         if let Some(db) = self.cfg.database.clone() {
-            match db_files(&db).and_then(|f| database_digest(&f).map(|d| (f, d))) {
-                Ok((files, digest)) => {
-                    self.content_version = digest;
-                    let (kind, note) = classify_database(&files);
+            let official = db_files(&db).map(|f| official_versions(&f));
+            let res = match official {
+                // Offizielle Datenbank: Stand aus den Köpfen (ohne alle
+                // Signaturdaten bei jedem Start einzulesen).
+                Ok(o) if o.iter().any(|(n, _)| n == "daily") => db_files(&db).map(|files| {
+                    let version = o
+                        .iter()
+                        .map(|(n, h)| format!("{n}-{}", h.version))
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    let details = o
+                        .iter()
+                        .map(|(n, h)| {
+                            format!(
+                                "{n} {} ({} Signaturen, {})",
+                                h.version, h.signatures, h.built
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    let (kind, _) = classify_database(&files);
+                    (
+                        files,
+                        version,
+                        kind,
+                        format!(
+                            "offizielle ClamAV-Signaturen: {details}; Pfad {}. Aktualisierung über \
+                             FreshClam (geplanter Auftrag), Stand siehe state\\last-update.json",
+                            db.display()
+                        ),
+                    )
+                }),
+                _ => db_files(&db).and_then(|f| {
+                    let d = database_digest(&f)?;
+                    let (kind, note) = classify_database(&f);
+                    Ok((f, d, kind, note))
+                }),
+            };
+            match res {
+                Ok((_files, version, kind, note)) => {
+                    self.content_version = version;
                     self.content_kind = kind;
                     self.content_note = note;
                 }
@@ -581,6 +699,43 @@ mod tests {
         std::fs::write(&o, b"ClamAV-VDB:binary").unwrap();
         assert_eq!(classify_database(&[o]).0, ContentKind::OfficialSignatures);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cvd_header_and_official_versions() {
+        let dir = std::env::temp_dir().join(format!("axsafe-cvd-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut head = b"ClamAV-VDB:24 Oct 2026 06-26 +0000:28163:355788:90:x:y:svc:1".to_vec();
+        head.resize(512, b' ');
+        head.extend_from_slice(b"KOERPER");
+        std::fs::write(dir.join("daily.cld"), &head).unwrap();
+        let mut main = b"ClamAV-VDB:16 Sep 2021 08-32 -0400:62:6647427:90:x:y:sigmgr:1".to_vec();
+        main.resize(512, 0);
+        std::fs::write(dir.join("main.cvd"), &main).unwrap();
+        std::fs::write(dir.join("kaputt.cvd"), b"kein Kopf").unwrap();
+        let h = cvd_header(&dir.join("daily.cld")).unwrap();
+        assert_eq!((h.version, h.signatures), (28163, 355788));
+        assert_eq!(h.built, "24 Oct 2026 06-26 +0000");
+        assert!(cvd_header(&dir.join("kaputt.cvd")).is_none());
+        let files = db_files(&dir).unwrap();
+        let v = official_versions(&files);
+        let names: Vec<_> = v
+            .iter()
+            .map(|(n, h)| format!("{n}-{}", h.version))
+            .collect();
+        assert_eq!(names, ["main-62", "daily-28163"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_paths_are_fixed_not_path_search() {
+        let (exe, _) = windows_default_paths();
+        assert!(exe.is_absolute(), "{exe:?}");
+        assert!(
+            exe.ends_with("ClamAV/clamscan.exe")
+                || exe.to_string_lossy().ends_with(r"ClamAV\clamscan.exe")
+        );
     }
 
     #[test]

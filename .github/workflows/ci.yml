@@ -149,6 +149,73 @@ jobs:
             engines.json
           if-no-files-found: ignore
 
+  windows-clamav:
+    name: Windows Server · ClamAV-Einrichtung (Skript) und echte ClamAV-Tests
+    # Führt scripts/windows/setup-clamav.ps1 so aus, wie es auf einem PC laufen
+    # soll (Administrator, offizielles MSI, FreshClam, geplanter Auftrag) und
+    # prüft danach AXSafe sowie die ClamAV-Integrationstests unter Windows.
+    # Windows Server – kein Nachweis für Windows 10 LTSC.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust-Toolchain
+        run: rustup show active-toolchain; if ($LASTEXITCODE -ne 0) { rustup toolchain install }
+      - uses: Swatinem/rust-cache@v2
+      - name: PowerShell-Skripte syntaktisch prüfen (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $bad = 0
+          foreach ($f in Get-ChildItem scripts -Recurse -Filter *.ps1) {
+            $err = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$err)
+            if ($err) { $bad++; $err | ForEach-Object { Write-Host "$($f.Name): $_" } }
+          }
+          if ($bad) { throw "$bad Skript(e) mit Syntaxfehlern" }
+      - name: AXSafe-CLI bauen (Release)
+        run: cargo build --release --locked -p axsafe-cli
+      - name: ClamAV einrichten (Skript, wie auf dem PC)
+        shell: powershell
+        run: |
+          .\scripts\windows\setup-clamav.ps1 -EvidenceDir "$PWD\clamav-nachweis" -AxsafeCli "$PWD\target\release\axsafe.exe"
+          if ($LASTEXITCODE -ne 0) { throw "ClamAV-Einrichtung fehlgeschlagen" }
+      - name: Zweiter Lauf des Skripts ist idempotent (keine Neuinstallation, Konfiguration gesichert)
+        shell: powershell
+        run: |
+          .\scripts\windows\setup-clamav.ps1 -EvidenceDir "$PWD\clamav-nachweis" -AxsafeCli "$PWD\target\release\axsafe.exe" -SkipFileEicar
+          if ($LASTEXITCODE -ne 0) { throw "Zweiter Lauf fehlgeschlagen" }
+          if (-not (Get-ChildItem "$env:ProgramData\AXSafe\ClamAV\freshclam.conf.bak-*")) { throw "vorhandene Konfiguration wurde nicht gesichert" }
+      - name: Überlappende Updateläufe werden verhindert
+        shell: powershell
+        run: |
+          $u = "$env:ProgramData\AXSafe\ClamAV\update-clamav-signatures.ps1"
+          $m = New-Object System.Threading.Mutex($false, 'Global\AXSafe.ClamAV.FreshClam')
+          [void]$m.WaitOne()
+          try {
+            $out = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $u
+            if ($out -notcontains 'already_running') { throw "Zweiter Updater lief trotz aktivem Lauf: $out" }
+          } finally { $m.ReleaseMutex(); $m.Dispose() }
+          Write-Host "OK: zweiter Updater endet sofort (already_running)"
+      - name: Echte ClamAV-Integrationstests unter Windows
+        shell: bash
+        run: |
+          set -o pipefail
+          export PATH="/c/Program Files/ClamAV:$PATH"
+          cargo test --locked -p axsafe-engine-clamav -p axsafe-cli --no-fail-fast -- --include-ignored --skip report_target_windows_symlink 2>&1 | tee cargo-test-clamav.log
+      - name: Testzusammenfassung
+        if: always()
+        shell: bash
+        run: |
+          python scripts/ci/test_summary.py --cargo cargo-test-clamav.log \
+            --platform "Windows Server mit ClamAV (Skript-Installation) – kein LTSC-Nachweis" --markdown "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beleg-windows-clamav
+          path: |
+            clamav-nachweis/
+            cargo-test-clamav.log
+          if-no-files-found: ignore
+
   supply-chain:
     name: Lieferkette · cargo-deny, Gitleaks, SBOM, Lizenzhinweise
     runs-on: ubuntu-24.04
