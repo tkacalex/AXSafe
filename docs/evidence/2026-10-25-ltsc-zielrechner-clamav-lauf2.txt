@@ -1,0 +1,42 @@
+AXSafe – ClamAV-Einrichtung auf dem Zielrechner (Windows 10 Enterprise LTSC 19044, Defender-Echtzeitschutz AN)
+Paket: Commit 47b6db5 (CI-Lauf 40187023506). Lauf 2 (Lauf 1 brach ab, nachdem das Fenster während des ersten Signatur-Downloads verschwunden war; Update selbst erfolgreich).
+Ergebnis: 22 von 24 Prüfungen bestanden; d_eicar_stdin und d_eicar_datei scheiterten, weil Defender die EICAR-Daten abfängt (Fehler 225). Folgeänderung: Commit d2120a5.
+Benutzername im Pfad durch <Benutzer> ersetzt.
+
+[12:39:29] System: Microsoft Windows 10 Enterprise LTSC 10.0.19044 (Build 19044), AMD64
+[12:39:29] Microsoft Defender: Echtzeitschutz=True (wird nicht verändert)
+[12:39:31] Vorhanden: ClamAV 1.5.4 1.5.4 C:\Program Files\ClamAV\
+[12:39:31] ClamAV 1.5.4 ist bereits installiert – keine Neuinstallation.
+[12:39:31] OK   datenordner_acl: C:\ProgramData\AXSafe\ClamAV: nur SYSTEM/Administratoren schreiben, Benutzer lesen
+[12:39:34] OK   firewall_regel_clamscan: Regel 'AXSafe: clamscan ohne Netzwerk': ausgehend gesperrt für C:\Program Files\ClamAV\clamscan.exe
+[12:39:34] OK   firewall_profile_aktiv: Domäne, Privat und Öffentlich eingeschaltet
+[12:39:34] OK   freshclam_nicht_gesperrt: keine ausgehende Sperrregel für freshclam.exe
+[12:39:34] Vorhandene freshclam.conf gesichert: C:\ProgramData\AXSafe\ClamAV\freshclam.conf.bak-20261025-123929
+ClamAV update process started at Sun Oct 25 12:39:35 2026
+Sun Oct 25 12:39:35 2026 -> daily.cvd database is up-to-date (version: 28164, sigs: 355788, f-level: 90, builder: svc.clamav-publisher)
+Sun Oct 25 12:39:35 2026 -> main.cvd database is up-to-date (version: 63, sigs: 3287027, f-level: 90, builder: tomjudge)
+Sun Oct 25 12:39:35 2026 -> bytecode.cvd database is up-to-date (version: 339, sigs: 80, f-level: 90, builder: nrandolp)
+
+[12:39:35] OK   b_erstes_update: Ergebnis updated, Exitcode 0, Sun Oct 25 12:39:35 2026 -> daily.cvd database is up-to-date (version: 28164, sigs: 355788, f-level: 90, builder: svc.clamav-publisher) | Sun Oct 25 12:39:35 2026 -> main.cvd database is up-to-date (version: 63, sigs: 3287027, f-level: 90, builder: tomjudge) | Sun Oct 25 12:39:35 2026 -> bytecode.cvd database is up-to-date (version: 339, sigs: 80, f-level: 90, builder: nrandolp)
+[12:39:35] OK   b_datenbank: main.cvd v63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily.cvd v28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode.cvd v339 (80 Signaturen, 11 Sep 2025 08-29 -0400)
+[12:39:35] OK   a_versionen: clamscan: ClamAV 1.5.4/28164/Sun Oct 25 07:24:12 2026 | freshclam: ClamAV 1.5.4/28164/Sun Oct 25 07:24:12 2026
+[12:39:51] OK   c_harmlos: Exitcode 0: C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-9bf0950b872e470a91782d687c94cd95\brief.txt: OK
+[12:40:08] FEHL d_eicar_stdin: Exitcode 2: stdin: Can't open file or directory ERROR
+[12:40:25] Diagnose stdin (Exitcode 2): stdin: Can't open file or directory ERROR | Infected files: 0 | Total errors: 1 | Data scanned: 0 B | Data read: 68 B (ratio 0.00:1) | LibClamAV debug: clean_cache_init: Requested cache size: 65536. Actual cache size: 65536. Trees: 256. Nodes per tree: 256. | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 64 | LibClamAV debug: Table 000002609FC18B28 size after grow: 128 | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 128 | LibClamAV debug: Table 000002609FC18B28 size after grow: 256 | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 256 | LibClamAV debug: Table 000002609FC18B28 size after grow: 512 | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 512 | LibClamAV debug: Table 000002609FC18B28 size after grow: 1024 | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 1024 | LibClamAV debug: Table 000002609FC18B28 size after grow: 2048 | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 2048 | LibClamAV debug: Table 000002609FC18B28 size after grow: 4096 | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 4096 | LibClamAV debug: Table 000002609FC18B28 size after grow: 8192 | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 8192 | LibClamAV debug: Table 000002609FC18B28 size after grow: 16384 | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 16384 | LibClamAV debug: Table 000002609FC18B28 size after grow: 32768 | LibClamAV debug: hashtab.c:Growing hashtable 000002609FC18B28, because it has exceeded maxfill, old size: 32768
+[12:40:44] FEHL d_eicar_datei: Exitcode 2:  LibClamAV Warning: Can't open file C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-9bf0950b872e470a91782d687c94cd95\eicar-test.com: 225
+WARNING: Can't open file C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-9bf0950b872e470a91782d687c94cd95\eicar-test.com: Invalid argument
+[12:40:44] OK   testdaten_entfernt: C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-9bf0950b872e470a91782d687c94cd95
+[12:40:47] OK   f_erneutes_update: Ergebnis updated, letzte Erfolgszeit 2026-10-25T11:40:47.0419807Z
+[12:40:53] OK   g_geplanter_auftrag: LastTaskResult 0, Lauf um 2026-10-25T11:40:48.2634665Z, Ergebnis updated, nächster Lauf 10/25/2026 13:04:04
+[12:41:12] OK   e_axsafe: axsafe engines: clamav=ready official_signatures main-63/daily-28164/bytecode-339 – offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\ProgramData\AXSafe\ClamAV\database. Aktualisierung ├╝ber FreshClam (geplanter Auftrag), Stand siehe state\last-update.json 
+[12:41:12] OK   e_axsafe_abschottung: ClamAV-Isolation: sandboxed_worker / Eingeschr├ñnktes Token (Token vor dem Start gepr├╝ft): keine Privilegien, Integrit├ñtsstufe Niedrig, kein Zugriff auf Dateien, die nur der Benutzer lesen darf; schreiben nur im eigenen Arbeitsordner; Job Object (Zeit, Speicher, Prozessbaum). Netzwerk ├╝ber diese Abschottung NICHT gesperrt (ausgehende Firewall-Sperrregel durch die Einrichtung). AppContainer nicht m├╢glich: ClamAV 1.5 kann dort seinen Zertifikatsordner nicht aufl├╢sen
+[12:41:13] OK   token_datenbank_lesbar: lesen:C:\ProgramData\AXSafe\ClamAV\database: erlaubt (erwartet erlaubt) – 7 Eintr├ñge, C:\ProgramData\AXSafe\ClamAV\database\bytecode-339.cvd.sign gelesen (16 Bytes)
+[12:41:13] OK   token_zertifikate_aufloesbar: aufloesen:C:\Program Files\ClamAV\certs: erlaubt (erwartet erlaubt) – \\?\C:\Program Files\ClamAV\certs
+[12:41:13] OK   token_zertifikate_lesbar: lesen:C:\Program Files\ClamAV\certs: erlaubt (erwartet erlaubt) – 1 Eintr├ñge, C:\Program Files\ClamAV\certs\clamav.crt gelesen (16 Bytes)
+[12:41:13] OK   token_arbeitsordner_schreibbar: anlegen:C:\Users\<Benutzer>\AppData\Local\AXSafe\ClamAV-Arbeitsordner\15872-0-1792928472991318: erlaubt (erwartet erlaubt) – angelegt und gel├╢scht
+[12:41:13] OK   token_benutzerdatei_unlesbar: lesen:C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-abschottung-15872.txt: verweigert (erwartet verweigert) – Access is denied. (os error 5)
+[12:41:13] OK   token_benutzer_temp_unbeschreibbar: anlegen:C:\Users\<Benutzer>\AppData\Local\Temp\: verweigert (erwartet verweigert) – Access is denied. (os error 5)
+[12:41:13] OK   token_programmordner_unbeschreibbar: anlegen:C:\Program Files\ClamAV: verweigert (erwartet verweigert) – Access is denied. (os error 5)
+[12:41:13] OK   token_probe_vollstaendig: Exitcode 0; Hinweise:  
+[12:41:16] OK   netzsperre_wirksam: Ziel database.clamav.net:443 – ohne Regel: verbunden mit 104.17.196.15:443 | mit gleich gebauter Regel: An attempt was made to access a socket in a way forbidden by its access permissions. (os error 10013)
+[12:41:16] Fertig: 24 Prüfungen, 2 fehlgeschlagen. Bericht: C:\Users\<Benutzer>\Desktop\AXSafe\Programm\scripts\windows\..\..\..\nachweise\clamav-setup-20261025-123929.txt

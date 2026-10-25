@@ -324,11 +324,11 @@ try {
         $pb = [IO.File]::ReadAllBytes($probe)
         $md5 = ([BitConverter]::ToString([Security.Cryptography.MD5]::Create().ComputeHash($pb)) -replace '-', '').ToLowerInvariant()
         $hdb = Join-Path $t 'axsafe-selbsttest.hdb'
-        Set-Content -Path $hdb -Value "${md5}:$($pb.Length):AXSafe.Selbsttest.UNOFFICIAL" -Encoding ASCII
+        Set-Content -Path $hdb -Value "${md5}:$($pb.Length):AXSafe.Selbsttest" -Encoding ASCII
         $r = Run $clamscan @("--database=$DbDir", "--database=$hdb", '--no-summary', $probe)
-        Check 'd_engine_fund_datei' ($r.Code -eq 1 -and $r.Out -match 'AXSafe\.Selbsttest\.UNOFFICIAL FOUND') "Exitcode $($r.Code): $($r.Out.Trim())"
+        Check 'd_engine_fund_datei' ($r.Code -eq 1 -and $r.Out -match 'AXSafe\.Selbsttest(\.UNOFFICIAL)? FOUND') "Exitcode $($r.Code): $($r.Out.Trim())"
         $r = Run $clamscan @("--database=$DbDir", "--database=$hdb", '--no-summary', '-') $pb
-        $stdinOk = ($r.Code -eq 1 -and $r.Out -match 'stdin: AXSafe\.Selbsttest\.UNOFFICIAL FOUND')
+        $stdinOk = ($r.Code -eq 1 -and $r.Out -match 'stdin: AXSafe\.Selbsttest(\.UNOFFICIAL)? FOUND')
         Check 'd_engine_fund_stdin' $stdinOk "Exitcode $($r.Code): $($r.Out.Trim())"
 
         # EICAR nur zur Laufzeit aus zwei Teilen. Bei aktivem Defender kann
