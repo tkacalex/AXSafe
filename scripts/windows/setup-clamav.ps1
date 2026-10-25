@@ -377,7 +377,7 @@ try {
         $engines = $ax.Out | ConvertFrom-Json
         $c = $engines | Where-Object { $_.name -eq 'clamav' }
         $ok = $c -and $c.health.state -eq 'ready' -and $c.content_kind -eq 'official_signatures'
-        Check 'e_axsafe' $ok "axsafe engines: clamav=$($c.health.state) $($c.content_kind) $($c.content_version) – $($c.content_note) $($c.health.reason)"
+        Check 'e_axsafe' $ok "axsafe engines: clamav=$($c.health.state) $($c.content_kind) $($c.content_version) – $($c.content_note) $(if ($c -and $c.health.PSObject.Properties['reason']) { $c.health.reason })"
         Check 'e_axsafe_abschottung' ($c -and $c.isolation.enforced) "ClamAV-Isolation: $($c.isolation.kind) / $($c.isolation.detail)"
 
         # Mit GENAU dem Token, das clamscan bekommt: Datenbank und Zertifikate
@@ -401,6 +401,7 @@ try {
         $baseOpen = $bj -and @($bj.checks).Count -eq 1 -and $bj.checks[0].allowed
         $tmpRule = 'AXSafe: Probe Netzsperre (vorübergehend)'
         Get-NetFirewallRule -DisplayName $tmpRule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+        $kj = $null
         New-NetFirewallRule -DisplayName $tmpRule -Direction Outbound -Action Block -Program $probeExe -Profile Any | Out-Null
         try {
             Start-Sleep -Seconds 2
