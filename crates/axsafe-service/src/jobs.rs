@@ -24,6 +24,8 @@ pub struct JobLimits {
     pub max_per_owner: usize,
     /// Abgeschlossene Aufträge, die im Speicher gelistet bleiben.
     pub keep_finished: usize,
+    /// Gespeicherte Berichte auf der Platte (älteste werden gelöscht; AXS-020).
+    pub keep_reports: usize,
 }
 
 impl Default for JobLimits {
@@ -33,6 +35,7 @@ impl Default for JobLimits {
             max_queued: 8,
             max_per_owner: 4,
             keep_finished: 200,
+            keep_reports: 1000,
         }
     }
 }
@@ -355,7 +358,44 @@ impl JobManager {
         // gibt report() nichts heraus.
         let json = serde_json::to_vec_pretty(rep).map_err(|e| e.to_string())?;
         write_new(base.with_extension("json"), &json)?;
-        write_new(base.with_extension("owner.json"), &owner)
+        write_new(base.with_extension("owner.json"), &owner)?;
+        self.prune();
+        Ok(())
+    }
+
+    /// Aufbewahrung (AXS-020): höchstens `keep_reports` Berichte; die ältesten
+    /// werden samt Eigentümerangabe entfernt. Nur Dateien mit UUID-Namen.
+    pub fn prune(&self) -> usize {
+        let Ok(rd) = std::fs::read_dir(&self.reports_dir) else {
+            return 0;
+        };
+        let mut reports: Vec<(std::time::SystemTime, String)> = rd
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let id = name.strip_suffix(".json")?;
+                if id.ends_with(".owner") || uuid::Uuid::parse_str(id).is_err() {
+                    return None;
+                }
+                let t = e.metadata().and_then(|m| m.modified()).ok()?;
+                Some((t, id.to_string()))
+            })
+            .collect();
+        if reports.len() <= self.limits.keep_reports {
+            return 0;
+        }
+        reports.sort();
+        let excess = reports.len() - self.limits.keep_reports;
+        let mut removed = 0;
+        for (_, id) in reports.into_iter().take(excess) {
+            let base = self.reports_dir.join(&id);
+            // Erst die Eigentümerangabe: ohne sie gibt report() nichts heraus.
+            let _ = std::fs::remove_file(base.with_extension("owner.json"));
+            if std::fs::remove_file(base.with_extension("json")).is_ok() {
+                removed += 1;
+            }
+        }
+        removed
     }
 }
 
@@ -459,6 +499,7 @@ mod tests {
                 max_queued: 5,
                 max_per_owner: 3,
                 keep_finished: 10,
+                keep_reports: 1000,
             },
             dir.path().into(),
             runner.clone(),
@@ -484,6 +525,46 @@ mod tests {
         assert!(running <= 2, "höchstens 2 parallel, waren {running}");
         m.shutdown();
         assert!(matches!(m.submit(spec(&a)), Err(SubmitError::ShuttingDown)));
+    }
+
+    /// T-020: Aufbewahrung begrenzt die Datenmenge; nur die ältesten
+    /// Berichte (mit UUID-Namen) werden entfernt, fremde Dateien nie.
+    #[test]
+    fn report_retention_removes_oldest_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let m = JobManager::start(
+            JobLimits {
+                keep_reports: 3,
+                ..Default::default()
+            },
+            dir.path().into(),
+            Arc::new(SlowRunner {
+                started: Mutex::new(0),
+            }),
+        );
+        let mut ids = Vec::new();
+        for i in 0..5u64 {
+            let id = uuid::Uuid::new_v4().to_string();
+            let p = dir.path().join(format!("{id}.json"));
+            std::fs::write(&p, b"{}").unwrap();
+            std::fs::write(dir.path().join(format!("{id}.owner.json")), b"{}").unwrap();
+            let t = std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000 + i);
+            std::fs::File::options()
+                .write(true)
+                .open(&p)
+                .unwrap()
+                .set_modified(t)
+                .unwrap();
+            ids.push(id);
+        }
+        std::fs::write(dir.path().join("notiz.json"), b"fremd").unwrap();
+        assert_eq!(m.prune(), 2);
+        for (i, id) in ids.iter().enumerate() {
+            let exists = dir.path().join(format!("{id}.json")).exists();
+            assert_eq!(exists, i >= 2, "Bericht {i}");
+            assert_eq!(dir.path().join(format!("{id}.owner.json")).exists(), i >= 2);
+        }
+        assert!(dir.path().join("notiz.json").exists());
     }
 
     #[test]

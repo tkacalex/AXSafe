@@ -327,3 +327,42 @@ fn service_accounts_and_session_zero_are_refused() {
         ErrorCode::Forbidden
     );
 }
+
+/// T-020: Ein beschädigter Bericht wird kontrolliert gemeldet; der Dienst
+/// arbeitet weiter (kein Stillstand ohne Meldung).
+#[test]
+fn damaged_report_is_reported_and_service_continues() {
+    let (ctx, dir) = ctx(false, ConnLimits::default());
+    let target = dir.path().join("daten");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("a.txt"), b"x").unwrap();
+    let alex = identity("S-1-5-21-1-2-3-1001", 77);
+    let (mut c, _) = connect(&ctx, alex.clone());
+    let r = c
+        .call(Body::ScanStart {
+            paths: vec![target.display().to_string()],
+            use_clamav: false,
+        })
+        .unwrap();
+    let job = r.result["job_id"].as_str().unwrap().to_string();
+    assert_eq!(wait_finished(&mut c, &job)["state"], "finished");
+    std::fs::write(
+        dir.path().join("reports").join(format!("{job}.json")),
+        b"{ abgeschnitten",
+    )
+    .unwrap();
+    let rep = c.call(Body::Report { job_id: job }).unwrap();
+    assert!(!rep.ok);
+    let e = rep.error.unwrap();
+    assert_eq!(e.code, ErrorCode::Internal);
+    assert!(e.message.contains("unlesbar"), "{}", e.message);
+    let st = c.call(Body::Status).unwrap();
+    assert!(st.ok, "Dienst muss weiterarbeiten: {st:?}");
+    let r2 = c
+        .call(Body::ScanStart {
+            paths: vec![target.display().to_string()],
+            use_clamav: false,
+        })
+        .unwrap();
+    assert!(r2.ok, "{r2:?}");
+}

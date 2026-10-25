@@ -132,6 +132,9 @@ D @('auftrag', '$ownJob') 'fremder_auftrag'
 D @('scan', '$root\privat', '--warten') 'privat_scan'
 try { Set-Content -Path '$env:ProgramData\AXSafe\Policy\policy.json' -Value '{}' -ErrorAction Stop; `$w = 'GESCHRIEBEN' } catch { `$w = 'VERWEIGERT: ' + `$_.Exception.Message }
 Set-Content '$out\richtlinie_schreiben.txt' `$w -Encoding UTF8
+try { `$n = @(Get-ChildItem '$env:ProgramData\AXSafe\Service\reports' -ErrorAction Stop).Count; `$d = 'GELESEN: ' + `$n } catch { `$d = 'VERWEIGERT: ' + `$_.Exception.Message }
+try { Get-Content '$env:ProgramData\AXSafe\Service\logs\service.log' -ErrorAction Stop | Out-Null; `$d += ' | PROTOKOLL GELESEN' } catch { `$d += ' | Protokoll verweigert' }
+Set-Content '$out\dienstdaten_lesen.txt' `$d -Encoding UTF8
 `$sc = & sc.exe stop AXSafeService 2>&1 | Out-String; Set-Content '$out\sc_stop.txt' ("EXIT=`$LASTEXITCODE`n" + `$sc) -Encoding UTF8
 `$sd = & sc.exe delete AXSafeService 2>&1 | Out-String; Set-Content '$out\sc_delete.txt' ("EXIT=`$LASTEXITCODE`n" + `$sd) -Encoding UTF8
 "@
@@ -145,6 +148,8 @@ Set-Content '$out\richtlinie_schreiben.txt' `$w -Encoding UTF8
         $t = ReadOut $n
         Check $n ($t -match 'EXIT=7' -and $t -match 'not_found') (Short $t 160)
     }
+    $dd = ReadOut 'dienstdaten_lesen'
+    Check 'nicht_admin_dienstdaten' ($dd -match '^\s*VERWEIGERT' -and $dd -match 'Protokoll verweigert') (Short $dd 160)
     $rw = ReadOut 'richtlinie_schreiben'
     Check 'nicht_admin_richtlinie' ($rw -match 'VERWEIGERT' -and -not (Test-Path (Join-Path $env:ProgramData 'AXSafe\Policy\policy.json'))) (Short $rw 160)
     $ps = ReadOut 'privat_scan'
