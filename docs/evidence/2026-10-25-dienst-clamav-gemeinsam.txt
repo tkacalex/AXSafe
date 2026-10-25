@@ -1,0 +1,18 @@
+AXSafe – Dienst + echte ClamAV-Engine auf derselben Windows-Maschine (CI windows-clamav)
+Commit ed4df08 · CI-Lauf 40195076329 · Job 121174052432 · Windows Server 2025 (kein LTSC), Defender-Echtzeitschutz des Runners aus
+Vorher (Commit 3eebce2): 6 von 7 fehlgeschlagen – clamscan im Dienst: STATUS_DLL_INIT_FAILED (Fensterstation); behoben in ed4df08.
+
+[13:02:52] Fertig: 28 Prüfungen, 0 fehlgeschlagen. Bericht: D:\a\AXSafe\AXSafe\clamav-nachweis\clamav-setup-20261025-130100.txt
+[13:04:09] Fertig: 25 Prüfungen, 0 fehlgeschlagen. Bericht: D:\a\AXSafe\AXSafe\clamav-nachweis\clamav-setup-20261025-130252.txt
+[13:05:05] Defender-Echtzeitschutz auf dem Runner: False
+[13:05:21] OK   dienst_sieht_clamav: Dienst-Sicht: clamav ready / official_signatures / main-63/daily-28164/bytecode-339 / isoliert=True
+[13:05:59] OK   ausgefuehrt_vom_dienst: executed_by: {"kind":"dienst","name":"AXSafeService","account":"NT AUTHORITY\\LOCAL SERVICE","process_id":7360,"client":"runnervmdaln5\\runneradmin","client_session":2}
+[13:05:59] OK   auftrag_clamav_offiziell: Auftrag: clamav ready official_signatures main-63/daily-28164/bytecode-339
+[13:05:59] OK   harmlos_ohne_fund: brief.txt: clamav NoDetection, Lücken 0
+[13:05:59] OK   eicar_durch_clamav: eicar.com: clamav Malicious (Eicar-Test-Signature), Inhalt main-63/daily-28164/bytecode-339
+[13:05:59] OK   keine_luecken: outcome detection, complete True, Auftragslücken 0, Objekte mit Lücke 0
+[13:05:59] OK   dienstprotokoll: Protokoll: 2026-10-25T13:05:59.652Z Auftrag d661cbf6-0057-47ad-9be6-cfa7dcb29e47 für runnervmdaln5\runneradmin: Ergebnis Detection, vollständig=true, Objekte 2, Funde 1, Lücken 0 | Engines: yara-x 1.22.0 Ready inhalt=rules-sha256:6c65b01e1aa5ff32 isoliert=true; clamav ClamAV 1.5.4 Ready inhalt=main-63/daily-28164/bytecode-339 isoliert=true | Engine-Ergebnisse: {"clamav=Malicious": 1, "clamav=NoDetection": 1, "yara-x=Malicious": 1, "yara-x=NoDetection": 1} | Lückengründe: {}
+[13:06:00] 7 Prüfungen, 0 fehlgeschlagen
+
+Zielrechner (Windows 10 LTSC 19044, Defender an), Paket ed4df08: Dienstscan 2 Dateien, siehe 2026-10-25-ltsc-zielrechner-dienstscan-clamav.json:
+executed_by AXSafeService/LOCAL SERVICE, clamav ready official_signatures main-63/daily-28164/bytecode-339, isoliert, beide Objekte NoDetection ohne Lücken; je ClamAV-Aufruf ~16,8 s (Datenbank wird je Objekt neu geladen).

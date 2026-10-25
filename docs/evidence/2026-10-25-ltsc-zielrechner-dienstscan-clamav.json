@@ -1,0 +1,189 @@
+{
+  "schema": "axsafe.scan-report/2",
+  "job_id": "37916341-9714-43c0-9140-d3d35745a4b5",
+  "axsafe_version": "0.2.0",
+  "policy_version": "policy-2026.10.24-2",
+  "started_utc": "2026-10-25T14:39:36.070Z",
+  "finished_utc": "2026-10-25T14:40:09.635Z",
+  "duration_ms": 33565,
+  "scope": {
+    "roots": [
+      "C:\\Users\\<Benutzer>\\Videos"
+    ],
+    "engines": [
+      {
+        "name": "yara-x",
+        "engine_version": "1.22.0",
+        "content_version": "rules-sha256:6c65b01e1aa5ff32",
+        "health": {
+          "state": "ready"
+        },
+        "license": "BSD-3-Clause (Engine; Regellizenzen je Regel in meta.license)",
+        "content_kind": "test_only",
+        "content_note": "nur Funktionstest-Regeln (1 von 1), z. B. EICAR \u2013 damit wird keine echte Schadsoftware erkannt",
+        "inspects_contents_of": [],
+        "isolation": {
+          "kind": "sandboxed_worker",
+          "enforced": true,
+          "detail": "AppContainer ohne F\u00E4higkeiten: kein Netzwerk, kein Zugriff auf Benutzerdateien; dazu Job Object (1 Prozess, Speicher- und Zeitgrenze); Probe: 5 verbotene Aktionen verweigert"
+        }
+      },
+      {
+        "name": "clamav",
+        "engine_version": "ClamAV 1.5.4",
+        "content_version": "main-63/daily-28164/bytecode-339",
+        "health": {
+          "state": "ready"
+        },
+        "license": "GPL-2.0 (separat installiert, nicht mitgeliefert)",
+        "content_kind": "official_signatures",
+        "content_note": "offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 \u002B0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 \u002B0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\\ProgramData\\AXSafe\\ClamAV\\database. Aktualisierung \u00FCber FreshClam (geplanter Auftrag), Stand siehe state\\last-update.json",
+        "inspects_contents_of": [
+          "zip",
+          "ooxml",
+          "gzip",
+          "ole_cfb",
+          "cab",
+          "seven_zip",
+          "pdf"
+        ],
+        "isolation": {
+          "kind": "sandboxed_worker",
+          "enforced": true,
+          "detail": "Eingeschr\u00E4nktes Token (Token vor dem Start gepr\u00FCft): keine Privilegien, Integrit\u00E4tsstufe Niedrig, kein Zugriff auf Dateien, die nur der Benutzer lesen darf; schreiben nur im eigenen Arbeitsordner; Job Object (Zeit, Speicher, Prozessbaum). Netzwerk \u00FCber diese Abschottung NICHT gesperrt (ausgehende Firewall-Sperrregel durch die Einrichtung). AppContainer nicht m\u00F6glich: ClamAV 1.5 kann dort seinen Zertifikatsordner nicht aufl\u00F6sen"
+        }
+      }
+    ],
+    "limits": {
+      "max_file_size": 268435456,
+      "engine_timeout_ms": 30000,
+      "max_depth": 64
+    },
+    "follows_links": false,
+    "excluded": []
+  },
+  "outcome": "no_detection",
+  "detection": "NoDetection",
+  "complete": true,
+  "cancelled": false,
+  "job_gaps": [],
+  "summary": {
+    "objects_total": 2,
+    "objects_read": 2,
+    "bytes_read": 694,
+    "with_detection": 0,
+    "incomplete": 0,
+    "detection_and_incomplete": 0,
+    "no_detection_complete": 2,
+    "objects_by_detection": {
+      "Malicious": 0,
+      "Pua": 0,
+      "Suspicious": 0
+    },
+    "objects_by_gap_state": {
+      "AccessDenied": 0,
+      "ChangedDuringScan": 0,
+      "Encrypted": 0,
+      "Error": 0,
+      "Timeout": 0,
+      "Unsupported": 0
+    }
+  },
+  "files": [
+    {
+      "path": "C:\\Users\\<Benutzer>\\Videos\\Captures\\desktop.ini",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 190,
+      "sha256": "86d9f822aeb989755fac82929e8db369b3f5f04117ef96fd76e3d5f920a501d2",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 281474977334230,
+        "size": 190,
+        "modified_unix_nanos": 1763817985322800600
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 16853
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T14:39:36.070Z"
+    },
+    {
+      "path": "C:\\Users\\<Benutzer>\\Videos\\desktop.ini",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 504,
+      "sha256": "b287b639f6edd612f414caf000c12ba0555adb3a2643230cbdd5af4053284978",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 281474977311983,
+        "size": 504,
+        "modified_unix_nanos": 1763799748819455600
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 16707
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T14:39:52.926Z"
+    }
+  ],
+  "disclaimer": "AXSafe Vorversion: Ergebnis gilt nur f\u00FCr den angegebenen Umfang, die genannten Engines und Inhaltsst\u00E4nde. \u0027Nichts erkannt\u0027 ist kein Beweis f\u00FCr Harmlosigkeit. Kein Echtzeitschutz, keine Quarant\u00E4ne, kein Ersatz f\u00FCr einen aktiven Virenschutz.",
+  "executed_by": {
+    "kind": "dienst",
+    "name": "AXSafeService",
+    "account": "NT AUTHORITY\\LOCAL SERVICE",
+    "process_id": 18340,
+    "client": "<PC>\\<Benutzer>",
+    "client_session": 4
+  }
+}

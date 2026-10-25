@@ -21,6 +21,8 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 - `scripts/windows/setup-clamav.ps1` (Start per `ClamAV-einrichten.cmd`, eine UAC-Bestätigung): offizielles MSI von Cisco Talos, Prüfung von SHA-256 und Talos-PGP-Signatur vor der Ausführung, geschützte Daten- und Protokollordner, FreshClam mit offiziellen Quellen, geplanter Signaturupdate-Auftrag alle 4 Stunden ohne Überlappung mit Fehler- und Erfolgsprotokoll, Nachweisbericht a)–g). Kein clamd, kein TCP-Port. Defender bleibt aktiv.
 
 ### Behoben
+- **ClamAV im Dienst startete nicht** (STATUS_DLL_INIT_FAILED): Das eingeschränkte Token durfte die Fensterstation des Dienstes nicht nutzen. Aufgedeckt erst durch den neuen gemeinsamen Test (Dienst + echte ClamAV-Engine auf einer Maschine); vorher liefen beide nur getrennt. Im Dienstkontext enthält das Token jetzt die Dienstkonto-SID.
+- Berichte nennen ihre Herkunft (`executed_by`), der Dienst protokolliert je Auftrag Engines und Lückengründe, die Oberfläche speichert Dienstberichte nachvollziehbar unter `%LOCALAPPDATA%\AXSafe\reports`.
 - ClamAV-Einrichtung (Windows): Prüfung von Datenbank, Zertifikatsordner und Arbeitsordner jetzt **mit dem echten eingeschränkten Token** (`axsafe clamav-abschottung`) statt anhand von ACL-Einträgen; eigener Arbeitsordner je Engine-Instanz (parallele Instanzen störten sich: „Can't write to temporary directory“); Netzsperre wirksam nachgewiesen; ausgeschaltetes Firewall-Profil ist ein Fehler.
 - Windows PowerShell 5.1: Hilfsfunktionen hießen wie eingebaute Aliasse (`sc` = Set-Content, `r` = Invoke-History) und wurden dadurch nie aufgerufen. Die CI prüft das jetzt für alle Skripte.
 - CLI überschrieb unter Windows den festen Standardpfad der ClamAV-Datenbank mit „keiner“.
