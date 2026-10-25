@@ -244,3 +244,125 @@ fn unsandboxed_worker_is_refused_on_windows() {
         h => panic!("ohne AppContainer darf der Worker nicht bereit sein: {h:?}"),
     }
 }
+
+// --- Neustartpfad: jeder neue Worker wird vollständig neu geprüft ---------
+
+fn restart_cfg(restart: &[&str]) -> WorkerConfig {
+    let mut c = helper_cfg("crash-on-payload", None);
+    c.restart_args = Some(restart.iter().map(|s| s.to_string()).collect());
+    c
+}
+
+#[test]
+fn restart_with_rejected_rules_is_refused_and_state_updated() {
+    let mut cfg = restart_cfg(&["reject-rules"]);
+    cfg.max_restarts = 1;
+    let e = WorkerEngine::start(cfg);
+    assert_eq!(e.info().health, EngineHealth::Ready, "{:?}", e.info());
+    let crash = scan(&e, axsafe_worker::CRASH_PAYLOAD, 2000);
+    assert_eq!(crash.verdict, Verdict::Error);
+    // Neustart liefert abgelehnten Regelsatz → kein Scan, Lücke mit Grund.
+    let o = scan(&e, &eicar(), 5000);
+    assert_eq!(o.verdict, Verdict::Error, "{o:?}");
+    assert!(o.gaps[0].detail.contains("Regelsatz abgelehnt"), "{o:?}");
+    // Nach Überschreiten der Neustartgrenze zeigt die Engine „nicht verfügbar“.
+    match e.info().health {
+        EngineHealth::Unavailable { reason } => {
+            assert!(reason.contains("abgeschaltet"), "{reason}")
+        }
+        h => panic!("Zustand nicht nachgeführt: {h:?}"),
+    }
+}
+
+#[test]
+fn restart_with_changed_content_version_is_refused() {
+    let e = WorkerEngine::start(restart_cfg(&["wrong-content"]));
+    assert_eq!(e.info().health, EngineHealth::Ready, "{:?}", e.info());
+    let first_version = e.info().content_version;
+    scan(&e, axsafe_worker::CRASH_PAYLOAD, 2000);
+    let o = scan(&e, &eicar(), 5000);
+    assert_eq!(o.verdict, Verdict::Error, "{o:?}");
+    assert!(
+        o.gaps[0]
+            .detail
+            .contains("Inhaltsstand nach Neustart weicht ab"),
+        "{o:?}"
+    );
+    assert_eq!(e.info().content_version, first_version);
+}
+
+/// Fehlt nach einem Neustart die Abschottung, bekommt der Worker keine
+/// Scandaten: Das Testdoppel legt beim Empfang eines Scans eine Markerdatei
+/// an – sie darf nicht entstehen.
+#[test]
+fn restart_without_isolation_receives_no_scan_data() {
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("scandaten-erhalten");
+    let e = WorkerEngine::start(restart_cfg(&["no-sandbox", &marker.display().to_string()]));
+    assert_eq!(e.info().health, EngineHealth::Ready, "{:?}", e.info());
+    assert!(e.info().isolation.enforced);
+    scan(&e, axsafe_worker::CRASH_PAYLOAD, 2000);
+    let o = scan(&e, &eicar(), 5000);
+    assert_eq!(o.verdict, Verdict::Error, "{o:?}");
+    assert!(
+        o.gaps[0].detail.contains("Isolation nicht nachgewiesen"),
+        "{o:?}"
+    );
+    assert!(
+        !marker.exists(),
+        "Worker ohne Isolation hat Scandaten erhalten"
+    );
+    // Angezeigter Isolationsstand ist nachgeführt, nicht der alte Nachweis.
+    assert!(!e.info().isolation.enforced, "{:?}", e.info().isolation);
+}
+
+#[test]
+fn isolation_is_reprobed_after_every_restart() {
+    let e = WorkerEngine::start(helper_cfg("crash-on-payload", None));
+    assert!(e.info().isolation.enforced);
+    for n in 1..=2 {
+        scan(&e, axsafe_worker::CRASH_PAYLOAD, 2000);
+        let ok = scan(&e, b"harmlos", 5000);
+        assert_eq!(ok.verdict, Verdict::NoDetection, "{ok:?}");
+        let iso = e.info().isolation;
+        assert!(iso.enforced, "{iso:?}");
+        assert!(
+            iso.detail
+                .contains(&format!("erneut geprüft nach Neustart {n}")),
+            "{iso:?}"
+        );
+        assert_eq!(e.probe_checks().len(), 5);
+    }
+}
+
+/// Der Worker sieht nur die festgelegte Umgebung. Geprüft mit einem
+/// künstlichen Testwert, nie mit echten Zugangsdaten.
+#[test]
+fn worker_gets_only_explicit_environment() {
+    // SAFETY-Hinweis: setzt eine künstliche Variable im Testprozess.
+    std::env::set_var("AXSAFE_TEST_KUENSTLICHES_GEHEIMNIS", "nur-ein-testwert");
+    let mut cfg = WorkerConfig::new(worker(), rules());
+    cfg.env.push(("AXSAFE_TEST_ERLAUBT".into(), "1".into()));
+    let e = WorkerEngine::start(cfg);
+    assert_eq!(e.info().health, EngineHealth::Ready, "{:?}", e.info());
+    let names = e.worker_env_names();
+    assert!(
+        !names
+            .iter()
+            .any(|n| n == "AXSAFE_TEST_KUENSTLICHES_GEHEIMNIS"),
+        "{names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n == "AXSAFE_TEST_ERLAUBT"),
+        "{names:?}"
+    );
+    let mut expected: Vec<String> = axsafe_worker::host::minimal_env()
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    expected.push("AXSAFE_TEST_ERLAUBT".into());
+    let mut got = names.clone();
+    got.sort();
+    expected.sort();
+    assert_eq!(got, expected, "Worker sieht mehr als festgelegt");
+}

@@ -46,10 +46,10 @@ use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
     CreateMutexW, CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
     InitializeProcThreadAttributeList, OpenThread, ReleaseMutex, ResumeThread,
-    UpdateProcThreadAttribute, WaitForSingleObject, CREATE_SUSPENDED, DETACHED_PROCESS,
-    EXTENDED_STARTUPINFO_PRESENT, INFINITE, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
-    THREAD_SUSPEND_RESUME,
+    UpdateProcThreadAttribute, WaitForSingleObject, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
+    DETACHED_PROCESS, EXTENDED_STARTUPINFO_PRESENT, INFINITE, PROCESS_INFORMATION,
+    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+    STARTF_USESTDHANDLES, STARTUPINFOEXW, THREAD_SUSPEND_RESUME,
 };
 
 pub(crate) type Stdio3 = (
@@ -536,6 +536,24 @@ fn spawn_appcontainer(cmd: &Command, limits: &Limits, profile: &str) -> io::Resu
         })
         .unwrap_or_else(|| "C:\\Windows\\System32".into());
     let cwd = wide(&sysdir);
+    // Umgebung: NUR die am Command ausdrücklich gesetzten Variablen, nichts
+    // vom Aufrufer erben (keine Zugangsdaten o. Ä. im Worker).
+    let mut vars: Vec<(std::ffi::OsString, std::ffi::OsString)> = cmd
+        .get_envs()
+        .filter_map(|(k, v)| v.map(|v| (k.to_os_string(), v.to_os_string())))
+        .collect();
+    vars.sort_by_key(|(k, _)| k.to_string_lossy().to_uppercase());
+    let mut env_block: Vec<u16> = Vec::new();
+    for (k, v) in &vars {
+        env_block.extend(k.encode_wide());
+        env_block.push(b'=' as u16);
+        env_block.extend(v.encode_wide());
+        env_block.push(0);
+    }
+    if env_block.is_empty() {
+        env_block.push(0);
+    }
+    env_block.push(0);
 
     let job = create_job(limits)?;
     let mut owned: Vec<HANDLE> = Vec::new();
@@ -627,8 +645,11 @@ fn spawn_appcontainer(cmd: &Command, limits: &Limits, profile: &str) -> io::Resu
                     std::ptr::null(),
                     std::ptr::null(),
                     1,
-                    EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | DETACHED_PROCESS,
-                    std::ptr::null(),
+                    EXTENDED_STARTUPINFO_PRESENT
+                        | CREATE_SUSPENDED
+                        | DETACHED_PROCESS
+                        | CREATE_UNICODE_ENVIRONMENT,
+                    env_block.as_ptr() as *const core::ffi::c_void,
                     cwd.as_ptr(),
                     &si.StartupInfo,
                     &mut pi,

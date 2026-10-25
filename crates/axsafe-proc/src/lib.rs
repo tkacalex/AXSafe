@@ -39,7 +39,8 @@ pub enum Sandbox {
     None,
     /// Windows: AppContainer ohne Fähigkeiten – kein Netzwerk, kein Zugriff
     /// auf Benutzerdateien, nur Lesezugriff auf System- und freigegebene
-    /// Dateien. Der Profilname bestimmt die AppContainer-SID.
+    /// Dateien. Der Profilname bestimmt die AppContainer-SID. Die Umgebung
+    /// besteht NUR aus den am `Command` ausdrücklich gesetzten Variablen.
     AppContainer { profile: String },
 }
 

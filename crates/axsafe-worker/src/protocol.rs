@@ -51,6 +51,10 @@ pub struct Ready {
     pub sandbox: SandboxReport,
     /// Kennzahlen oder Ladefehler des Regelsatzes.
     pub rules: Result<RuleStats, String>,
+    /// Namen (nicht Werte) der Umgebungsvariablen, die der Worker sieht.
+    /// Der Host prüft, dass nur ausdrücklich festgelegte vorhanden sind.
+    #[serde(default)]
+    pub env_names: Vec<String>,
 }
 
 /// Prüfauftrag „verhalte dich wie ein kompromittierter Worker“: Jede Aktion

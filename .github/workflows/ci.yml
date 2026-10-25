@@ -205,6 +205,7 @@ jobs:
         if: always()
         shell: bash
         run: |
+          [ -f cargo-test-clamav.log ] || { echo "Keine ClamAV-Tests ausgeführt (Einrichtung gescheitert)"; exit 1; }
           python scripts/ci/test_summary.py --cargo cargo-test-clamav.log \
             --platform "Windows Server mit ClamAV (Skript-Installation) – kein LTSC-Nachweis" --markdown "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

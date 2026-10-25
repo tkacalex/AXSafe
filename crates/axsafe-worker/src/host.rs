@@ -1,4 +1,19 @@
 //! Host-Seite: der isolierte Worker als [`Engine`].
+//!
+//! Jeder Worker-Prozess – der erste und jeder Neustart – wird vollständig
+//! geprüft, bevor er Scandaten bekommt ([`launch`]):
+//!
+//! 1. Protokoll und `Ready`-Antwort,
+//! 2. Regelsatz angenommen; bei Neustarts derselbe Inhaltsstand wie beim
+//!    ersten Start,
+//! 3. nur die ausdrücklich festgelegten Umgebungsvariablen sind sichtbar,
+//! 4. Isolationsprobe (Lesen, Schreiben, Anlegen, TCP, Programmstart müssen
+//!    scheitern) – ohne Nachweis gehen keine Daten an den Worker.
+//!
+//! Zeitgrenzen: Start inkl. Regelkompilierung `startup_timeout` (60 s),
+//! Probe 20 s, je Objekt Budget + `request_grace` (5 s), geordnetes Beenden
+//! 500 ms, danach wird der Prozessbaum hart beendet (Job Object bzw.
+//! Prozessgruppe). Der Worker darf keine Nachkommen starten.
 
 use crate::protocol::*;
 use axsafe_core::engine::{
@@ -19,8 +34,13 @@ use std::time::{Duration, Instant};
 pub struct WorkerConfig {
     /// Pfad zu `axsafe-worker[.exe]`.
     pub worker_exe: PathBuf,
-    /// Zusätzliche Argumente (nur für Testdoppel).
+    /// Zusätzliche Argumente (nur für Testdoppel; der echte Worker hat keine).
     pub args: Vec<String>,
+    /// Argumente für Neustarts; `None` = wie beim ersten Start. Nur für
+    /// Testdoppel (z. B. „Neustart liefert anderen Inhaltsstand“).
+    pub restart_args: Option<Vec<String>>,
+    /// Vollständige Umgebung des Workers. Es wird NICHTS vom Host geerbt.
+    pub env: Vec<(String, String)>,
     /// Regeltexte oder Ladefehler.
     pub rules: Result<Vec<RuleSource>, String>,
     /// Größte Datei, die an den Worker geht.
@@ -33,7 +53,7 @@ pub struct WorkerConfig {
     pub request_grace: Duration,
     /// Höchstzahl an Neustarts nach Ausfällen je Engine-Instanz.
     pub max_restarts: u32,
-    /// Ohne nachgewiesene Abschottung nicht arbeiten (Windows: immer).
+    /// Ohne nachgewiesene Abschottung keine Scandaten (Standard: überall an).
     pub require_isolation: bool,
     pub sandbox: Sandbox,
 }
@@ -47,11 +67,25 @@ pub fn memory_for(max_scan_bytes: u64) -> u64 {
 /// AppContainer-Profil des Scanworkers.
 pub const APPCONTAINER_PROFILE: &str = "AXSafe.ScanWorker.v1";
 
+/// Minimale Umgebung: unter Windows nur `SystemRoot` (für das Laden von
+/// Systembibliotheken), sonst leer. Zugangsdaten o. Ä. aus der Umgebung des
+/// Benutzers werden nie weitergegeben.
+pub fn minimal_env() -> Vec<(String, String)> {
+    if cfg!(windows) {
+        let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        vec![("SystemRoot".into(), root)]
+    } else {
+        Vec::new()
+    }
+}
+
 impl WorkerConfig {
     pub fn new(worker_exe: PathBuf, rules: Result<Vec<RuleSource>, String>) -> Self {
         WorkerConfig {
             worker_exe,
             args: Vec::new(),
+            restart_args: None,
+            env: minimal_env(),
             rules,
             max_scan_bytes: 256 * 1024 * 1024,
             // Windows: Commit-Grenze im Job; Linux: Adressraum (RLIMIT_AS).
@@ -60,7 +94,7 @@ impl WorkerConfig {
             startup_timeout: Duration::from_secs(60),
             request_grace: Duration::from_secs(5),
             max_restarts: 3,
-            require_isolation: cfg!(windows),
+            require_isolation: true,
             sandbox: if cfg!(windows) {
                 Sandbox::AppContainer {
                     profile: APPCONTAINER_PROFILE.into(),
@@ -91,8 +125,11 @@ struct State {
 /// YARA-X im isolierten Worker.
 pub struct WorkerEngine {
     cfg: WorkerConfig,
-    info: EngineInfo,
-    probe: Vec<ProbeCheck>,
+    /// Aktueller Zustand; wird nach Ausfällen und Neustarts nachgeführt.
+    info: Mutex<EngineInfo>,
+    probe: Mutex<Vec<ProbeCheck>>,
+    /// Umgebungsvariablen-Namen, die der aktuelle Worker meldete.
+    env_names: Mutex<Vec<String>>,
     state: Mutex<State>,
 }
 
@@ -128,9 +165,17 @@ fn session_detail(e: &SessionError, s: &Session) -> String {
 }
 
 /// Startet den Worker, sendet die Regeln und wartet auf `Ready`.
-fn start_session(cfg: &WorkerConfig, rules: &[RuleSource]) -> Result<(Session, Ready), String> {
+fn start_session(
+    cfg: &WorkerConfig,
+    rules: &[RuleSource],
+    args: &[String],
+) -> Result<(Session, Ready), String> {
     let mut cmd = Command::new(&cfg.worker_exe);
-    cmd.args(&cfg.args);
+    cmd.args(args);
+    // Keine Umgebung erben; nur die festgelegten Variablen (AppContainer-
+    // Start unter Windows übernimmt ebenfalls nur diese).
+    cmd.env_clear();
+    cmd.envs(cfg.env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     let mut s = Session::spawn(cmd, &cfg.limits(), &cfg.sandbox)
         .map_err(|e| format!("Worker {} nicht startbar: {e}", cfg.worker_exe.display()))?;
     let deadline = Instant::now() + cfg.startup_timeout;
@@ -281,6 +326,155 @@ fn run_probe(s: &mut Session, cfg: &WorkerConfig) -> Result<(Vec<ProbeCheck>, bo
     Ok((checks, all_denied && !reached && untouched))
 }
 
+/// Ein vollständig geprüfter, einsatzbereiter Worker.
+struct Launched {
+    session: Session,
+    ready: Ready,
+    checks: Vec<ProbeCheck>,
+    isolation: Isolation,
+}
+
+/// Grund, warum ein Worker nicht verwendet wird.
+struct Rejected {
+    reason: String,
+    isolation: Option<Isolation>,
+    checks: Vec<ProbeCheck>,
+}
+
+impl From<String> for Rejected {
+    fn from(reason: String) -> Self {
+        Rejected {
+            reason,
+            isolation: None,
+            checks: Vec::new(),
+        }
+    }
+}
+
+fn isolation_from(
+    ready: &Ready,
+    checks: &[ProbeCheck],
+    probe_ok: bool,
+    env_ok: Result<(), String>,
+) -> Isolation {
+    let enforced = probe_ok && ready.sandbox.filesystem && ready.sandbox.network && env_ok.is_ok();
+    let open: Vec<String> = checks
+        .iter()
+        .filter(|c| !c.denied)
+        .map(|c| format!("{} {}", c.action, c.target))
+        .collect();
+    let mut detail = if open.is_empty() {
+        format!(
+            "{}; Probe: {} verbotene Aktionen verweigert",
+            ready.sandbox.detail,
+            checks.len()
+        )
+    } else {
+        format!(
+            "{}; Probe: ERLAUBT war: {}",
+            ready.sandbox.detail,
+            open.join(", ")
+        )
+    };
+    if let Err(e) = env_ok {
+        detail.push_str("; ");
+        detail.push_str(&e);
+    }
+    Isolation {
+        kind: if enforced {
+            IsolationKind::SandboxedWorker
+        } else {
+            IsolationKind::ChildProcess
+        },
+        enforced,
+        detail,
+    }
+}
+
+/// Startet einen Worker und prüft ihn vollständig (siehe Moduldoku).
+/// `expected_content`: Inhaltsstand, den ein Neustart liefern muss.
+fn launch(
+    cfg: &WorkerConfig,
+    rules: &[RuleSource],
+    args: &[String],
+    expected_content: Option<&str>,
+) -> Result<Launched, Rejected> {
+    let (mut s, ready) = start_session(cfg, rules, args)?;
+    let stats = match &ready.rules {
+        Ok(st) => st.clone(),
+        Err(e) => {
+            s.kill();
+            return Err(format!("Regelsatz abgelehnt: {e}").into());
+        }
+    };
+    if let Some(exp) = expected_content {
+        if stats.content_version != exp {
+            s.kill();
+            return Err(format!(
+                "Inhaltsstand nach Neustart weicht ab ({} statt {exp}) – Worker verworfen",
+                stats.content_version
+            )
+            .into());
+        }
+    }
+    // Nur die ausdrücklich festgelegten Variablen dürfen sichtbar sein.
+    let allowed: Vec<String> = cfg
+        .env
+        .iter()
+        .map(|(k, _)| k.to_ascii_uppercase())
+        .collect();
+    let extra: Vec<&String> = ready
+        .env_names
+        .iter()
+        .filter(|n| !allowed.contains(&n.to_ascii_uppercase()))
+        .collect();
+    let env_ok = if extra.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "unerwartete Umgebungsvariablen im Worker: {}",
+            extra
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    };
+    let (checks, probe_ok) = match run_probe(&mut s, cfg) {
+        Ok(x) => x,
+        Err(e) => {
+            s.kill();
+            return Err(Rejected {
+                reason: format!("Isolation nicht prüfbar: {e}"),
+                isolation: Some(Isolation {
+                    kind: IsolationKind::ChildProcess,
+                    enforced: false,
+                    detail: format!("Probe gescheitert: {e}"),
+                }),
+                checks: Vec::new(),
+            });
+        }
+    };
+    let isolation = isolation_from(&ready, &checks, probe_ok, env_ok);
+    if cfg.require_isolation && !isolation.enforced {
+        s.kill();
+        return Err(Rejected {
+            reason: format!(
+                "Isolation nicht nachgewiesen – Worker erhält keine Daten ({})",
+                isolation.detail
+            ),
+            isolation: Some(isolation),
+            checks,
+        });
+    }
+    Ok(Launched {
+        session: s,
+        ready,
+        checks,
+        isolation,
+    })
+}
+
 impl WorkerEngine {
     /// Startet den Worker und weist die Abschottung nach. Scheitert etwas,
     /// ist die Engine `Unavailable` mit Grund – nie still „bereit“.
@@ -307,115 +501,69 @@ impl WorkerEngine {
             restarts: 0,
             disabled: None,
         };
-        let mut probe_checks = Vec::new();
-        let unavailable = |info: &mut EngineInfo, reason: String| {
-            info.health = EngineHealth::Unavailable { reason };
-        };
-
-        let rules = match &cfg.rules {
-            Ok(r) => r.clone(),
-            Err(e) => {
-                unavailable(&mut info, e.clone());
-                return WorkerEngine {
-                    cfg,
-                    info,
-                    probe: probe_checks,
-                    state: Mutex::new(state),
-                };
-            }
-        };
-        // Ein Wiederholungsversuch bei Startfehlern (z. B. parallele
-        // AppContainer-Profilanlage); beide Fehler bleiben sichtbar.
-        let first = start_session(&cfg, &rules);
-        let started = match first {
-            Ok(x) => Ok(x),
-            Err(e1) => {
-                std::thread::sleep(Duration::from_millis(250));
-                start_session(&cfg, &rules).map_err(|e2| {
-                    if e1 == e2 {
+        let mut checks = Vec::new();
+        let mut env_names = Vec::new();
+        match &cfg.rules {
+            Err(e) => info.health = EngineHealth::Unavailable { reason: e.clone() },
+            Ok(rules) => {
+                // Ein Wiederholungsversuch bei Startfehlern (z. B. parallele
+                // AppContainer-Profilanlage); beide Fehler bleiben sichtbar.
+                let r = launch(&cfg, rules, &cfg.args, None).or_else(|e1| {
+                    std::thread::sleep(Duration::from_millis(250));
+                    launch(&cfg, rules, &cfg.args, None).map_err(|mut e2| {
+                        if e1.reason != e2.reason {
+                            e2.reason = format!("{} (erster Versuch: {})", e2.reason, e1.reason);
+                        }
                         e2
-                    } else {
-                        format!("{e2} (erster Versuch: {e1})")
-                    }
-                })
-            }
-        };
-        match started {
-            Err(e) => unavailable(&mut info, e),
-            Ok((mut s, ready)) => {
-                info.engine_version = ready.engine_version.clone();
-                match &ready.rules {
-                    Err(e) => unavailable(&mut info, format!("Regelsatz abgelehnt: {e}")),
-                    Ok(st) => {
+                    })
+                });
+                match r {
+                    Ok(l) => {
+                        let st = l.ready.rules.as_ref().expect("in launch geprüft");
+                        info.engine_version = l.ready.engine_version.clone();
                         info.content_version = st.content_version.clone();
                         let (k, n) = describe_content(st);
                         info.content_kind = k;
                         info.content_note = n;
-                        match run_probe(&mut s, &cfg) {
-                            Err(e) => {
-                                info.isolation.detail = format!("Probe gescheitert: {e}");
-                                unavailable(&mut info, format!("Isolation nicht prüfbar: {e}"));
-                                s.kill();
-                            }
-                            Ok((checks, ok)) => {
-                                let enforced =
-                                    ok && ready.sandbox.filesystem && ready.sandbox.network;
-                                let open: Vec<String> = checks
-                                    .iter()
-                                    .filter(|c| !c.denied)
-                                    .map(|c| format!("{} {}", c.action, c.target))
-                                    .collect();
-                                info.isolation = Isolation {
-                                    kind: if enforced {
-                                        IsolationKind::SandboxedWorker
-                                    } else {
-                                        IsolationKind::ChildProcess
-                                    },
-                                    enforced,
-                                    detail: if open.is_empty() {
-                                        format!(
-                                            "{}; Probe: {} verbotene Aktionen verweigert",
-                                            ready.sandbox.detail,
-                                            checks.len()
-                                        )
-                                    } else {
-                                        format!(
-                                            "{}; Probe: ERLAUBT war: {}",
-                                            ready.sandbox.detail,
-                                            open.join(", ")
-                                        )
-                                    },
-                                };
-                                probe_checks = checks;
-                                if cfg.require_isolation && !enforced {
-                                    let why = format!(
-                                        "Isolation nicht nachgewiesen – Worker wird nicht \
-                                         verwendet ({})",
-                                        info.isolation.detail
-                                    );
-                                    unavailable(&mut info, why);
-                                    s.kill();
-                                } else {
-                                    info.health = EngineHealth::Ready;
-                                    state.session = Some(s);
-                                }
-                            }
+                        info.isolation = l.isolation;
+                        info.health = EngineHealth::Ready;
+                        checks = l.checks;
+                        env_names = l.ready.env_names.clone();
+                        state.session = Some(l.session);
+                    }
+                    Err(rej) => {
+                        if let Some(i) = rej.isolation {
+                            info.isolation = i;
                         }
+                        checks = rej.checks;
+                        info.health = EngineHealth::Unavailable { reason: rej.reason };
                     }
                 }
             }
         }
         WorkerEngine {
             cfg,
-            info,
-            probe: probe_checks,
+            info: Mutex::new(info),
+            probe: Mutex::new(checks),
+            env_names: Mutex::new(env_names),
             state: Mutex::new(state),
         }
     }
 
-    /// Einzelergebnisse des Isolationsnachweises.
-    pub fn probe_checks(&self) -> &[ProbeCheck] {
-        &self.probe
+    /// Namen der Umgebungsvariablen, die der aktuelle Worker sieht.
+    pub fn worker_env_names(&self) -> Vec<String> {
+        self.env_names
+            .lock()
+            .map(|e| e.clone())
+            .unwrap_or_else(|p| p.into_inner().clone())
+    }
+
+    /// Einzelergebnisse des letzten Isolationsnachweises.
+    pub fn probe_checks(&self) -> Vec<ProbeCheck> {
+        self.probe
+            .lock()
+            .map(|p| p.clone())
+            .unwrap_or_else(|p| p.into_inner().clone())
     }
 
     /// Zusätzliche Probe auf dem laufenden Worker (z. B. Systemdateien,
@@ -437,6 +585,54 @@ impl WorkerEngine {
             .unwrap_or_else(|p| p.into_inner().restarts)
     }
 
+    fn set_info(&self, f: impl FnOnce(&mut EngineInfo)) {
+        let mut i = self.info.lock().unwrap_or_else(|p| p.into_inner());
+        f(&mut i);
+    }
+
+    fn current(&self) -> EngineInfo {
+        self.info
+            .lock()
+            .map(|i| i.clone())
+            .unwrap_or_else(|p| p.into_inner().clone())
+    }
+
+    /// Startet nach einem Ausfall einen neuen Worker und prüft ihn wie den
+    /// ersten. Bei Ablehnung gehen keine Daten an ihn.
+    fn relaunch(&self, st: &mut State) -> Result<(), String> {
+        let rules = self.cfg.rules.as_ref().map_err(|e| e.clone())?;
+        let expected = self.current().content_version;
+        let args = self.cfg.restart_args.as_ref().unwrap_or(&self.cfg.args);
+        match launch(&self.cfg, rules, args, Some(&expected)) {
+            Ok(l) => {
+                let n = st.restarts;
+                self.set_info(|i| {
+                    i.isolation = l.isolation.clone();
+                    i.isolation.detail =
+                        format!("{} (erneut geprüft nach Neustart {n})", i.isolation.detail);
+                });
+                if let Ok(mut p) = self.probe.lock() {
+                    *p = l.checks;
+                }
+                if let Ok(mut e) = self.env_names.lock() {
+                    *e = l.ready.env_names.clone();
+                }
+                st.session = Some(l.session);
+                Ok(())
+            }
+            Err(rej) => {
+                if let Some(i) = rej.isolation {
+                    self.set_info(|info| info.isolation = i);
+                }
+                if let Ok(mut p) = self.probe.lock() {
+                    *p = rej.checks;
+                }
+                self.failed(st);
+                Err(rej.reason)
+            }
+        }
+    }
+
     fn gap(
         &self,
         start: Instant,
@@ -446,8 +642,8 @@ impl WorkerEngine {
     ) -> EngineOutcome {
         EngineOutcome {
             engine: "yara-x".into(),
-            engine_version: self.info.engine_version.clone(),
-            content_version: self.info.content_version.clone(),
+            engine_version: self.current().engine_version,
+            content_version: self.current().content_version,
             verdict,
             detections: Vec::new(),
             gaps: vec![Gap::new(verdict, reason, "yara-x", detail.clone())],
@@ -462,11 +658,17 @@ impl WorkerEngine {
             s.kill();
         }
         st.restarts += 1;
-        if st.restarts > self.cfg.max_restarts {
-            st.disabled = Some(format!(
+        if st.restarts > self.cfg.max_restarts && st.disabled.is_none() {
+            let why = format!(
                 "Worker {} Mal ausgefallen; YARA-X für diesen Auftrag abgeschaltet",
                 st.restarts
-            ));
+            );
+            self.set_info(|i| {
+                i.health = EngineHealth::Unavailable {
+                    reason: why.clone(),
+                }
+            });
+            st.disabled = Some(why);
         }
     }
 }
@@ -477,19 +679,11 @@ impl Engine for WorkerEngine {
     }
 
     fn info(&self) -> EngineInfo {
-        self.info.clone()
+        self.current()
     }
 
     fn scan(&self, input: &ScanInput<'_>) -> EngineOutcome {
         let start = Instant::now();
-        if let EngineHealth::Unavailable { reason } = &self.info.health {
-            return self.gap(
-                start,
-                Verdict::Error,
-                GapReason::EngineUnavailable,
-                reason.clone(),
-            );
-        }
         let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(r) = &st.disabled {
             return self.gap(
@@ -497,6 +691,14 @@ impl Engine for WorkerEngine {
                 Verdict::Error,
                 GapReason::EngineUnavailable,
                 r.clone(),
+            );
+        }
+        if let EngineHealth::Unavailable { reason } = &self.current().health {
+            return self.gap(
+                start,
+                Verdict::Error,
+                GapReason::EngineUnavailable,
+                reason.clone(),
             );
         }
         if input.data.len() as u64 > self.cfg.max_scan_bytes {
@@ -511,18 +713,13 @@ impl Engine for WorkerEngine {
             );
         }
         if st.session.is_none() {
-            let rules = self.cfg.rules.as_ref().cloned().unwrap_or_default();
-            match start_session(&self.cfg, &rules) {
-                Ok((s, _)) => st.session = Some(s),
-                Err(e) => {
-                    self.failed(&mut st);
-                    return self.gap(
-                        start,
-                        Verdict::Error,
-                        GapReason::EngineError,
-                        format!("Neustart des Workers fehlgeschlagen: {e}"),
-                    );
-                }
+            if let Err(e) = self.relaunch(&mut st) {
+                return self.gap(
+                    start,
+                    Verdict::Error,
+                    GapReason::EngineError,
+                    format!("Neustart des Workers abgelehnt, keine Daten übergeben: {e}"),
+                );
             }
         }
         let budget_ms = u32::try_from(input.timeout.as_millis()).unwrap_or(u32::MAX);

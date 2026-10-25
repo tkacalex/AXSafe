@@ -165,14 +165,15 @@ try {
         if ($gc) { $cands = @($gc.Source) + $cands }
         $gpg = $cands | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
         if ($gpg) {
+            # gpg aus Git für Windows (MSYS) versteht Pfade mit / zuverlässiger.
             $home2 = Join-Path $dl 'gnupg'; New-Item -ItemType Directory -Force -Path $home2 | Out-Null
-            $env:GNUPGHOME = $home2
-            $keyFile = Join-Path $PSScriptRoot 'talos-clamav-signing-key.asc'
-            $null = Run $gpg @('--batch', '--import', $keyFile)
-            $v = Run $gpg @('--batch', '--status-fd', '1', '--verify', "$msi.sig", $msi)
+            $h = $home2 -replace '\\', '/'
+            $keyFile = (Join-Path $PSScriptRoot 'talos-clamav-signing-key.asc') -replace '\\', '/'
+            $imp = Run $gpg @('--batch', '--homedir', $h, '--import', $keyFile)
+            if ($imp.Code -ne 0) { Log "gpg --import: $($imp.Err.Trim())" }
+            $v = Run $gpg @('--batch', '--homedir', $h, '--status-fd', '1', '--verify', ("$msi.sig" -replace '\\', '/'), ($msi -replace '\\', '/'))
             $ok = ($v.Code -eq 0) -and ($v.Out -match "VALIDSIG $TalosFingerprint")
             Check 'paket_pgp' $ok "Talos-Signatur (gpg: $gpg): $(if ($ok) { 'gültig, Fingerabdruck ' + $TalosFingerprint } else { $v.Out + $v.Err })"
-            Remove-Item Env:\GNUPGHOME
             if (-not $ok) { throw 'PGP-Signatur ungültig – Abbruch ohne Installation.' }
         } else {
             Check 'paket_pgp' $true 'gpg nicht vorhanden – Prüfung über die festgelegte SHA-256 (vom Projekt nach PGP-Prüfung festgelegt)'
