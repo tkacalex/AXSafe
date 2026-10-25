@@ -217,6 +217,32 @@ jobs:
             cargo-test-clamav.log
           if-no-files-found: ignore
 
+  windows-service:
+    name: Windows Server · Dienst und Named Pipe (Systemtest, Wegwerf-Runner)
+    # Installiert AXSafeService (LocalService, minimale Privilegien), prüft
+    # IPC, Identität aus dem Token, Impersonation, Auftragseigentum mit einem
+    # temporären zweiten Benutzer, Absturz/Wiederanlauf und Deinstallation.
+    # Windows Server – kein Nachweis für Windows 10 LTSC.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust-Toolchain
+        run: rustup show active-toolchain; if ($LASTEXITCODE -ne 0) { rustup toolchain install }
+      - uses: Swatinem/rust-cache@v2
+      - name: Dienst, CLI und Worker bauen (Release)
+        run: cargo build --release --locked -p axsafe-cli -p axsafe-service
+      - name: Systemtest Dienst (installieren, prüfen, deinstallieren)
+        shell: powershell
+        run: |
+          .\scripts\ci\service_e2e.ps1 -BinDir "$PWD\target\release" -RulesDir "$PWD\rules" -EvidenceDir "$PWD\dienst-nachweis"
+          if ($LASTEXITCODE -ne 0) { throw "Dienst-Systemtest fehlgeschlagen" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beleg-windows-dienst
+          path: dienst-nachweis/
+          if-no-files-found: ignore
+
   supply-chain:
     name: Lieferkette · cargo-deny, Gitleaks, SBOM, Lizenzhinweise
     runs-on: ubuntu-24.04

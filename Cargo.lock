@@ -144,6 +144,7 @@ dependencies = [
  "axsafe-core",
  "axsafe-engine-clamav",
  "axsafe-engine-yarax",
+ "axsafe-service",
  "axsafe-worker",
  "clap",
  "hex",
@@ -204,6 +205,22 @@ name = "axsafe-proc"
 version = "0.2.0"
 dependencies = [
  "libc",
+ "windows-sys",
+]
+
+[[package]]
+name = "axsafe-service"
+version = "0.2.0"
+dependencies = [
+ "axsafe-core",
+ "axsafe-engine-clamav",
+ "axsafe-engine-yarax",
+ "axsafe-worker",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
  "windows-sys",
 ]
 

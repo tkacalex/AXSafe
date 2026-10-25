@@ -18,7 +18,7 @@
 //! Der Scanner **liest nur**. Er löscht, verschiebt oder startet nichts.
 
 use crate::engine::{Engine, EngineHealth, EngineInfo, EngineOutcome, Gap, GapReason, ScanInput};
-use crate::filetype;
+use crate::filetype::{self, FileKind};
 use crate::identity::FileIdentity;
 use crate::report::{
     highest_detection, job_outcome, ExcludedObject, FileResult, ObjectStatus, ObjectType,
@@ -46,6 +46,47 @@ pub struct Scanner {
     engines: Vec<Box<dyn Engine>>,
     limits: ScanLimits,
     excluded: Vec<(FileIdentity, String)>,
+    access: std::sync::Arc<dyn FileAccess>,
+    classify_in_engine: bool,
+}
+
+/// Mit wessen Rechten auf Dateien zugegriffen wird.
+///
+/// Der Dienst (P02) setzt hier die Identität des Auftraggebers ein
+/// (Windows-Impersonation); Verzeichnisse lesen, Öffnen, Metadaten und
+/// Lesen laufen dann mit dessen Rechten. Engines laufen außerhalb davon.
+/// Scheitert der Wechsel, wird das Objekt NICHT mit eigenen Rechten
+/// gelesen, sondern als Lücke gemeldet.
+pub trait FileAccess: Send + Sync {
+    /// Wechselt für die Dauer des Wächters in die Zugriffsidentität.
+    fn enter(&self) -> io::Result<Box<dyn AccessGuard>>;
+    /// Beschreibung für Berichte, z. B. „Rechte von DOMAIN\\alex“.
+    fn describe(&self) -> String;
+}
+
+/// Wächter: beim Verwerfen wird die vorherige Identität wiederhergestellt.
+pub trait AccessGuard {}
+
+/// Zugriff mit den Rechten des eigenen Prozesses (CLI).
+pub struct ProcessAccess;
+struct NoGuard;
+impl AccessGuard for NoGuard {}
+impl FileAccess for ProcessAccess {
+    fn enter(&self) -> io::Result<Box<dyn AccessGuard>> {
+        Ok(Box::new(NoGuard))
+    }
+    fn describe(&self) -> String {
+        "Rechte des aufrufenden Prozesses".into()
+    }
+}
+
+fn access_gap(e: &io::Error) -> Gap {
+    Gap::new(
+        Verdict::AccessDenied,
+        GapReason::AccessDenied,
+        AXSAFE,
+        format!("Zugriff mit den Rechten des Auftraggebers nicht möglich: {e}"),
+    )
 }
 
 pub(crate) fn now_utc() -> String {
@@ -103,7 +144,23 @@ impl Scanner {
             engines,
             limits,
             excluded: Vec::new(),
+            access: std::sync::Arc::new(ProcessAccess),
+            classify_in_engine: false,
         }
+    }
+
+    /// Dateizugriff mit einer anderen Identität (Dienst: Auftraggeber).
+    pub fn with_file_access(mut self, access: std::sync::Arc<dyn FileAccess>) -> Self {
+        self.access = access;
+        self
+    }
+
+    /// Dateityp NICHT im eigenen Prozess bestimmen, sondern durch eine
+    /// Engine, die das kann (abgeschotteter Worker). Fehlt sie oder
+    /// scheitert sie, wird das Objekt als nicht vollständig geprüft gemeldet.
+    pub fn classify_in_engine(mut self, on: bool) -> Self {
+        self.classify_in_engine = on;
+        self
     }
 
     /// Schließt ein Dateiobjekt anhand seiner **Identität** (nicht des Pfads)
@@ -230,6 +287,13 @@ impl Scanner {
         if cancel.load(Ordering::SeqCst) {
             return;
         }
+        let guard = match self.access.enter() {
+            Ok(g) => g,
+            Err(e) => {
+                let r = gap_result(path, ObjectType::Unknown, access_gap(&e));
+                return self.push(out, progress, r);
+            }
+        };
         let meta = match fs::symlink_metadata(path) {
             Ok(m) => m,
             Err(e) => {
@@ -297,6 +361,7 @@ impl Scanner {
                     }
                 }
             }
+            drop(guard);
             children.sort();
             for child in children {
                 self.visit(&child, depth + 1, cancel, infos, out, excluded, progress);
@@ -316,6 +381,7 @@ impl Scanner {
             );
             return self.push(out, progress, r);
         }
+        drop(guard);
         match self.scan_file_inner(path, infos) {
             FileOutcome::Result(r) => self.push(out, progress, *r),
             FileOutcome::Excluded(x) => excluded.push(x),
@@ -361,6 +427,10 @@ impl Scanner {
             FileOutcome::Result(Box::new(r))
         };
 
+        let guard = match self.access.enter() {
+            Ok(g) => g,
+            Err(e) => return fail(result, access_gap(&e)),
+        };
         let file = match open_no_follow(path) {
             Ok(f) => f,
             Err(e) => return fail(result, io_gap(&e, "Öffnen fehlgeschlagen")),
@@ -413,12 +483,70 @@ impl Scanner {
         {
             return fail(result, io_gap(&e, "Lesen fehlgeschlagen"));
         }
+        // Ab hier keine Dateizugriffe mehr über Pfade: Rechte zurückgeben,
+        // bevor Engines laufen.
+        drop(guard);
         let sha = hex::encode(Sha256::digest(&data));
-        let kind = filetype::detect(&data);
+        let timeout = Duration::from_millis(self.limits.engine_timeout_ms);
+
+        // Dateityp: im eigenen Prozess oder (Dienst) im abgeschotteten Worker.
+        let mut pre: Option<(usize, EngineOutcome)> = None;
+        let kind = if self.classify_in_engine {
+            let classifier = self
+                .engines
+                .iter()
+                .zip(infos)
+                .position(|(e, i)| e.classifies() && i.health == EngineHealth::Ready);
+            match classifier {
+                Some(idx) => {
+                    let unknown = FileKind::Unknown;
+                    let input = ScanInput {
+                        data: &data,
+                        kind: &unknown,
+                        sha256: &sha,
+                        timeout,
+                    };
+                    let (outcome, kind) = self.engines[idx].scan_and_classify(&input);
+                    pre = Some((idx, outcome));
+                    match kind {
+                        Some(Ok(k)) => k,
+                        Some(Err(e)) => {
+                            result.gaps.push(Gap::new(
+                                Verdict::Error,
+                                GapReason::EngineError,
+                                AXSAFE,
+                                format!("Typerkennung im Worker fehlgeschlagen: {e}"),
+                            ));
+                            FileKind::Unknown
+                        }
+                        None => {
+                            result.gaps.push(Gap::new(
+                                Verdict::Error,
+                                GapReason::EngineError,
+                                AXSAFE,
+                                "Typerkennung im Worker lieferte kein Ergebnis",
+                            ));
+                            FileKind::Unknown
+                        }
+                    }
+                }
+                None => {
+                    result.gaps.push(Gap::new(
+                        Verdict::Error,
+                        GapReason::EngineUnavailable,
+                        AXSAFE,
+                        "Typerkennung nur im abgeschotteten Worker zulässig, Worker nicht \
+                         verfügbar: Typ unbekannt, Containerprüfung nicht beurteilbar",
+                    ));
+                    FileKind::Unknown
+                }
+            }
+        } else {
+            filetype::detect(&data)
+        };
         result.sha256 = Some(sha.clone());
         result.file_kind = Some(kind.clone());
 
-        let timeout = Duration::from_millis(self.limits.engine_timeout_ms);
         let input = ScanInput {
             data: &data,
             kind: &kind,
@@ -428,9 +556,15 @@ impl Scanner {
         let content_fmt = filetype::content_format(&kind);
         let mut content_inspected = false;
         let mut detections = Vec::new();
-        for (engine, info) in self.engines.iter().zip(infos) {
+        for (idx, (engine, info)) in self.engines.iter().zip(infos).enumerate() {
             let (outcome, unavailable) = match &info.health {
-                EngineHealth::Ready => (engine.scan(&input), false),
+                EngineHealth::Ready => match pre.take() {
+                    Some((p, o)) if p == idx => (o, false),
+                    other => {
+                        pre = other;
+                        (engine.scan(&input), false)
+                    }
+                },
                 EngineHealth::Unavailable { reason } => (
                     EngineOutcome {
                         engine: info.name.clone(),
@@ -499,7 +633,11 @@ impl Scanner {
             Ok(after) => !before.unchanged(&after) || data.len() as u64 != before.size,
             Err(_) => true,
         };
-        let path_moved = match open_no_follow(path).and_then(|f| FileIdentity::from_file(&f)) {
+        let path_moved = match self
+            .access
+            .enter()
+            .and_then(|_g| open_no_follow(path).and_then(|f| FileIdentity::from_file(&f)))
+        {
             Ok(now) => !before.same_object(&now),
             Err(_) => true,
         };
@@ -994,5 +1132,110 @@ mod tests {
         );
         let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), &p);
         assert_eq!(rep.files[0].gaps[0].state, Verdict::AccessDenied);
+    }
+
+    // --- P02: Dateizugriff mit fremder Identität, Typerkennung im Worker ---
+
+    struct DenyAccess;
+    impl FileAccess for DenyAccess {
+        fn enter(&self) -> io::Result<Box<dyn AccessGuard>> {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Impersonation verweigert",
+            ))
+        }
+        fn describe(&self) -> String {
+            "Test: verweigert".into()
+        }
+    }
+
+    #[test]
+    fn failed_identity_switch_never_reads_with_own_rights() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), b"x").unwrap();
+        let s = scanner(vec![Box::new(TestEngine::prefix())])
+            .with_file_access(std::sync::Arc::new(DenyAccess));
+        let rep = run(&s, dir.path());
+        assert_eq!(rep.files.len(), 1, "{:?}", rep.files);
+        let f = &rep.files[0];
+        assert_eq!(f.gaps[0].reason, GapReason::AccessDenied, "{f:?}");
+        assert!(f.sha256.is_none(), "Datei darf nicht gelesen worden sein");
+        assert_eq!(rep.outcome, JobOutcome::Incomplete);
+    }
+
+    struct Classifier {
+        kind: Result<FileKind, String>,
+    }
+    impl Engine for Classifier {
+        fn name(&self) -> &str {
+            "klassifizierer"
+        }
+        fn info(&self) -> EngineInfo {
+            let mut i = TestEngine::prefix().info();
+            i.name = "klassifizierer".into();
+            i
+        }
+        fn scan(&self, input: &ScanInput<'_>) -> EngineOutcome {
+            TestEngine::prefix().scan(input)
+        }
+        fn classifies(&self) -> bool {
+            true
+        }
+        fn scan_and_classify(
+            &self,
+            input: &ScanInput<'_>,
+        ) -> (EngineOutcome, Option<Result<FileKind, String>>) {
+            (self.scan(input), Some(self.kind.clone()))
+        }
+    }
+
+    #[test]
+    fn classification_in_engine_drives_container_logic() {
+        let dir = tempfile::tempdir().unwrap();
+        // Inhalt ist Text; der „Worker“ meldet ZIP → Containerlücke, und der
+        // Host hat den Typ NICHT selbst bestimmt.
+        fs::write(dir.path().join("a.bin"), b"nur text").unwrap();
+        let s = scanner(vec![Box::new(Classifier {
+            kind: Ok(FileKind::Zip),
+        })])
+        .classify_in_engine(true);
+        let rep = run(&s, dir.path());
+        let f = &rep.files[0];
+        assert_eq!(f.file_kind, Some(FileKind::Zip));
+        assert!(
+            f.gaps
+                .iter()
+                .any(|g| g.reason == GapReason::ContentNotInspected),
+            "{f:?}"
+        );
+        assert_eq!(f.engines.len(), 1, "Engine darf nur einmal prüfen");
+    }
+
+    #[test]
+    fn classification_failure_or_missing_classifier_is_gap() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), b"x").unwrap();
+        let s = scanner(vec![Box::new(Classifier {
+            kind: Err("Absturz".into()),
+        })])
+        .classify_in_engine(true);
+        let f = &run(&s, dir.path()).files[0];
+        assert!(
+            f.gaps
+                .iter()
+                .any(|g| g.detail.contains("Typerkennung im Worker fehlgeschlagen")),
+            "{f:?}"
+        );
+        assert_eq!(f.status, ObjectStatus::Incomplete);
+
+        let s = scanner(vec![Box::new(TestEngine::prefix())]).classify_in_engine(true);
+        let f = &run(&s, dir.path()).files[0];
+        assert!(
+            f.gaps
+                .iter()
+                .any(|g| g.detail.contains("nur im abgeschotteten Worker")),
+            "{f:?}"
+        );
+        assert_eq!(f.file_kind, Some(FileKind::Unknown));
     }
 }

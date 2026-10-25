@@ -29,6 +29,7 @@ axsafe-core = { path = "../axsafe-core" }
 axsafe-engine-yarax = { path = "../axsafe-engine-yarax" }
 axsafe-engine-clamav = { path = "../axsafe-engine-clamav" }
 axsafe-worker = { path = "../axsafe-worker" }
+axsafe-service = { path = "../axsafe-service" }
 clap.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

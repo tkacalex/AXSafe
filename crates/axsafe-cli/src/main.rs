@@ -66,6 +66,11 @@ struct EngineArgs {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Mit dem AXSafe-Dienst sprechen (Windows; axsafe.ipc/1)
+    Dienst {
+        #[command(subcommand)]
+        cmd: DienstCmd,
+    },
     /// Dateien oder Ordner prüfen
     Scan {
         /// Zu prüfende Dateien oder Ordner
@@ -105,6 +110,117 @@ enum Cmd {
         #[arg(required = true)]
         files: Vec<PathBuf>,
     },
+}
+
+#[derive(Subcommand)]
+enum DienstCmd {
+    /// Zustand des Dienstes und der Engines (JSON)
+    Status,
+    /// Scan durch den Dienst mit den eigenen Rechten starten
+    Scan {
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        /// ClamAV zusätzlich verwenden
+        #[arg(long)]
+        clamav: bool,
+        /// Auf das Ende warten und den Bericht ausgeben
+        #[arg(long)]
+        warten: bool,
+    },
+    /// Zustand eines eigenen Auftrags
+    Auftrag { job_id: String },
+    /// Bericht eines eigenen Auftrags (JSON)
+    Bericht { job_id: String },
+    /// Eigenen Auftrag abbrechen
+    Abbrechen { job_id: String },
+}
+
+/// Ruft den Dienst auf und gibt die Antwort als JSON aus.
+/// Exitcodes: 0 ok, 6 Dienst nicht erreichbar, 7 vom Dienst abgelehnt.
+fn dienst(cmd: DienstCmd) -> ExitCode {
+    use axsafe_service::ipc::Body;
+    let mut c = match axsafe_service::client::connect() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("AXSafe-Dienst nicht erreichbar: {e}");
+            return ExitCode::from(6);
+        }
+    };
+    let print = |r: &axsafe_service::ipc::Response| {
+        println!("{}", serde_json::to_string_pretty(r).unwrap_or_default());
+        if r.ok {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::from(7)
+        }
+    };
+    let call = |c: &mut axsafe_service::client::Client<std::fs::File>, b: Body| match c.call(b) {
+        Ok(r) => Ok(r),
+        Err(e) => {
+            eprintln!("Verbindung zum Dienst gestört: {e}");
+            Err(ExitCode::from(6))
+        }
+    };
+    let body = match cmd {
+        DienstCmd::Status => Body::Status,
+        DienstCmd::Auftrag { job_id } => Body::Job { job_id },
+        DienstCmd::Bericht { job_id } => Body::Report { job_id },
+        DienstCmd::Abbrechen { job_id } => Body::ScanCancel { job_id },
+        DienstCmd::Scan {
+            paths,
+            clamav,
+            warten,
+        } => {
+            // Absolute Pfade; die Prüfung erfolgt im Dienst mit den Rechten
+            // dieses Benutzers.
+            let paths: Vec<String> = paths
+                .iter()
+                .map(|p| {
+                    std::path::absolute(p)
+                        .unwrap_or_else(|_| p.clone())
+                        .display()
+                        .to_string()
+                })
+                .collect();
+            let r = match call(
+                &mut c,
+                Body::ScanStart {
+                    paths,
+                    use_clamav: clamav,
+                },
+            ) {
+                Ok(r) => r,
+                Err(code) => return code,
+            };
+            if !warten || !r.ok {
+                return print(&r);
+            }
+            let job = r.result["job_id"].as_str().unwrap_or_default().to_string();
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                let j = match call(
+                    &mut c,
+                    Body::Job {
+                        job_id: job.clone(),
+                    },
+                ) {
+                    Ok(j) => j,
+                    Err(code) => return code,
+                };
+                if !j.ok {
+                    return print(&j);
+                }
+                if j.result["state"] == "finished" || j.result["state"] == "failed" {
+                    break;
+                }
+            }
+            Body::Report { job_id: job }
+        }
+    };
+    match call(&mut c, body) {
+        Ok(r) => print(&r),
+        Err(code) => code,
+    }
 }
 
 fn default_rules_dir() -> PathBuf {
@@ -314,6 +430,7 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         }
+        Cmd::Dienst { cmd } => dienst(cmd),
         Cmd::Filetype { files } => {
             let mut code = 0u8;
             for f in files {
@@ -341,6 +458,7 @@ fn main() -> ExitCode {
             timeout_ms,
             verbose,
         } => {
+            let yara_in_process = engines.yara_in_process;
             let job_id = match job_id {
                 Some(j) => match uuid::Uuid::parse_str(&j) {
                     Ok(u) => u.hyphenated().to_string(),
@@ -370,7 +488,9 @@ fn main() -> ExitCode {
                 engine_timeout_ms: timeout_ms.unwrap_or_else(|| timeout_secs.saturating_mul(1000)),
                 ..ScanLimits::default()
             };
-            let mut scanner = Scanner::new(engines, limits);
+            // P02: Mit Worker wird auch der Dateityp im abgeschotteten Worker
+            // bestimmt; der CLI-Prozess parst keine Dateiinhalte.
+            let mut scanner = Scanner::new(engines, limits).classify_in_engine(!yara_in_process);
             print_engines(&scanner.engine_infos());
             if let Some(t) = &target {
                 scanner.exclude_identity(t.identity().clone(), "Berichtsdatei dieses Auftrags");

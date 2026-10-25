@@ -8,7 +8,7 @@ use axsafe_engine_yarax::{RuleSource, RuleStats};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
-pub const PROTOCOL: &str = "axsafe.worker/1";
+pub const PROTOCOL: &str = "axsafe.worker/2";
 
 /// Höchstgröße einer JSON-Steuernachricht (Regeln, Probe).
 pub const MAX_CONTROL_BYTES: usize = 16 * 1024 * 1024;
@@ -81,6 +81,14 @@ pub struct ProbeCheck {
     /// `true`, wenn die Aktion verweigert wurde.
     pub denied: bool,
     pub detail: String,
+}
+
+/// Antwort auf einen Scan: Ergebnis der Engine und der im Worker bestimmte
+/// Dateityp (der Host parst Dateiinhalte nicht selbst).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanReply {
+    pub outcome: axsafe_core::engine::EngineOutcome,
+    pub file_kind: axsafe_core::filetype::FileKind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

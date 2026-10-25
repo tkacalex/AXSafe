@@ -8,7 +8,6 @@
 use crate::protocol::*;
 use crate::sandbox;
 use axsafe_core::engine::{Engine, ScanInput};
-use axsafe_core::filetype::FileKind;
 use axsafe_engine_yarax::{YaraXEngine, YARAX_VERSION};
 use std::io::{self, Read, Write};
 use std::time::Duration;
@@ -151,13 +150,23 @@ pub fn worker_main_with(fault: Fault, marker: Option<std::path::PathBuf>) -> i32
             }
             (T_SCAN, p) if p.len() >= 4 && p.len() <= max_scan => {
                 let ms = u32::from_le_bytes([p[0], p[1], p[2], p[3]]);
+                let data = &p[4..];
+                // Typerkennung hier im abgeschotteten Worker, nicht im Host.
+                let file_kind = axsafe_core::filetype::detect(data);
                 let o = engine.scan(&ScanInput {
-                    data: &p[4..],
-                    kind: &FileKind::Unknown,
+                    data,
+                    kind: &file_kind,
                     sha256: "",
                     timeout: Duration::from_millis(u64::from(ms)),
                 });
-                send(&mut out, T_RESULT, &o)
+                send(
+                    &mut out,
+                    T_RESULT,
+                    &ScanReply {
+                        outcome: o,
+                        file_kind,
+                    },
+                )
             }
             (T_SCAN, _) => return fail(&mut out, "Scan-Rahmen mit unzulässiger Länge".into()),
             (T_PROBE, p) => match serde_json::from_slice::<Probe>(&p) {

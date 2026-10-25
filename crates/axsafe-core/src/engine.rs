@@ -221,4 +221,23 @@ pub trait Engine: Send + Sync {
     /// Prüft einen Inhaltsschnappschuss. Darf nie paniken; Fehler werden als
     /// [`Verdict::Error`] beziehungsweise [`Verdict::Timeout`] gemeldet.
     fn scan(&self, input: &ScanInput<'_>) -> EngineOutcome;
+
+    /// Ob diese Engine den Dateityp bestimmen kann (z. B. der abgeschottete
+    /// Worker). Dann muss der aufrufende – ggf. privilegierte – Prozess
+    /// keine Dateiinhalte selbst parsen.
+    fn classifies(&self) -> bool {
+        false
+    }
+
+    /// Prüft und bestimmt dabei den Dateityp. `input.kind` ist dann ohne
+    /// Bedeutung. Standard: nur prüfen, kein Typ.
+    fn scan_and_classify(
+        &self,
+        input: &ScanInput<'_>,
+    ) -> (
+        EngineOutcome,
+        Option<Result<crate::filetype::FileKind, String>>,
+    ) {
+        (self.scan(input), None)
+    }
 }

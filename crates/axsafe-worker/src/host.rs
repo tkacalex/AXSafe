@@ -20,6 +20,7 @@ use axsafe_core::engine::{
     ContentKind, Engine, EngineHealth, EngineInfo, EngineOutcome, Gap, GapReason, Isolation,
     IsolationKind, ScanInput,
 };
+use axsafe_core::filetype::FileKind;
 use axsafe_core::verdict::Verdict;
 use axsafe_engine_yarax::{describe_content, RuleSource, YARAX_VERSION};
 pub use axsafe_proc::Sandbox;
@@ -67,13 +68,30 @@ pub fn memory_for(max_scan_bytes: u64) -> u64 {
 /// AppContainer-Profil des Scanworkers.
 pub const APPCONTAINER_PROFILE: &str = "AXSafe.ScanWorker.v1";
 
-/// Minimale Umgebung: unter Windows nur `SystemRoot` (für das Laden von
-/// Systembibliotheken), sonst leer. Zugangsdaten o. Ä. aus der Umgebung des
+/// Minimale Umgebung: unter Windows nur Systempfade, die der Start eines
+/// AppContainer-Prozesses benötigt (ohne `LOCALAPPDATA`/`USERPROFILE`
+/// scheitert CreateProcess mit Fehler 203; auf dem Windows-Runner
+/// beobachtet), sonst leer. Zugangsdaten, Token o. Ä. aus der Umgebung des
 /// Benutzers werden nie weitergegeben.
 pub fn minimal_env() -> Vec<(String, String)> {
     if cfg!(windows) {
-        let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-        vec![("SystemRoot".into(), root)]
+        let mut v = Vec::new();
+        for (k, default) in [
+            ("SystemRoot", r"C:\Windows"),
+            ("SystemDrive", "C:"),
+            ("windir", r"C:\Windows"),
+            ("USERPROFILE", ""),
+            ("LOCALAPPDATA", ""),
+            ("TEMP", ""),
+            ("TMP", ""),
+        ] {
+            match std::env::var(k) {
+                Ok(val) => v.push((k.to_string(), val)),
+                Err(_) if !default.is_empty() => v.push((k.to_string(), default.to_string())),
+                Err(_) => {}
+            }
+        }
+        v
     } else {
         Vec::new()
     }
@@ -683,6 +701,36 @@ impl Engine for WorkerEngine {
     }
 
     fn scan(&self, input: &ScanInput<'_>) -> EngineOutcome {
+        let mut k = None;
+        self.run_scan(input, &mut k)
+    }
+
+    fn classifies(&self) -> bool {
+        true
+    }
+
+    fn scan_and_classify(
+        &self,
+        input: &ScanInput<'_>,
+    ) -> (EngineOutcome, Option<Result<FileKind, String>>) {
+        let mut k = None;
+        let o = self.run_scan(input, &mut k);
+        let k = k.unwrap_or_else(|| {
+            Err(o
+                .note
+                .clone()
+                .unwrap_or_else(|| "Worker lieferte keinen Dateityp".into()))
+        });
+        (o, Some(k))
+    }
+}
+
+impl WorkerEngine {
+    fn run_scan(
+        &self,
+        input: &ScanInput<'_>,
+        kind_out: &mut Option<Result<FileKind, String>>,
+    ) -> EngineOutcome {
         let start = Instant::now();
         let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(r) = &st.disabled {
@@ -739,12 +787,16 @@ impl Engine for WorkerEngine {
             .write_all(frame, deadline)
             .and_then(|_| read_response(s, deadline));
         match res {
-            Ok((T_RESULT, p)) => match serde_json::from_slice::<EngineOutcome>(&p) {
-                Ok(mut o) if o.engine == "yara-x" => {
+            Ok((T_RESULT, p)) => match serde_json::from_slice::<ScanReply>(&p) {
+                Ok(ScanReply {
+                    outcome: mut o,
+                    file_kind,
+                }) if o.engine == "yara-x" => {
                     o.duration_ms = start.elapsed().as_millis() as u64;
+                    *kind_out = Some(Ok(file_kind));
                     o
                 }
-                Ok(o) => {
+                Ok(ScanReply { outcome: o, .. }) => {
                     self.failed(&mut st);
                     self.gap(
                         start,
