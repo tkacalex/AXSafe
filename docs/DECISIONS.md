@@ -13,7 +13,7 @@
 | 2026-10-24 | E-07 | Defender bleibt aktiv; AXSafe ist bis zur geprüften Primärschutzfreigabe ein ergänzender Scanner | Spezifikation AXS-076 |
 | 2026-10-25 | E-08 | Dienstkonto **LocalService** statt LocalSystem: Der Dienst braucht nur `SeImpersonatePrivilege` (Dateien mit den Rechten des Auftraggebers lesen) und `SeChangeNotifyPrivilege`; alles andere wird über `sc privs` entzogen. Eigene Dienst-SID für die Ordner-ACLs | [ADR-0006](adr/ADR-0006-worker-isolation.md) |
 | 2026-10-25 | E-09 | Identität eines Pipe-Clients nur aus dem Token (Impersonation → Thread-Token → RevertToSelf), nie aus Nachrichtenfeldern; Eigentum = Benutzer-SID + Anmeldesitzung | ADR-0006 |
-| 2026-10-25 | E-10 | ClamAV unter Windows nur im AppContainer; ohne Abschottung „nicht verfügbar“. Rückfall auf ungeschützten Betrieb nur per ausdrücklichem CLI-Schalter mit sichtbarem Hinweis, nie automatisch | ADR-0006 |
+| 2026-10-25 | E-10 | ClamAV unter Windows nur mit Rechtebeschränkung: eingeschränktes Token (Integrität Niedrig) plus ausgehende Firewall-Sperrregel, weil ClamAV 1.5 im AppContainer nicht startet (Pfadauflösung dort verweigert, gemessen). Ohne Abschottung „nicht verfügbar“; ungeschützter Betrieb nur per ausdrücklichem CLI-Schalter mit sichtbarem Hinweis, nie automatisch | ADR-0006, Test `appcontainer_path_resolution_is_measured` |
 | 2026-10-25 | E-11 | ClamAV wird **nicht mitgeliefert**, sondern vom Einrichtungsskript aus der offiziellen Quelle installiert – gilt, bis Alex D-07 entscheidet; AXSafe-Pakete enthalten damit keinen GPL-Code | `scripts/windows/setup-clamav.ps1` |
 
 ## Offen (Entscheidung durch Alex)

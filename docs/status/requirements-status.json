@@ -84,7 +84,7 @@
     "AXS-013": {
       "status": "teilweise",
       "where": "crates/axsafe-worker, crates/axsafe-proc, crates/axsafe-service, crates/axsafe-engine-clamav, docs/adr/ADR-0006-worker-isolation.md",
-      "evidence": "YARA-X und Typerkennung im Scanworker (Windows AppContainer ohne Fähigkeiten + Job Object, Linux Landlock), Abschottungsprobe nach jedem (Neu-)Start; ClamAV unter Windows im AppContainer mit geprüftem Token; Dienst als LocalService mit nur SeImpersonate/SeChangeNotify; UI asInvoker",
+      "evidence": "YARA-X und Typerkennung im Scanworker (Windows AppContainer ohne Fähigkeiten + Job Object, Linux Landlock), Abschottungsprobe nach jedem (Neu-)Start; ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, geprüft vor dem Start) plus Firewall-Sperrregel; AppContainer für ClamAV 1.5 gemessen unmöglich; Dienst als LocalService mit nur SeImpersonate/SeChangeNotify; UI asInvoker",
       "rest": "Process-Mitigation-Policies; LTSC-Nachweis (B-02)"
     },
     "AXS-015": {
@@ -114,7 +114,7 @@
     "AXS-021": {
       "status": "teilweise",
       "where": "crates/axsafe-engine-clamav",
-      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen); YARA-X-Worker: Absturz/Hänger/Protokollbruch bleiben im Worker, Neustart beim nächsten Objekt (Windows Server und Linux getestet); ClamAV unter Windows im AppContainer (Signaturordner nur lesbar freigegeben, eigener Temp-Ordner)",
+      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen); YARA-X-Worker: Absturz/Hänger/Protokollbruch bleiben im Worker, Neustart beim nächsten Objekt (Windows Server und Linux getestet); ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, nur eigener Arbeitsordner beschreibbar), Netzwerk per Firewall-Regel gesperrt",
       "rest": "LTSC (B-02)"
     },
     "AXS-022": {

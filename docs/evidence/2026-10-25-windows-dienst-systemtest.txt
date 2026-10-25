@@ -1,0 +1,48 @@
+AXSafe – Windows-Systemtest des Dienstes (P02 Schritt 2)
+Commit: 4185958 · CI-Lauf 40174054483 · Job 121110832736
+Plattform: GitHub-Runner windows-latest = Windows Server 2025 Datacenter (10.0.26100), Administrator, Wegwerf-VM.
+KEIN Nachweis für Windows 10 Enterprise LTSC (B-02).
+Skript: scripts/ci/service_e2e.ps1 – Ergebnis: 22 Prüfungen, 0 fehlgeschlagen.
+
+[08:01:03] OK   installiert_konto: Konto NT AUTHORITY\LocalService, Zustand Running
+[08:01:03] OK   privilegien_minimal: [SC] QueryServiceConfig2 SUCCESS  SERVICE_NAME: AXSafeService         PRIVILEGES       : SeChangeNotifyPrivilege                          : SeImpersonatePrivilege
+[08:01:08] OK   status: Exit 0; Client runnervmdaln5\runneradmin, Sitzung 2
+[08:01:08] OK   dienst_worker_isoliert: yara-x: ready / sandboxed_worker / AppContainer ohne Fähigkeiten: kein Netzwerk, kein Zugriff auf Benutzerdateien; dazu Job Object (1 Prozess, Speicher- und Zeitgrenze); Probe: 5 verbotene Aktionen verweigert 
+[08:01:11] OK   scan_ende_zu_ende: outcome detection, Funde 1, Objekte 2
+[08:01:11] OK   typ_im_worker: Dateitypen aus dem Worker: [{"kind":"text"},{"kind":"text"}]
+[08:01:15] OK   abbruch: Abbruch-Exit 0, Zustand finished, Bericht: cancelled=True, complete=False, outcome=incomplete, Objekte 0
+[08:01:17] OK   client_absturz: Client-Prozess beendet; Dienst Running, Status-Exit 0
+[08:01:52] Testbenutzer-Prozess beendet mit 0
+[08:01:52] OK   zweiter_benutzer_status: EXIT=0
+[08:01:52] OK   fremder_bericht: EXIT=7 { "protocol": "axsafe.ipc/1", "seq": 1, "ok": false, "error": { "code": "not_found", "message": "kein eigener Bericht" }, "result": null }
+[08:01:52] OK   fremder_abbruch: EXIT=7 { "protocol": "axsafe.ipc/1", "seq": 1, "ok": false, "error": { "code": "not_found", "message": "kein abbrechbarer eigener Auftrag" }, "result": null }
+[08:01:52] OK   fremder_auftrag: EXIT=7 { "protocol": "axsafe.ipc/1", "seq": 1, "ok": false, "error": { "code": "not_found", "message": "kein eigener Auftrag" }, "result": null }
+[08:01:52] OK   unberechtigter_dateizugriff: Scan eines nicht lesbaren Ordners als Testbenutzer: AccessDenied-Lücke
+[08:01:52] OK   nicht_admin_sc_stop: EXIT=5 [SC] OpenService FAILED 5: Access is denied.
+[08:01:52] OK   nicht_admin_sc_delete: EXIT=5 [SC] OpenService FAILED 5: Access is denied.
+[08:02:01] OK   absturz_wiederanlauf: alter Prozess 3648, neuer 8768, Status-Exit 0
+[08:02:01] OK   bericht_nach_neustart: Bericht d649eebf-38c7-4039-a78d-7597289c6775 nach Neustart lesbar
+[08:02:01] OK   nutzdateien_unveraendert: 3 Dateien, Hashes vor/nach Scans und Absturz verglichen
+[08:02:40] OK   oberflaechen_client_dienst: dotnet test Kategorie=Dienst: Exit 0; Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 3 s - AXSafe.Client.Tests.dll (net10.0)
+[08:02:40] OK   gestoppt_nicht_erreichbar: Exit 6: axsafe.exe : AXSafe-Dienst nicht erreichbar: The system cannot find the file specified. (os error 2)
+At D:\a\AXSafe\AXSafe\scripts\ci\service_e2e.ps1:29 char:12
++     $out = & $cli dienst @a 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (AXSafe-Dienst n...d. (os error 2):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+[08:02:42] OK   neustart: nach Start wieder erreichbar
+[08:02:42] OK   deinstallation: Dienst und Programmordner entfernt
+[08:02:42] 22 Prüfungen, 0 fehlgeschlagen
+
+--- Installationsbericht ---
+[08:00:59] Programmdateien nach C:\Program Files\AXSafe\service kopiert.
+[08:01:00] sc create AXSafeService binPath= "C:\Program Files\AXSafe\service\axsafe-service.exe" run start= auto obj= NT AUTHORITY\LocalService DisplayName= AXSafe Scan-Dienst: OK
+[08:01:00] sc description AXSafeService AXSafe (Vorversion): prüft Dateien auf Anforderung mit den Rechten des Auftraggebers. Kein Echtzeitschutz.: OK
+[08:01:00] sc sidtype AXSafeService unrestricted: OK
+[08:01:00] sc privs AXSafeService SeChangeNotifyPrivilege/SeImpersonatePrivilege: OK
+[08:01:00] sc failure AXSafeService reset= 86400 actions= restart/5000/restart/30000//0: OK
+[08:01:00] Datenordner: C:\ProgramData\AXSafe\Service NT SERVICE\AXSafeService:(OI)(CI)(M) |                               BUILTIN\Administrators:(OI)(CI)(F) |                               NT AUTHORITY\SYSTEM:(OI)(CI)(F) |  | Successfully processed 1 files; Failed processing 0 files
+[08:01:01] Rechte geprüft: Benutzer können Programm- und Datenordner nicht verändern.
+[08:01:01] Dienst läuft. [SC] QueryServiceConfig SUCCESS |  | SERVICE_NAME: AXSafeService |         TYPE               : 10  WIN32_OWN_PROCESS  |         START_TYPE         : 2   AUTO_START |         ERROR_CONTROL      : 1   NORMAL |         BINARY_PATH_NAME   : "C:\Program Files\AXSafe\service\axsafe-service.exe" run |         LOAD_ORDER_GROUP   :  |         TAG                : 0 |         DISPLAY_NAME       : AXSafe Scan-Dienst |         DEPENDENCIES       :  |         SERVICE_START_NAME : NT AUTHORITY\LocalService
+[08:01:01] Privilegien: [SC] QueryServiceConfig2 SUCCESS |  | SERVICE_NAME: AXSafeService |         PRIVILEGES       : SeChangeNotifyPrivilege |                          : SeImpersonatePrivilege
+[08:01:01] Fertig. Bericht: D:\a\AXSafe\AXSafe\dienst-nachweis\dienst-installation-20261025-080059.txt

@@ -71,12 +71,13 @@ Viele Sicherheitsprogramme zeigen große grüne Schilde, egal was im Hintergrund
 | --- | --- |
 | Dateien und Ordner auf Anforderung prüfen (CLI + Oberfläche) | Echtzeitschutz beim Öffnen/Ausführen (Phase P08) |
 | Eigene YARA-X-Regeln mit Pflichtmetadaten und Zeitlimit | Quarantäne und Wiederherstellung (P05) |
-| ClamAV als getrennter Prozess, ohne Netzwerkschnittstelle | Skript- und Speicherschutz über AMSI (P07) |
+| ClamAV als getrennter Prozess **mit Rechtebeschränkung** (Windows: eingeschränktes Token, Integrität Niedrig, kein Zugriff auf private Dateien, Netzwerk per Firewall gesperrt), kein clamd-Port | Skript- und Speicherschutz über AMSI (P07) |
 | Typerkennung nach Inhalt (EXE/DLL/.NET, Office, PDF, Archive, LNK, ISO …) | Verhaltens- und Ransomware-Schutz (P06, P09) |
 | Ehrliche Ergebnisse: Fund und Prüflücke getrennt, JSON-Bericht (Schema v2) | Sichere automatische Updates (P04) |
 | Archive nur dann „geprüft“, wenn eine Engine den Inhalt nachweislich prüft; Passwort-ZIP → *verschlüsselt* (mit ClamAV) | Web-, Phishing- und Netzwerkschutz (P10) |
 | Engines laufen mit hartem Zeit-, Speicher- und Ausgabelimit | Echte eigene Erkennungsregeln (heute nur Funktionstest) |
-| YARA-X im **abgeschotteten Worker** (Windows: AppContainer ohne Netz und Dateizugriff) – Abschottung wird bei jedem Start nachgewiesen | Hintergrunddienst mit gesicherter Schnittstelle (P02, nächster Schritt) |
+| YARA-X und Typerkennung im **abgeschotteten Worker** (Windows: AppContainer ohne Netz und Dateizugriff) – Abschottung wird bei jedem Start nachgewiesen | Prüfung auf Windows 10 LTSC (Labor fehlt noch) |
+| **Hintergrunddienst** `AXSafeService` (LocalService, minimale Rechte) mit gesicherter Named Pipe: liest Dateien nur mit **deinen** Rechten, Berichte nur für dich | |
 | Deutsche Oberfläche im dunklen Design, kein Konto nötig | Selbstschutz und Windows-Sicherheitscenter (P11) |
 
 Die vollständige Liste je Dateiformat steht in der [Fähigkeitsmatrix](docs/CAPABILITY-MATRIX.md).
@@ -111,7 +112,8 @@ Was du hier siehst: AXSafe sagt zuerst ehrlich, **welche Regeln geladen sind** �
 
 1. Unter [**Releases**](https://github.com/tkacalex/AXSafe/releases) die neueste Vorversion öffnen und `AXSafe-…-windows-x64-vorversion.zip` laden. Prüfsummen aller Dateien stehen in `SHA256SUMS-….txt`, dazu Stückliste (SBOM), Inventar und Lizenzhinweise.
 2. Entpacken, `AXSafe.exe` starten. Die .NET-Laufzeit ist enthalten. Die Kommandozeile liegt in `cli\axsafe.exe`.
-3. Optional: [ClamAV für Windows](https://www.clamav.net/downloads) installieren und `freshclam` ausführen – AXSafe nutzt es dann automatisch zusätzlich.
+3. Optional, aber empfohlen: `scripts\windows\ClamAV-einrichten.cmd` doppelklicken und die Windows-Abfrage (UAC) bestätigen. Das Skript lädt das **offizielle** ClamAV-Paket von Cisco Talos, prüft Prüfsumme und Signatur, richtet die Signaturupdates alle 4 Stunden ein und schreibt einen Nachweisbericht. AXSafe nutzt ClamAV danach automatisch.
+4. Optional: `scripts\windows\Dienst-installieren.cmd` (UAC) installiert den Hintergrunddienst. Die Oberfläche zeigt, ob er bereit ist.
 
 Jeder erfolgreiche CI-Lauf stellt außerdem das Artefakt **`axsafe-windows-x64-preview`** bereit ([Actions](https://github.com/tkacalex/AXSafe/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess), GitHub-Anmeldung nötig).
 
@@ -167,12 +169,13 @@ Durchgezogen = vorhanden, gestrichelt = geplant. Details: [Bedrohungsmodell](doc
 crates/axsafe-core           Ergebnismodell, Dateiidentität, Typerkennung, Scan, Bericht
 crates/axsafe-engine-yarax   YARA-X-Adapter (eigene Regeln in rules/)
 crates/axsafe-engine-clamav  ClamAV-Adapter (clamscan, stdin, ohne TCP)
-crates/axsafe-proc           Kindprozesse mit Ablaufdatum, Speicher-/Ausgabegrenze, Job Object, AppContainer
+crates/axsafe-proc           Kindprozesse mit Ablaufdatum, Speicher-/Ausgabegrenze, Job Object, AppContainer, eingeschränktes Token
 crates/axsafe-worker         isolierter Scanworker (YARA-X) und Host-Adapter, Abschottungsnachweis
+crates/axsafe-service        Windows-Dienst AXSafeService, Named Pipe axsafe.ipc/1
 crates/axsafe-cli            Kommandozeile axsafe
 ui/AXSafe.Client             Auftrag, Berichtsprüfung, Modell (plattformneutral, getestet)
 ui/AXSafe.Desktop            WPF-Oberfläche (.NET 10)
-service/ driver/ backend/ research/   geplante Komponenten (bewusst noch ohne Code)
+service/ driver/ backend/ research/   Planungsnotizen bzw. geplante Komponenten (Dienstcode: crates/axsafe-service)
 docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 ```
 
@@ -196,7 +199,7 @@ docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 | Phase | Inhalt | Stand |
 | --- | --- | --- |
 | P00–P01 | Ziele, Plattform, Labor, Build, CI | 🔵 in Arbeit |
-| P02–P03 | Dienst, IPC, Erkennungskern | 🔵 Scanworker abgeschottet (AppContainer/Landlock); Dienst und IPC offen |
+| P02–P03 | Dienst, IPC, Erkennungskern | 🔵 Worker abgeschottet, Dienst und Named Pipe auf Windows Server getestet; LTSC offen |
 | P04–P05 | Updates, Quarantäne | ⚪ geplant |
 | P06–P10 | Sensorik, AMSI, Echtzeit, Ransomware, Web | ⚪ geplant |
 | P11–P15 | Selbstschutz, Cloud, UI, Nachweise, Release | 🔵 UI begonnen, Rest geplant |
@@ -239,4 +242,4 @@ Die Projektlizenz ist **noch nicht festgelegt** ([ADR-0003](docs/adr/ADR-0003-li
 
 **AXSafe** is an open-development, multi-layer endpoint protection project for **Windows 10 Enterprise LTSC 2021 / Windows 11 (x64)**, built with a Rust core and a German WPF (.NET 10) desktop UI.
 
-Its core idea is **honesty**: no green shield without evidence, every gap (encrypted, unsupported, access denied, timeout, engine error, changed during scan) is reported explicitly and never counted as "clean". The current **preview 0.2** is an *on-demand scanner* with YARA-X and ClamAV adapters, content-based file type detection, handle-based file identity and machine-readable JSON reports (schema v2: detections and coverage gaps reported side by side). Version 0.2 fixes eight independently reported findings (report overwrite, detection-plus-gap visibility, container coverage, engine timeouts with lingering child processes, report-to-job binding, empty scans, test-only rules, honest test counting). YARA-X now runs in an isolated worker process (Windows: AppContainer without capabilities inside a Job Object; Linux: Landlock), and the isolation is verified at every start by denied write/network/process probes. **The bundled rules are function tests only (EICAR) and detect no real malware. It is not real-time protection – keep Microsoft Defender enabled.** The full plan (16 phases, 100 requirements with acceptance tests) and its live status are in [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).
+Its core idea is **honesty**: no green shield without evidence, every gap (encrypted, unsupported, access denied, timeout, engine error, changed during scan) is reported explicitly and never counted as "clean". The current **preview 0.2** is an *on-demand scanner* with YARA-X and ClamAV adapters, content-based file type detection, handle-based file identity and machine-readable JSON reports (schema v2: detections and coverage gaps reported side by side). Version 0.2 fixes eight independently reported findings (report overwrite, detection-plus-gap visibility, container coverage, engine timeouts with lingering child processes, report-to-job binding, empty scans, test-only rules, honest test counting). YARA-X and file type detection run in an isolated worker process (Windows: AppContainer without capabilities inside a Job Object; Linux: Landlock), and the isolation is verified at every start by denied write/network/process probes. A Windows service (`AXSafeService`, LocalService, two privileges) accepts scan jobs over a locked-down named pipe, takes the caller's identity from the Windows token and reads files only while impersonating the caller. ClamAV runs with a restricted low-integrity token (an AppContainer was measured to be impossible for ClamAV 1.5) and is installed from the official Cisco Talos package by a verifying setup script. **The bundled rules are function tests only (EICAR) and detect no real malware. It is not real-time protection – keep Microsoft Defender enabled.** The full plan (16 phases, 100 requirements with acceptance tests) and its live status are in [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).

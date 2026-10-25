@@ -893,13 +893,20 @@ fn spawn_isolated(cmd: &Command, limits: &Limits, iso: Isolation) -> io::Result<
                 }
             }
             let _list_guard = List(list);
-            if let Isolation::AppContainer(sid) = &iso {
-                let caps = SECURITY_CAPABILITIES {
-                    AppContainerSid: sid.0,
-                    Capabilities: std::ptr::null_mut(),
-                    CapabilityCount: 0,
-                    Reserved: 0,
-                };
+            // UpdateProcThreadAttribute speichert nur den ZEIGER auf `caps`:
+            // Die Struktur muss bis nach CreateProcess leben (deshalb hier
+            // außerhalb des if – ein Block-lokaler Wert war im Release-Build
+            // bereits überschrieben, als CreateProcessW ihn las).
+            let caps = SECURITY_CAPABILITIES {
+                AppContainerSid: match &iso {
+                    Isolation::AppContainer(sid) => sid.0,
+                    Isolation::Restricted(_) => std::ptr::null_mut(),
+                },
+                Capabilities: std::ptr::null_mut(),
+                CapabilityCount: 0,
+                Reserved: 0,
+            };
+            if let Isolation::AppContainer(_) = &iso {
                 if UpdateProcThreadAttribute(
                     list,
                     0,

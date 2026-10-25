@@ -1,0 +1,26 @@
+AXSafe – Messung: ClamAV 1.5.4 im AppContainer (Windows)
+Commit 4185958 · CI-Lauf 40174054483 · Job 121110832722 (windows-latest = Windows Server 2025, kein LTSC)
+
+1) AXSafe-Engine im AppContainer AXSafe.ClamAV.v1:
+Funktionstest fehlgeschlagen (Status Some(2)): LibClamAV Error: Failed to create a new code-signature verifier: Can't verify: Invalid certs directory 'C:\Program Files\ClamAV\certs': Access is denied. (os error 5)
+
+2) ACL des Programmordners vor jeder Änderung (CI-Lauf 40171681170, Commit 31bbad9): ALL APPLICATION PACKAGES hat Lesen/Ausführen – Rechte waren nicht die Ursache:
+[07:22:15] ACL vorher C:\Program Files\ClamAV: C:\Program Files\ClamAV NT SERVICE\TrustedInstaller:(I)(F) |                         NT SERVICE\TrustedInstaller:(I)(CI)(IO)(F) |                         NT AUTHORITY\SYSTEM:(I)(F) |                         NT AUTHORITY\SYSTEM:(I)(OI)(CI)(IO)(F) |                         BUILTIN\Administrators:(I)(F) |                         BUILTIN\Administrators:(I)(OI)(CI)(IO)(F) |                         BUILTIN\Users:(I)(RX) |                         BUILTIN\Users:(I)(OI)(CI)(IO)(GR,GE) |                         CREATOR OWNER:(I)(OI)(CI)(IO)(F) |                         APPLICATION PACKAGE AUTHORITY\ALL APPLICATION PACKAGES:(I)(RX) |                         APPLICATION PACKAGE AUTHORITY\ALL APPLICATION PACKAGES:(I)(OI)(CI)(IO)(GR,GE) |                         APPLICATION PACKAGE AUTHORITY\ALL RESTRICTED APPLICATION PACKAGES:(I)(RX) |                         APPLICATION PACKAGE AUTHORITY\ALL RESTRICTED APPLICATION PACKAGES:(I)(OI)(CI)(IO)(GR,GE) |  | Successfully processed 1 files; Failed processing 0 files
+
+3) Pfadauflösung im AppContainer (Test appcontainer_path_resolution_is_measured):
+canonicalize C:\Windows\System32: Err(Os { code: 5, kind: PermissionDenied, message: "Access is denied." })
+open C:\Windows\System32: Ok
+final_path DOS: Err(Access is denied. (os error 5))
+final_path GUID: Err(Access is denied. (os error 5))
+final_path NT: Ok(\Device\HarddiskVolume3\Windows\System32)
+final_path NONE: Ok(\Windows\System32)
+canonicalize C:\Program Files\ClamAV\certs: Err(Os { code: 5, kind: PermissionDenied, message: "Access is denied." })
+open C:\Program Files\ClamAV\certs: Ok
+final_path DOS: Err(Access is denied. (os error 5))
+final_path GUID: Err(Access is denied. (os error 5))
+final_path NT: Ok(\Device\HarddiskVolume3\Program Files\ClamAV\certs)
+final_path NONE: Ok(\Program Files\ClamAV\certs)
+
+Ergebnis: Öffnen gelingt, GetFinalPathNameByHandleW mit VOLUME_NAME_DOS/GUID wird im AppContainer verweigert (NT-Namen gehen).
+std::fs::canonicalize – von ClamAV 1.5 für den Zertifikatsordner genutzt – scheitert dadurch für jeden Pfad, auch System32.
+Folge: ClamAV 1.5 ist im AppContainer nicht lauffähig. AXSafe nutzt für clamscan ein eingeschränktes Token (Integrität Niedrig) plus Firewall-Sperrregel (E-10).

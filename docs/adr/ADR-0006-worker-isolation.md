@@ -1,6 +1,6 @@
 # ADR-0006: Isolierter Scanworker und Broker-IPC (P02)
 
-* Status: **teilweise umgesetzt** – Schritt 1 (Scanworker) und Schritt 2 (Dienst + Named Pipe, ClamAV im AppContainer, Typerkennung im Worker) umgesetzt; Nachweise siehe „Umsetzungsstand“. Windows 10 LTSC: nicht getestet (B-02).
+* Status: **teilweise umgesetzt** – Schritt 1 (Scanworker) und Schritt 2 (Dienst + Named Pipe, ClamAV mit eingeschränktem Token, Typerkennung im Worker) umgesetzt; Nachweise siehe „Umsetzungsstand“. Windows 10 LTSC: nicht getestet (B-02).
 * Datum: 2026-10-24, fortgeschrieben 2026-10-25
 * Anforderungen: AXS-013, AXS-014, AXS-020, AXS-021, AXS-022, AXS-028
 
@@ -46,7 +46,7 @@ AXSafe Desktop (Benutzer) ──Named Pipe v1 (ACL)──► axsafe-service (Loc
 ## Offene Fragen
 
 * Verträgt sich wasmtime (YARA-X) mit `ProhibitDynamicCode`? Falls nein: eigene Ausnahme nur für den YARA-Worker, dokumentiert.
-* ClamAV unter AppContainer: Zugriff auf Signaturdatenbank über explizite ACL.
+* ~~ClamAV unter AppContainer~~ – nicht möglich, siehe Umsetzungsstand.
 * Alles muss auf Windows 10 LTSC 19044 im Labor (B-02) nachgewiesen werden.
 
 ## Umsetzungsstand (2026-10-24)
@@ -82,7 +82,7 @@ Abweichung vom Entwurf: Der Dienst läuft als **LocalService**, nicht als LocalS
 | Aufträge | 2 gleichzeitig, 8 wartend, 4 je Eigentümer, 200 Berichte behalten; Bericht exklusiv neu angelegt | `limits_bound_queue_and_parallelism`, `reports_are_never_overwritten` |
 | Zustände | Oberfläche: *Dienst fehlt / startet / bereit / gestört / nicht erreichbar*; „bereit“ nur, wenn der Dienst `service = bereit` und geprüfte Engines meldet | C#-Client, UI-Prüfung (`Dienst fehlt` ohne Dienst) |
 | Typerkennung | im Worker (Antwort `ScanReply.file_kind`); Ausfall → Lücke | `classification_in_engine_drives_container_logic`, `classification_failure_or_missing_classifier_is_gap` |
-| ClamAV | Windows: AppContainer `AXSafe.ClamAV.v1` ohne Fähigkeiten im Job Object; Token vor `ResumeThread` geprüft (`TokenIsAppContainer`, keine Fähigkeiten); Signaturordner per ACE gezielt **nur lesbar** für die AppContainer-SID (das Einrichtungsskript setzt sie, weil Benutzer den Ordner nicht ändern dürfen); `--tempdir` im AppContainer-Ordner; minimale Umgebung. Programm (`Program Files\ClamAV`) und Signaturen (`ProgramData\AXSafe\ClamAV\database`) getrennt. Ohne Abschottung: „nicht verfügbar“ | Windows-CI `windows-clamav` |
+| ClamAV | Windows: **eingeschränktes Token** (`Sandbox::Restricted`): `CreateRestrictedToken` ohne Privilegien außer SeChangeNotify, Einschränkungs-SIDs RESTRICTED, Jeder, Benutzer, Anmelde-SID, Integritätsstufe Niedrig; Start angehalten per `CreateProcessAsUserW`, Token vor dem Fortsetzen geprüft (`IsTokenRestricted`, Integrität ≤ Niedrig); Job Object; minimale Umgebung; einziger beschreibbarer Ort ist ein eigener Arbeitsordner (Integrität Niedrig, Eintrag für RESTRICTED). Programm (`Program Files\ClamAV`) und Signaturen (`ProgramData\AXSafe\ClamAV\database`) getrennt, beide nur lesbar. Netzwerk: ausgehende Firewall-Sperrregel für `clamscan.exe` (Einrichtung). **Warum kein AppContainer:** Messung in CI – im AppContainer liefert `GetFinalPathNameByHandleW` für DOS- und GUID-Namen „Zugriff verweigert“ (NT-Namen gehen), daher scheitert `canonicalize` für jeden Pfad; ClamAV 1.5 bricht deshalb beim Laden ab. Ohne Abschottung: „nicht verfügbar“ | `appcontainer_path_resolution_is_measured`, `restricted_token_denies_user_files_and_writes`, Windows-CI `windows-clamav` |
 
 **Grenzen und Zeitlimits**
 
@@ -99,4 +99,5 @@ Abweichung vom Entwurf: Der Dienst läuft als **LocalService**, nicht als LocalS
 
 * Alles muss auf **Windows 10 LTSC 19044** im Labor wiederholt werden (B-02). Windows Server (CI) ist kein LTSC-Nachweis.
 * Process-Mitigation-Policies (dynamischer Code, signierte Images) sind noch nicht gesetzt.
-* Die Verhaltensprobe gilt nur für den eigenen Worker; für `clamscan` (fremdes Programm) ist die Abschottung über Token-Prüfung belegt, nicht über eine Probe.
+* Für `clamscan` (fremdes Programm) ist die Abschottung über Token-Prüfung und einen Test mit demselben Token (Benutzerdatei unlesbar, Schreiben verweigert) belegt, nicht über eine Probe im laufenden clamscan. Das eingeschränkte Token ist schwächer als ein AppContainer: Dateien, die „Jeder“ oder „Benutzer“ lesen dürfen (z. B. `C:\Users\Public`), bleiben lesbar; Netzwerk hängt an der Firewall-Regel.
+* ClamAV im AppContainer wäre möglich, wenn ClamAV den Zertifikatsordner ohne DOS-Pfadauflösung prüfte – Meldung an das ClamAV-Projekt ist ein sinnvoller nächster Schritt.

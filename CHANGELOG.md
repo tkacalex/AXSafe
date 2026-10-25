@@ -14,7 +14,7 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ### Neu – Abschottung erweitert
 - **Typerkennung läuft im Worker** (nicht mehr im Prozess mit Dateizugriff). Fällt sie aus, wird das als Lücke gemeldet.
-- **ClamAV läuft unter Windows im AppContainer** `AXSafe.ClamAV.v1` ohne Fähigkeiten im Job Object; das Token wird vor dem Start geprüft. Die Signaturdatenbank ist gezielt nur lesbar freigegeben, Programmdateien und Signaturen bleiben getrennt. Ohne Abschottung meldet die Engine „nicht verfügbar“; Betrieb ohne Abschottung gibt es nur mit dem ausdrücklichen Schalter `--clamav-ohne-abschottung` und sichtbarem Hinweis.
+- **ClamAV läuft unter Windows mit eingeschränktem Token** (keine Privilegien, Integritätsstufe Niedrig, Einschränkungs-SIDs RESTRICTED/Jeder/Benutzer/Anmelde-SID) im Job Object; das Token wird vor dem Start geprüft. Dateien, die nur der Benutzer lesen darf, bleiben unerreichbar; schreiben darf clamscan nur in seinem eigenen Arbeitsordner. Netzwerk sperrt eine ausgehende Firewall-Regel für `clamscan.exe`, die die Einrichtung anlegt. **Ein AppContainer ist für ClamAV 1.5 nicht möglich** – gemessen: Windows verweigert dort `GetFinalPathNameByHandleW` mit DOS-Namen, ClamAV braucht das für seinen Zertifikatsordner. Ohne Abschottung meldet die Engine „nicht verfügbar“; Betrieb ohne Abschottung gibt es nur mit dem ausdrücklichen Schalter `--clamav-ohne-abschottung` und sichtbarem Hinweis.
 - Worker: Bereitschaft (Regeln, Inhaltsversion, Abschottungsprobe) wird **nach jedem Neustart** neu geprüft; der Worker bekommt nur eine minimale, ausdrückliche Umgebung.
 
 ### Neu – ClamAV-Einrichtung für Windows
