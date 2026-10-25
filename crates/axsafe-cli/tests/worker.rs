@@ -366,3 +366,42 @@ fn worker_gets_only_explicit_environment() {
     expected.sort();
     assert_eq!(got, expected, "Worker sieht mehr als festgelegt");
 }
+
+/// Messung (Windows): Pfadauflösung im AppContainer. Hintergrund: ClamAV 1.5
+/// meldet im AppContainer „Invalid certs directory … Access is denied“, obwohl
+/// ALL APPLICATION PACKAGES Lesen auf den Ordner hat. Der Test hält fest,
+/// welcher Schritt scheitert (Öffnen oder Endpfad-Abfrage) – Ausgabe im Log.
+/// Er prüft nur, dass die Messung im AppContainer lief.
+#[cfg(windows)]
+#[test]
+fn appcontainer_path_resolution_is_measured() {
+    use axsafe_proc::{run_sandboxed, Limits, Sandbox};
+    let mut c = std::process::Command::new(helper());
+    c.arg("diag-pfad");
+    let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
+    let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    c.arg(format!(r"{sysroot}\System32"));
+    c.arg(format!(r"{pf}\ClamAV\certs"));
+    c.env_clear();
+    for (k, v) in axsafe_proc::minimal_env() {
+        c.env(k, v);
+    }
+    let out = run_sandboxed(
+        c,
+        None,
+        &Limits {
+            timeout: Duration::from_secs(30),
+            ..Limits::default()
+        },
+        &Sandbox::AppContainer {
+            profile: "AXSafe.Test.PfadDiagnose".into(),
+        },
+    )
+    .expect("Start im AppContainer");
+    let text = String::from_utf8_lossy(&out.stdout);
+    println!(
+        "--- Messung im AppContainer ---\n{text}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(text.contains("canonicalize"), "keine Messausgabe: {out:?}");
+}
