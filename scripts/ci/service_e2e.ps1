@@ -70,6 +70,15 @@ try {
     $j = Dienst @('auftrag', $jid)
     Check 'abbruch' ($c.Code -eq 0 -or $j.Json.result.state -eq 'finished') "Abbruch-Exit $($c.Code), Zustand $($j.Json.result.state) $($j.Json.result.outcome)"
 
+    # --- Client bricht mitten im Auftrag ab (Prozess beendet) ----------------
+    $cp = Start-Process $cli -ArgumentList @('dienst', 'scan', "$root\offen", '--warten') -PassThru -WindowStyle Hidden
+    Start-Sleep -Milliseconds 700
+    if (-not $cp.HasExited) { Stop-Process -Id $cp.Id -Force }
+    Start-Sleep -Seconds 2
+    $after = Dienst @('status')
+    $svcNow = Get-Service AXSafeService
+    Check 'client_absturz' ($after.Code -eq 0 -and $svcNow.Status -eq 'Running') "Client-Prozess beendet; Dienst $($svcNow.Status), Status-Exit $($after.Code)"
+
     # --- Zweiter Benutzer ----------------------------------------------------
     Add-Type -AssemblyName System.Web
     $pw = [System.Web.Security.Membership]::GeneratePassword(24, 4) + 'aA1!'

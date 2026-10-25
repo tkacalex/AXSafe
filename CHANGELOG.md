@@ -4,6 +4,26 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Neu – Phase P02, Schritt 2: Hintergrunddienst und Named Pipe
+- **Dienst `AXSafeService`** (`axsafe-service.exe`): Konto *LocalService* mit eigener Dienst-SID, nur die Privilegien `SeImpersonatePrivilege` und `SeChangeNotifyPrivilege`, Neustart nach Absturz. Programmordner unter *Program Files* (Benutzer nur Lesen), Datenordner `%ProgramData%\AXSafe\Service` ohne Benutzerzugriff. Reproduzierbare Installation und Entfernung (`scripts/windows/install-service.ps1`, `uninstall-service.ps1`, `Dienst-installieren.cmd`).
+- **Named Pipe `\\.\pipe\AXSafe.v1`, Protokoll `axsafe.ipc/1`:** DACL nur für SYSTEM, Administratoren und interaktive Benutzer (ohne Recht, eigene Pipe-Instanzen anzulegen), Netzwerkclients abgewiesen. Die Identität kommt **aus dem Windows-Token** (Benutzer-SID, Anmeldesitzung, Sitzungs-ID), nie aus der Nachricht; Sitzung 0 und Dienstkonten werden abgewiesen. Nachrichten höchstens 64 KiB, Schema mit unbekannten Feldern verboten, Zeitgrenzen gegen langsame Clients, Sequenz und Nonce gegen Wiederholung, Ratenbegrenzung. Erlaubt sind nur: Status, Scan starten, eigenen Scan abbrechen, eigene Aufträge und Berichte.
+- **Dateizugriff mit den Rechten des Auftraggebers:** Der Dienst liest Dateien nur unter Impersonation des Clients und kehrt danach zu seinen Rechten zurück; scheitert der Wechsel, wird nicht gelesen (Lücke „Zugriff verweigert“).
+- **Begrenzte Aufträge:** höchstens 2 gleichzeitig, 8 in der Warteschlange, 4 je Benutzer; Berichte werden nie überschrieben und nur dem Eigentümer (Benutzer + Anmeldesitzung) gezeigt.
+- **Oberfläche:** neuer Zustand „Hintergrunddienst“ (fehlt / startet / bereit / gestört / nicht erreichbar) – „bereit“ erst, wenn der Dienst es bestätigt. Prüfungen laufen über den Dienst, wenn er bereit ist, sonst lokal; der Prüfweg steht im Ergebnis.
+- `axsafe dienst status|scan|auftrag|bericht|abbrechen` in der CLI.
+
+### Neu – Abschottung erweitert
+- **Typerkennung läuft im Worker** (nicht mehr im Prozess mit Dateizugriff). Fällt sie aus, wird das als Lücke gemeldet.
+- **ClamAV läuft unter Windows im AppContainer** `AXSafe.ClamAV.v1` ohne Fähigkeiten im Job Object; das Token wird vor dem Start geprüft. Die Signaturdatenbank ist gezielt nur lesbar freigegeben, Programmdateien und Signaturen bleiben getrennt. Ohne Abschottung meldet die Engine „nicht verfügbar“; Betrieb ohne Abschottung gibt es nur mit dem ausdrücklichen Schalter `--clamav-ohne-abschottung` und sichtbarem Hinweis.
+- Worker: Bereitschaft (Regeln, Inhaltsversion, Abschottungsprobe) wird **nach jedem Neustart** neu geprüft; der Worker bekommt nur eine minimale, ausdrückliche Umgebung.
+
+### Neu – ClamAV-Einrichtung für Windows
+- `scripts/windows/setup-clamav.ps1` (Start per `ClamAV-einrichten.cmd`, eine UAC-Bestätigung): offizielles MSI von Cisco Talos, Prüfung von SHA-256 und Talos-PGP-Signatur vor der Ausführung, geschützte Daten- und Protokollordner, FreshClam mit offiziellen Quellen, geplanter Signaturupdate-Auftrag alle 4 Stunden ohne Überlappung mit Fehler- und Erfolgsprotokoll, Nachweisbericht a)–g). Kein clamd, kein TCP-Port. Defender bleibt aktiv.
+
+### Behoben
+- Windows PowerShell 5.1: Hilfsfunktionen hießen wie eingebaute Aliasse (`sc` = Set-Content, `r` = Invoke-History) und wurden dadurch nie aufgerufen. Die CI prüft das jetzt für alle Skripte.
+- CLI überschrieb unter Windows den festen Standardpfad der ClamAV-Datenbank mit „keiner“.
+
 ### Neu – Phase P02, Schritt 1: isolierter Scanworker
 - **YARA-X läuft jetzt in einem abgeschotteten Worker-Prozess** (`axsafe-worker`). Er bekommt nur Regeltexte und Dateibytes, nie Pfade.
   - Windows: **AppContainer ohne Fähigkeiten** (kein Netzwerk, kein Zugriff auf Benutzerdateien) im **Job Object** (1 Prozess, Speichergrenze, Kill-on-close). Ohne AppContainer verweigert der Worker die Arbeit.

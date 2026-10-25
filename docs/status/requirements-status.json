@@ -83,9 +83,9 @@
     },
     "AXS-013": {
       "status": "teilweise",
-      "where": "crates/axsafe-worker, crates/axsafe-proc, docs/adr/ADR-0006-worker-isolation.md",
-      "evidence": "YARA-X läuft im Scanworker: Windows AppContainer ohne Fähigkeiten + Job Object (1 Prozess, Speicher, Zeit), Linux Landlock; Probe weist nach, dass Schreiben, Anlegen, TCP und Programmstart scheitern (Windows Server CI und Linux); Worker ohne AppContainer wird abgelehnt; UI asInvoker",
-      "rest": "Typerkennung und ClamAV noch ohne AppContainer; Dienst mit minimalen Rechten (P02 Schritt 2); LTSC-Nachweis (B-02)"
+      "where": "crates/axsafe-worker, crates/axsafe-proc, crates/axsafe-service, crates/axsafe-engine-clamav, docs/adr/ADR-0006-worker-isolation.md",
+      "evidence": "YARA-X und Typerkennung im Scanworker (Windows AppContainer ohne Fähigkeiten + Job Object, Linux Landlock), Abschottungsprobe nach jedem (Neu-)Start; ClamAV unter Windows im AppContainer mit geprüftem Token; Dienst als LocalService mit nur SeImpersonate/SeChangeNotify; UI asInvoker",
+      "rest": "Process-Mitigation-Policies; LTSC-Nachweis (B-02)"
     },
     "AXS-015": {
       "status": "teilweise",
@@ -114,8 +114,8 @@
     "AXS-021": {
       "status": "teilweise",
       "where": "crates/axsafe-engine-clamav",
-      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen); YARA-X-Worker: Absturz/Hänger/Protokollbruch bleiben im Worker, Neustart beim nächsten Objekt (Windows Server und Linux getestet)",
-      "rest": "ClamAV im AppContainer; LTSC (B-02)"
+      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen); YARA-X-Worker: Absturz/Hänger/Protokollbruch bleiben im Worker, Neustart beim nächsten Objekt (Windows Server und Linux getestet); ClamAV unter Windows im AppContainer (Signaturordner nur lesbar freigegeben, eigener Temp-Ordner)",
+      "rest": "LTSC (B-02)"
     },
     "AXS-022": {
       "status": "teilweise",
@@ -144,8 +144,8 @@
     "AXS-028": {
       "status": "begonnen",
       "where": "crates/axsafe-core",
-      "evidence": "Scanner liest nur; PE-Parser übersteht jede Kürzung; Worker-Protokoll prüft Rahmengrößen vor dem Allokieren",
-      "rest": "Fuzzing; Typerkennung in den Worker verlagern"
+      "evidence": "Scanner liest nur; PE-Parser übersteht jede Kürzung; Worker-Protokoll prüft Rahmengrößen vor dem Allokieren; Typerkennung läuft im abgeschotteten Worker, Ausfall = Lücke",
+      "rest": "Fuzzing"
     },
     "AXS-085": {
       "status": "begonnen",
@@ -184,10 +184,10 @@
       "rest": "Bedientest auf Windows 10 LTSC, Tastatur, Screenreader, 125–200 % Skalierung (B-10)"
     },
     "AXS-014": {
-      "status": "geplant",
-      "where": "docs/adr/ADR-0006-worker-isolation.md",
-      "evidence": "IPC-Vertrag axsafe.ipc/1 entworfen",
-      "rest": "P02 Schritt 2: Dienst, Named Pipe mit ACL, Client-SID/Sitzung, Limits, Replay-Schutz"
+      "status": "teilweise",
+      "where": "crates/axsafe-service, scripts/windows/install-service.ps1, scripts/ci/service_e2e.ps1, ui/AXSafe.Client/ServiceClient.cs",
+      "evidence": "Named Pipe \\\\.\\pipe\\AXSafe.v1 mit DACL (keine Netzwerkanmeldung, interaktive Benutzer ohne Instanzanlage), PIPE_REJECT_REMOTE_CLIENTS; Identität aus dem Token, Eigentum = SID + Anmeldesitzung; 64-KiB-Grenze, Zeitgrenzen, Sequenz/Nonce, Ratenbegrenzung; nur fünf Befehle; Dateizugriff unter Impersonation. Unit-/Integrationstests (Linux) und Windows-Systemtest mit zweitem lokalen Benutzer",
+      "rest": "LTSC-Nachweis (B-02); Rollen für Richtlinien/Ausnahmen (AXS-017) folgen mit P05"
     }
   },
   "tests": {
@@ -251,6 +251,14 @@
       "real_worker_is_isolated_and_scans",
       "compromised_worker_cannot_touch_system_files_or_network",
       "unsandboxed_worker_is_refused_on_windows"
+    ],
+    "T-014": [
+      "replayed_and_non_increasing_requests_are_rejected",
+      "oversized_malformed_and_slow_messages_end_the_connection",
+      "rate_and_job_limits_bound_overload",
+      "owner_can_scan_and_read_report_other_user_cannot",
+      "service_accounts_and_session_zero_are_refused",
+      "service_e2e.ps1 (Windows Server)"
     ]
   }
 }

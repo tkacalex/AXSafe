@@ -184,11 +184,11 @@ docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 | Status | Anzahl |
 | --- | ---: |
 | ✅ erfüllt | 0 |
-| 🟢 teilweise belegt | 11 |
+| 🟢 teilweise belegt | 12 |
 | 🔵 begonnen | 12 |
 | 📝 Entwurf | 5 |
 | ⛔ blockiert | 1 |
-| ⚪ geplant | 71 |
+| ⚪ geplant | 70 |
 <!-- STATUS:END -->
 
 **Ehrlich gezählt:** „erfüllt“ heißt, die Abnahme ist vollständig mit echten Belegen bestanden. Das ist bisher bei **keiner** der 100 Anforderungen der Fall – auch wenn viele Teile schon funktionieren und getestet sind. Was fehlt und warum, steht im [Blockerregister](docs/BLOCKERS.md).
