@@ -41,6 +41,9 @@ pub trait Progress {
 pub struct NoProgress;
 impl Progress for NoProgress {}
 
+/// Höchstzahl geprüfter benannter Datenströme je Datei.
+pub const MAX_STREAMS: usize = 16;
+
 /// Ein Scanner mit festen Engines und Grenzen.
 pub struct Scanner {
     engines: Vec<Box<dyn Engine>>,
@@ -420,10 +423,61 @@ impl Scanner {
             );
             return self.push(out, progress, r);
         }
+        // Benannte Datenströme (Windows-ADS) mit den Rechten des Auftraggebers
+        // ermitteln; jeder wird als eigenes Objekt „Datei:Strom“ geprüft
+        // (AXS-018). Mehr als MAX_STREAMS: Lücke statt stilles Auslassen.
+        let streams = fs::File::open(path).and_then(|f| crate::identity::alternate_streams(&f));
         drop(guard);
-        match self.scan_file_inner(path, infos) {
-            FileOutcome::Result(r) => self.push(out, progress, *r),
-            FileOutcome::Excluded(x) => excluded.push(x),
+        let main_excluded = match self.scan_file_inner(path, infos) {
+            FileOutcome::Result(r) => {
+                self.push(out, progress, *r);
+                false
+            }
+            FileOutcome::Excluded(x) => {
+                excluded.push(x);
+                true
+            }
+        };
+        if main_excluded {
+            return;
+        }
+        match streams {
+            Ok(names) => {
+                for (i, n) in names.iter().enumerate() {
+                    if cancel.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    let sp = PathBuf::from(format!("{}:{n}", path.display()));
+                    if i >= MAX_STREAMS {
+                        let r = gap_result(
+                            &sp,
+                            ObjectType::File,
+                            Gap::new(
+                                Verdict::Unsupported,
+                                GapReason::NotRegularFile,
+                                AXSAFE,
+                                format!(
+                                    "mehr als {MAX_STREAMS} Datenströme: weitere nicht geprüft"
+                                ),
+                            ),
+                        );
+                        self.push(out, progress, r);
+                        break;
+                    }
+                    match self.scan_file_inner(&sp, infos) {
+                        FileOutcome::Result(r) => self.push(out, progress, *r),
+                        FileOutcome::Excluded(x) => excluded.push(x),
+                    }
+                }
+            }
+            Err(e) => {
+                let r = gap_result(
+                    path,
+                    ObjectType::File,
+                    io_gap(&e, "Datenströme (ADS) nicht ermittelbar"),
+                );
+                self.push(out, progress, r);
+            }
         }
     }
 
@@ -1176,6 +1230,89 @@ mod tests {
         let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), &link);
         assert_eq!(rep.files[0].gaps[0].reason, GapReason::LinkNotFollowed);
         assert_eq!(rep.files[0].object_type, ObjectType::Link);
+    }
+
+    /// T-018: lange und Unicode-Pfade werden über das Handle gelesen und
+    /// eindeutig identifiziert.
+    #[test]
+    fn long_and_unicode_paths_are_scanned() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = dir.path().to_path_buf();
+        for i in 0..12 {
+            p.push(format!("ordner-äöü-日本-{i:02}-xxxxxxxxxxxx"));
+        }
+        fs::create_dir_all(&p).unwrap();
+        let f = p.join("Grüße 😀.txt");
+        fs::write(&f, b"BAD-boese").unwrap();
+        assert!(f.display().to_string().chars().count() > 300);
+        let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), dir.path());
+        let r = rep
+            .files
+            .iter()
+            .find(|x| x.path.ends_with("Grüße 😀.txt"))
+            .unwrap();
+        assert!(r.gaps.is_empty(), "{:?}", r.gaps);
+        assert_eq!(r.detection, Verdict::Malicious);
+        assert!(r.identity.as_ref().unwrap().file_id.is_some());
+    }
+
+    /// T-018: Alternate Data Streams werden gefunden und einzeln geprüft.
+    #[cfg(windows)]
+    #[test]
+    fn alternate_data_streams_are_scanned_separately() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("harmlos.txt");
+        fs::write(&f, b"harmlos").unwrap();
+        fs::write(format!("{}:versteckt", f.display()), b"BAD-im-strom").unwrap();
+        let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), dir.path());
+        let main = rep
+            .files
+            .iter()
+            .find(|x| x.path.ends_with("harmlos.txt"))
+            .unwrap();
+        assert_eq!(main.detection, Verdict::NoDetection);
+        let ads = rep
+            .files
+            .iter()
+            .find(|x| x.path.ends_with("harmlos.txt:versteckt"))
+            .unwrap_or_else(|| panic!("ADS fehlt im Bericht: {:?}", rep.files));
+        assert_eq!(ads.detection, Verdict::Malicious, "{ads:?}");
+        assert_eq!(rep.outcome, JobOutcome::Detection);
+    }
+
+    /// T-018: Eine Junction im Prüfbereich wird nicht verfolgt.
+    #[cfg(windows)]
+    #[test]
+    fn junction_is_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("ziel");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("t.bin"), b"BAD").unwrap();
+        let root = dir.path().join("bereich");
+        fs::create_dir(&root).unwrap();
+        let j = root.join("junction");
+        let st = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&j)
+            .arg(&target)
+            .status()
+            .unwrap();
+        assert!(st.success());
+        let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), &root);
+        assert_eq!(rep.files.len(), 1, "{:?}", rep.files);
+        assert_eq!(rep.files[0].gaps[0].reason, GapReason::LinkNotFollowed);
+        assert_eq!(rep.files[0].object_type, ObjectType::Link);
+    }
+
+    /// T-018: 128-Bit-ID wird unter Windows gelesen und für den Vergleich genutzt.
+    #[cfg(windows)]
+    #[test]
+    fn file_id_128_is_read_on_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.txt");
+        fs::write(&p, b"x").unwrap();
+        let id = FileIdentity::from_file(&File::open(&p).unwrap()).unwrap();
+        assert_eq!(id.file_id_128.as_deref().map(str::len), Some(32), "{id:?}");
     }
 
     #[cfg(unix)]

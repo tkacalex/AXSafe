@@ -9,9 +9,11 @@
 //!   `GetFileInformationByHandle` (dokumentierte Win32-API).
 //! * Unix (Entwicklung/CI): `st_dev` + `st_ino`.
 //!
-//! Offene Punkte (siehe `docs/BLOCKERS.md`): 128-Bit-IDs für ReFS
-//! (`GetFileInformationByHandleEx(FileIdInfo)`), Alternate Data Streams,
-//! USN-basierte Änderungserkennung, Tests auf Windows 10 LTSC (T-018).
+//! * Windows zusätzlich: 128-Bit-Datei-ID (`FileIdInfo`, nötig für ReFS,
+//!   wo der 64-Bit-Index nicht eindeutig sein muss) und die benannten
+//!   Datenströme (Alternate Data Streams) über das Handle (`FileStreamInfo`).
+//!
+//! Offen: USN-basierte Änderungserkennung (P08).
 
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -29,6 +31,10 @@ pub struct FileIdentity {
     pub size: u64,
     /// Letzte Änderung in Nanosekunden seit 1970 (UTC), falls verfügbar.
     pub modified_unix_nanos: Option<i128>,
+    /// Windows: 128-Bit-Datei-ID (hex) aus `FileIdInfo`; hat Vorrang vor
+    /// `file_id`, wenn beide Seiten sie kennen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_id_128: Option<String>,
 }
 
 impl FileIdentity {
@@ -46,6 +52,7 @@ impl FileIdentity {
             file_id,
             size: meta.len(),
             modified_unix_nanos,
+            file_id_128: file_id_128(file),
         })
     }
 
@@ -54,6 +61,9 @@ impl FileIdentity {
     /// Sind Volume oder Datei-ID unbekannt, wird **nicht** Gleichheit
     /// angenommen: Unsicherheit führt zu einer erneuten Prüfung.
     pub fn same_object(&self, other: &FileIdentity) -> bool {
+        if let (Some(a), Some(b)) = (&self.file_id_128, &other.file_id_128) {
+            return self.volume.is_some() && self.volume == other.volume && a == b;
+        }
         match (self.volume, self.file_id, other.volume, other.file_id) {
             (Some(v1), Some(f1), Some(v2), Some(f2)) => v1 == v2 && f1 == f2,
             _ => false,
@@ -94,6 +104,110 @@ fn platform_ids(file: &File) -> io::Result<(Option<u64>, Option<u64>)> {
     }
     let index = ((info.nFileIndexHigh as u64) << 32) | info.nFileIndexLow as u64;
     Ok((Some(info.dwVolumeSerialNumber as u64), Some(index)))
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn file_id_128(file: &File) -> Option<String> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FileIdInfo, GetFileInformationByHandleEx, FILE_ID_INFO,
+    };
+    // SAFETY: Puffer der richtigen Größe, gültiges Handle.
+    let mut info: FILE_ID_INFO = unsafe { std::mem::zeroed() };
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle() as _,
+            FileIdInfo,
+            &mut info as *mut _ as *mut core::ffi::c_void,
+            std::mem::size_of::<FILE_ID_INFO>() as u32,
+        )
+    };
+    (ok != 0).then(|| {
+        info.FileId
+            .Identifier
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    })
+}
+
+#[cfg(not(windows))]
+fn file_id_128(_file: &File) -> Option<String> {
+    None
+}
+
+/// Benannte Datenströme (Alternate Data Streams) einer Datei, ohne den
+/// Hauptstrom, z. B. `Zone.Identifier`. Unter Unix gibt es keine.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn alternate_streams(file: &File) -> io::Result<Vec<String>> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{FileStreamInfo, GetFileInformationByHandleEx};
+    let mut buf = vec![0u64; 8 * 1024]; // 64 KiB, 8-Byte-ausgerichtet
+                                        // SAFETY: Puffer mit angegebener Größe; das Ergebnis wird nur innerhalb
+                                        // des Puffers gelesen (Offsets werden geprüft).
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle() as _,
+            FileStreamInfo,
+            buf.as_mut_ptr() as *mut core::ffi::c_void,
+            (buf.len() * 8) as u32,
+        )
+    };
+    if ok == 0 {
+        let e = io::Error::last_os_error();
+        // ERROR_HANDLE_EOF (38): keine Ströme (z. B. Ordner).
+        return if e.raw_os_error() == Some(38) {
+            Ok(Vec::new())
+        } else {
+            Err(e)
+        };
+    }
+    let bytes: &[u8] =
+        // SAFETY: gleicher Puffer als Bytes.
+        unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len() * 8) };
+    let mut out = Vec::new();
+    let mut off = 0usize;
+    loop {
+        // FILE_STREAM_INFO: NextEntryOffset u32, StreamNameLength u32,
+        // StreamSize i64, StreamAllocationSize i64, StreamName [u16].
+        if off + 24 > bytes.len() {
+            break;
+        }
+        let rd =
+            |o: usize| u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]);
+        let next = rd(off) as usize;
+        let len = rd(off + 4) as usize;
+        let start = off + 24;
+        if start + len > bytes.len() || !len.is_multiple_of(2) {
+            break;
+        }
+        let name: Vec<u16> = bytes[start..start + len]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        let name = String::from_utf16_lossy(&name);
+        // Format ":Name:$DATA"; der Hauptstrom heißt "::$DATA".
+        if let Some(n) = name
+            .strip_prefix(':')
+            .and_then(|r| r.strip_suffix(":$DATA"))
+        {
+            if !n.is_empty() {
+                out.push(n.to_string());
+            }
+        }
+        if next == 0 {
+            break;
+        }
+        off += next;
+    }
+    Ok(out)
+}
+
+#[cfg(not(windows))]
+pub fn alternate_streams(_file: &File) -> io::Result<Vec<String>> {
+    Ok(Vec::new())
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -157,6 +271,7 @@ mod tests {
             file_id: None,
             size: 1,
             modified_unix_nanos: Some(1),
+            file_id_128: None,
         };
         assert!(!a.same_object(&a.clone()));
     }
