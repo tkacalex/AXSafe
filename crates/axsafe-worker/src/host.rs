@@ -446,7 +446,22 @@ fn launch(
             });
         }
     };
-    let isolation = isolation_from(&ready, &checks, probe_ok, env_ok);
+    #[allow(unused_mut)]
+    let mut isolation = isolation_from(&ready, &checks, probe_ok, env_ok);
+    // Windows: Mitigationen wurden beim Start gesetzt und vor dem Fortsetzen
+    // des Prozesses geprüft (axsafe-proc, fail closed).
+    #[cfg(windows)]
+    if let axsafe_proc::Sandbox::AppContainer { .. } | axsafe_proc::Sandbox::Restricted =
+        &cfg.sandbox
+    {
+        isolation.detail.push_str("; ");
+        isolation
+            .detail
+            .push_str(axsafe_proc::mitigation_summary(matches!(
+                cfg.sandbox,
+                axsafe_proc::Sandbox::AppContainer { .. }
+            )));
+    }
     if cfg.require_isolation && !isolation.enforced {
         s.kill();
         return Err(Rejected {

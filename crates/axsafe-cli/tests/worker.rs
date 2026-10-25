@@ -59,6 +59,13 @@ fn real_worker_is_isolated_and_scans() {
         info.isolation
     );
     assert_eq!(info.isolation.kind, IsolationKind::SandboxedWorker);
+    // AXS-013: Prozess-Mitigationen werden beim Start gesetzt und geprüft.
+    #[cfg(windows)]
+    assert!(
+        info.isolation.detail.contains("Mitigationen"),
+        "{:?}",
+        info.isolation
+    );
     let checks = e.probe_checks();
     assert_eq!(checks.len(), 5, "{checks:?}");
     assert!(checks.iter().all(|c| c.denied), "{checks:?}");

@@ -35,8 +35,9 @@ pub use session::{Session, SessionError};
 pub use sys::children_peak_rss;
 #[cfg(windows)]
 pub use sys::{
-    appcontainer_folder, appcontainer_grant, create_probe_file, restricted_grant_execute,
-    restricted_grant_read, restricted_work_dir, running_as_service_account, ProbeOwner,
+    appcontainer_folder, appcontainer_grant, create_probe_file, mitigation_summary,
+    restricted_grant_execute, restricted_grant_read, restricted_work_dir,
+    running_as_service_account, ProbeOwner,
 };
 
 /// Minimale Umgebung für abgeschottete Kindprozesse: unter Windows nur

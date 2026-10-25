@@ -590,6 +590,11 @@ impl ClamAvWorkerEngine {
                 d.push_str(" (Loopback-TCP sperrt das Token nicht; ausgehende Verbindungen sperrt die Firewall-Regel)");
             }
         }
+        #[cfg(windows)]
+        if matches!(self.ws.sandbox, Sandbox::Restricted) {
+            d.push_str("; ");
+            d.push_str(axsafe_proc::mitigation_summary(false));
+        }
         if !extra.is_empty() {
             d.push_str(&format!(
                 "; unerwartete Umgebungsvariablen: {}",

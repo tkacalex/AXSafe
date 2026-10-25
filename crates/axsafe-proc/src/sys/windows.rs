@@ -48,8 +48,9 @@ use windows_sys::Win32::System::Threading::{
     InitializeProcThreadAttributeList, OpenThread, ReleaseMutex, ResumeThread,
     UpdateProcThreadAttribute, WaitForSingleObject, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
     DETACHED_PROCESS, EXTENDED_STARTUPINFO_PRESENT, INFINITE, PROCESS_INFORMATION,
-    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
-    STARTF_USESTDHANDLES, STARTUPINFOEXW, THREAD_SUSPEND_RESUME,
+    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY,
+    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
+    THREAD_SUSPEND_RESUME,
 };
 
 pub(crate) type Stdio3 = (
@@ -859,6 +860,101 @@ fn verify_restricted_token(process: HANDLE) -> io::Result<()> {
     }
 }
 
+// Prozess-Mitigationen (AXS-013), Werte aus winbase.h
+// (PROCESS_CREATION_MITIGATION_POLICY_*_ALWAYS_ON).
+const MIT_HEAP_TERMINATE: u64 = 1 << 12;
+const MIT_BOTTOM_UP_ASLR: u64 = 1 << 16;
+const MIT_HIGH_ENTROPY_ASLR: u64 = 1 << 20;
+const MIT_STRICT_HANDLE_CHECKS: u64 = 1 << 24;
+const MIT_EXTENSION_POINT_DISABLE: u64 = 1 << 32;
+const MIT_BLOCK_NON_MICROSOFT_BINARIES: u64 = 1 << 44;
+const MIT_FONT_DISABLE: u64 = 1 << 48;
+const MIT_IMAGE_LOAD_NO_REMOTE: u64 = 1 << 52;
+const MIT_IMAGE_LOAD_NO_LOW_LABEL: u64 = 1 << 56;
+
+/// Mitigationen, die JEDER isolierte Worker bekommt. Bewusst NICHT gesetzt:
+/// * dynamischer Code verboten – YARA-X übersetzt Regeln mit wasmtime (JIT);
+/// * Win32k-Systemaufrufe verboten – libclamav und ihre Abhängigkeiten
+///   laden user32/gdi32 (nicht belegt, dass sie ohne starten);
+/// * nur Microsoft-signierte DLLs – libclamav ist nicht von Microsoft
+///   signiert (gilt deshalb nur für den AppContainer-Worker von AXSafe).
+const MITIGATIONS_COMMON: u64 = MIT_HEAP_TERMINATE
+    | MIT_BOTTOM_UP_ASLR
+    | MIT_HIGH_ENTROPY_ASLR
+    | MIT_STRICT_HANDLE_CHECKS
+    | MIT_EXTENSION_POINT_DISABLE
+    | MIT_FONT_DISABLE
+    | MIT_IMAGE_LOAD_NO_REMOTE
+    | MIT_IMAGE_LOAD_NO_LOW_LABEL;
+
+fn mitigations_for(iso: &Isolation) -> u64 {
+    match iso {
+        Isolation::AppContainer(_) => MITIGATIONS_COMMON | MIT_BLOCK_NON_MICROSOFT_BINARIES,
+        Isolation::Restricted(_) => MITIGATIONS_COMMON,
+    }
+}
+
+/// Liest die wirksamen Mitigationen des (noch angehaltenen) Prozesses und
+/// verweigert den Start, wenn eine gesetzte fehlt (fail closed).
+fn verify_mitigations(process: HANDLE, wanted: u64) -> io::Result<()> {
+    use windows_sys::Win32::System::Threading::GetProcessMitigationPolicy;
+    // PROCESS_MITIGATION_POLICY: StrictHandleCheck 3, ExtensionPointDisable 6,
+    // Signature 8, FontDisable 9, ImageLoad 10. Jede Struktur ist ein DWORD.
+    let read = |policy: i32| -> io::Result<u32> {
+        let mut v: u32 = 0;
+        // SAFETY: Puffer mit passender Größe (alle Strukturen sind ein DWORD).
+        let ok =
+            unsafe { GetProcessMitigationPolicy(process, policy, &mut v as *mut u32 as *mut _, 4) };
+        if ok == 0 {
+            return Err(last_err("GetProcessMitigationPolicy"));
+        }
+        Ok(v)
+    };
+    let mut missing = Vec::new();
+    if wanted & MIT_STRICT_HANDLE_CHECKS != 0 && read(3)? & 1 == 0 {
+        missing.push("StrictHandleChecks");
+    }
+    if wanted & MIT_EXTENSION_POINT_DISABLE != 0 && read(6)? & 1 == 0 {
+        missing.push("ExtensionPointDisable");
+    }
+    if wanted & MIT_BLOCK_NON_MICROSOFT_BINARIES != 0 && read(8)? & 1 == 0 {
+        missing.push("MicrosoftSignedOnly");
+    }
+    if wanted & MIT_FONT_DISABLE != 0 && read(9)? & 1 == 0 {
+        missing.push("DisableNonSystemFonts");
+    }
+    if wanted & (MIT_IMAGE_LOAD_NO_REMOTE | MIT_IMAGE_LOAD_NO_LOW_LABEL) != 0 {
+        let v = read(10)?;
+        if wanted & MIT_IMAGE_LOAD_NO_REMOTE != 0 && v & 1 == 0 {
+            missing.push("NoRemoteImages");
+        }
+        if wanted & MIT_IMAGE_LOAD_NO_LOW_LABEL != 0 && v & 2 == 0 {
+            missing.push("NoLowMandatoryLabelImages");
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "Prozess-Mitigationen nicht wirksam: {}",
+            missing.join(", ")
+        )))
+    }
+}
+
+/// Beschreibung der Mitigationen für Isolationsangaben.
+pub fn mitigation_summary(appcontainer: bool) -> &'static str {
+    if appcontainer {
+        "Mitigationen: keine Erweiterungspunkte (AppInit u. a.), strikte Handle-Prüfung, \
+         keine Fremdschriften, keine DLLs von Netzlaufwerken oder mit Integrität Niedrig, \
+         nur Microsoft-signierte DLLs, ASLR, Heap-Abbruch"
+    } else {
+        "Mitigationen: keine Erweiterungspunkte (AppInit u. a.), strikte Handle-Prüfung, \
+         keine Fremdschriften, keine DLLs von Netzlaufwerken oder mit Integrität Niedrig, \
+         ASLR, Heap-Abbruch"
+    }
+}
+
 fn spawn_isolated(cmd: &Command, limits: &Limits, iso: Isolation) -> io::Result<Contained> {
     let program = cmd.get_program().to_os_string();
     let grant = match &iso {
@@ -926,10 +1022,10 @@ fn spawn_isolated(cmd: &Command, limits: &Limits, iso: Isolation) -> io::Result<
         // Puffer und Strukturen leben bis nach CreateProcessW.
         unsafe {
             let mut size = 0usize;
-            InitializeProcThreadAttributeList(std::ptr::null_mut(), 2, 0, &mut size);
+            InitializeProcThreadAttributeList(std::ptr::null_mut(), 3, 0, &mut size);
             let mut buf = vec![0u8; size];
             let list = buf.as_mut_ptr() as *mut core::ffi::c_void;
-            if InitializeProcThreadAttributeList(list, 2, 0, &mut size) == 0 {
+            if InitializeProcThreadAttributeList(list, 3, 0, &mut size) == 0 {
                 return Err(last_err("InitializeProcThreadAttributeList"));
             }
             struct List(*mut core::ffi::c_void);
@@ -966,6 +1062,20 @@ fn spawn_isolated(cmd: &Command, limits: &Limits, iso: Isolation) -> io::Result<
                 {
                     return Err(last_err("UpdateProcThreadAttribute(SECURITY_CAPABILITIES)"));
                 }
+            }
+            // Mitigationen (lebt wie `caps` bis nach CreateProcess).
+            let mitigations: u64 = mitigations_for(&iso);
+            if UpdateProcThreadAttribute(
+                list,
+                0,
+                PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY as usize,
+                &mitigations as *const u64 as *const core::ffi::c_void,
+                std::mem::size_of::<u64>(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            ) == 0
+            {
+                return Err(last_err("UpdateProcThreadAttribute(MITIGATION_POLICY)"));
             }
             // Nur genau die drei Pipe-Enden vererben.
             let inherit = [in_child, out_child, err_child];
@@ -1064,7 +1174,8 @@ fn spawn_isolated(cmd: &Command, limits: &Limits, iso: Isolation) -> io::Result<
             let verified = match &iso {
                 Isolation::AppContainer(_) => verify_appcontainer_token(pi.hProcess),
                 Isolation::Restricted(_) => verify_restricted_token(pi.hProcess),
-            };
+            }
+            .and_then(|_| verify_mitigations(pi.hProcess, mitigations));
             if let Err(e) = verified {
                 TerminateJobObject(job, 1);
                 CloseHandle(pi.hThread);
