@@ -28,9 +28,21 @@ New-Item -ItemType Directory -Force -Path $EvidenceDir | Out-Null
 $Report = Join-Path $EvidenceDir ("dienst-installation-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.txt')
 function Log([string]$m) { $l = "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $m; Write-Host $l; Add-Content $Report $l -Encoding UTF8 }
 # Nicht 'Sc' nennen: In Windows PowerShell 5.1 ist sc ein Alias für Set-Content.
+# Argumente werden selbst gequotet: Windows PowerShell 5.1 gibt eingebettete
+# Anführungszeichen (binPath mit Leerzeichen) nicht korrekt an native Programme weiter.
 function Invoke-ScExe([string[]]$a) {
-    $out = & sc.exe @a 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) { throw "sc.exe $($a -join ' ') fehlgeschlagen ($LASTEXITCODE): $out" }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = Join-Path $env:SystemRoot 'System32\sc.exe'
+    $psi.Arguments = (($a | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join ' ')
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $out = $p.StandardOutput.ReadToEnd() + $p.StandardError.ReadToEnd()
+    $p.WaitForExit()
+    if ($p.ExitCode -ne 0) { throw "sc.exe $($psi.Arguments) fehlgeschlagen ($($p.ExitCode)): $out" }
     Log ("sc " + ($a -join ' ') + ": OK")
 }
 

@@ -89,7 +89,16 @@ function Run([string]$exe, [string[]]$argv, [byte[]]$stdin = $null, [int]$timeou
     $psi.RedirectStandardError = $true
     $psi.RedirectStandardInput = ($null -ne $stdin)
     $psi.CreateNoWindow = $true
-    $p = [System.Diagnostics.Process]::Start($psi)
+    # .NET Framework legt um stdin einen StreamWriter mit Console.InputEncoding;
+    # bei UTF-8 schreibt er ein BOM (3 Bytes) VOR die Nutzdaten. Gemessen:
+    # "Data read: 71 B" statt 68 B, EICAR dadurch nicht am Dateianfang.
+    # ASCII hat kein BOM; die Nutzdaten gehen ohnehin roh über BaseStream.
+    $oldIn = $null
+    if ($null -ne $stdin) {
+        try { $oldIn = [Console]::InputEncoding; [Console]::InputEncoding = [Text.Encoding]::ASCII } catch { $oldIn = $null }
+    }
+    try { $p = [System.Diagnostics.Process]::Start($psi) }
+    finally { if ($null -ne $oldIn) { try { [Console]::InputEncoding = $oldIn } catch { } } }
     $outTask = $p.StandardOutput.ReadToEndAsync()
     $errTask = $p.StandardError.ReadToEndAsync()
     if ($null -ne $stdin) {
@@ -237,6 +246,13 @@ public static extern IntPtr FreeSid(IntPtr sid);
     & icacls.exe $DbDir /grant "*${acSid}:(OI)(CI)RX" | Out-Null
     $hasAc = ((& icacls.exe $DbDir) -join ' ') -match [regex]::Escape($acSid)
     Check 'appcontainer_leserecht' $hasAc "AppContainer $ClamAvAppContainer ($acSid): Lesen/Ausführen auf $DbDir"
+    # ClamAV 1.5 prüft Datenbanksignaturen mit Zertifikaten aus <Programm>\certs
+    # und löst den Pfad dafür auf. Im AppContainer gemessen: "Access is denied".
+    # Gezielt nur Lesen für diese AppContainer-SID auf den Programmordner.
+    Log ("ACL vorher " + $InstallDir + ': ' + ((& icacls.exe $InstallDir) -join ' | '))
+    & icacls.exe $InstallDir /grant "*${acSid}:(OI)(CI)RX" | Out-Null
+    $hasAcProg = ((& icacls.exe (Join-Path $InstallDir 'certs')) -join ' ') -match [regex]::Escape($acSid)
+    Check 'appcontainer_leserecht_programm' $hasAcProg "AppContainer $ClamAvAppContainer: Lesen/Ausführen auf $InstallDir (inkl. certs)"
 
     # --- 5. FreshClam-Konfiguration ----------------------------------------
     if (Test-Path $ConfFile) {
@@ -293,7 +309,7 @@ public static extern IntPtr FreeSid(IntPtr sid);
         $r = Run $clamscan @("--database=$DbDir", '--no-summary', '-') $eicar
         Check 'd_eicar_stdin' ($r.Code -eq 1 -and $r.Out -match 'FOUND') "Exitcode $($r.Code): $($r.Out.Trim())"
         if ($r.Code -ne 1) {
-            # Diagnose: Wie viele Bytes kamen über stdin an, was hat clamscan geprüft?
+            # Diagnose (nur bei Fehlschlag): Wie viele Bytes kamen über stdin an, was hat clamscan geprüft?
             $dbg = Run $clamscan @("--database=$DbDir", '--debug', '-') $eicar
             $lines = (($dbg.Out + "`n" + $dbg.Err) -split "`r?`n") | Where-Object { $_ -match 'Data read|Data scanned|Scanning|stdin|size|tmp|temp|Infected|FOUND|ERROR' } | Select-Object -First 25
             Log ("Diagnose stdin (Exitcode $($dbg.Code)): " + ($lines -join ' | '))
