@@ -1,0 +1,1393 @@
+{
+  "schema": "axsafe.scan-report/2",
+  "job_id": "b945512d-00b5-40cf-abf7-3ad8363d253e",
+  "axsafe_version": "0.2.0",
+  "policy_version": "policy-2026.10.24-2",
+  "started_utc": "2026-10-25T19:48:38.498Z",
+  "finished_utc": "2026-10-25T19:48:41.542Z",
+  "duration_ms": 3043,
+  "scope": {
+    "roots": [
+      "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18"
+    ],
+    "engines": [
+      {
+        "name": "yara-x",
+        "engine_version": "1.22.0",
+        "content_version": "rules-sha256:6c65b01e1aa5ff32",
+        "health": {
+          "state": "ready"
+        },
+        "license": "BSD-3-Clause (Engine; Regellizenzen je Regel in meta.license)",
+        "content_kind": "test_only",
+        "content_note": "nur Funktionstest-Regeln (1 von 1), z. B. EICAR \u2013 damit wird keine echte Schadsoftware erkannt",
+        "inspects_contents_of": [],
+        "isolation": {
+          "kind": "sandboxed_worker",
+          "enforced": true,
+          "detail": "AppContainer ohne F\u00E4higkeiten: kein Netzwerk, kein Zugriff auf Benutzerdateien; dazu Job Object (1 Prozess, Speicher- und Zeitgrenze); Probe: 5 verbotene Aktionen verweigert"
+        }
+      },
+      {
+        "name": "clamav",
+        "engine_version": "ClamAV 1.5.4",
+        "content_version": "main-63/daily-28164/bytecode-339",
+        "health": {
+          "state": "ready"
+        },
+        "license": "GPL-2.0-only (libclamav, separat installiert, nicht mitgeliefert; geladen im eigenen Worker-Prozess)",
+        "content_kind": "official_signatures",
+        "content_note": "offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 \u002B0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 \u002B0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\\ProgramData\\AXSafe\\ClamAV\\database. Aktualisierung \u00FCber FreshClam (geplanter Auftrag), Stand siehe state\\last-update.json; dauerhaft geladen im ClamAV-Worker (3628192 Signaturen, Laden 16240 ms, Worker-Start Nr. 1)",
+        "inspects_contents_of": [
+          "zip",
+          "ooxml",
+          "gzip",
+          "ole_cfb",
+          "cab",
+          "seven_zip",
+          "pdf"
+        ],
+        "isolation": {
+          "kind": "sandboxed_worker",
+          "enforced": true,
+          "detail": "eingeschr\u00E4nktes Token (gepr\u00FCft im Worker): keine Privilegien, Integrit\u00E4tsstufe Niedrig, nur Arbeitsordner beschreibbar; Job Object (1 Prozess, Speicher- und Zeitgrenze). Netzwerk: ausgehende Firewall-Sperrregel der Einrichtung, nicht durch das Token; Probe: 4 von 5 Aktionen verweigert; erlaubt: TCP-Verbindung 127.0.0.1:52652 (Loopback-TCP sperrt das Token nicht; ausgehende Verbindungen sperrt die Firewall-Regel)"
+        }
+      }
+    ],
+    "limits": {
+      "max_file_size": 268435456,
+      "engine_timeout_ms": 30000,
+      "max_depth": 64
+    },
+    "follows_links": false,
+    "excluded": []
+  },
+  "outcome": "no_detection",
+  "detection": "NoDetection",
+  "complete": true,
+  "cancelled": false,
+  "job_gaps": [],
+  "summary": {
+    "objects_total": 30,
+    "objects_read": 30,
+    "bytes_read": 7041641,
+    "with_detection": 0,
+    "incomplete": 0,
+    "detection_and_incomplete": 0,
+    "no_detection_complete": 30,
+    "objects_by_detection": {
+      "Malicious": 0,
+      "Pua": 0,
+      "Suspicious": 0
+    },
+    "objects_by_gap_state": {
+      "AccessDenied": 0,
+      "ChangedDuringScan": 0,
+      "Encrypted": 0,
+      "Error": 0,
+      "Timeout": 0,
+      "Unsupported": 0
+    }
+  },
+  "files": [
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\00.txt",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 937,
+      "sha256": "1ae853b51a0e7e5800fd44afbe431d1de8fa6c4ee6f7c7fd7a90d57de9aabffa",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 9007199256346882,
+        "size": 937,
+        "modified_unix_nanos": 1792957633075317100
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 1
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 33
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:38.499Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\01.html",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 2092,
+      "sha256": "1b99dbb11cf5506a9f22390b0385114356f538f89abdbfc0f0aa05f2e332dc12",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 4222124652265801,
+        "size": 2092,
+        "modified_unix_nanos": 1792957633076387600
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 43
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:38.544Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\02.json",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 4145,
+      "sha256": "ff0ed88ebd40e418a2686e8c3fbd7b951673edb998ad8e5bd066bb62735b15b5",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 2533274792001867,
+        "size": 4145,
+        "modified_unix_nanos": 1792957633076387600
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 30
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:38.602Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\03.zip",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 2306,
+      "sha256": "57afa6efc25451ff57e2453c21a7d59af42d776cc209af35b2ec3cbf17435d6d",
+      "file_kind": {
+        "kind": "zip"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1688849861869900,
+        "size": 2306,
+        "modified_unix_nanos": 1792957633092015100
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 85
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:38.645Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\04.bin",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 16384,
+      "sha256": "fb7a03a6c47a641cbb49b2adac9dfb7ece9bc3fcd012422b29abfb3ba544f986",
+      "file_kind": {
+        "kind": "unknown"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448589,
+        "size": 16384,
+        "modified_unix_nanos": 1792957633092015100
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 31
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:38.742Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\05.txt",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 30254,
+      "sha256": "e5c105cde1d7720f6973e972b448207341b20e3c7c5763157441acd72523e957",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448590,
+        "size": 30254,
+        "modified_unix_nanos": 1792957633107639900
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 29
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:38.783Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\06.html",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 72644,
+      "sha256": "49dcda0413f2a2a17e96016a2eeca55c3d04f091b26e8bfe9c735e57748dfeba",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448591,
+        "size": 72644,
+        "modified_unix_nanos": 1792957633133774200
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 36
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:38.828Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\07.json",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 132782,
+      "sha256": "40b5eca868c2264e66b5442fdb54778621123de3002ed0a428db4afecebc66f0",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448592,
+        "size": 132782,
+        "modified_unix_nanos": 1792957633179916800
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 1
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 37
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:38.878Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\08.zip",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 66178,
+      "sha256": "a21c24d2b4e4a4713ce61d6094670a9f285f693bb204b3b944d65b4fb78f13c5",
+      "file_kind": {
+        "kind": "zip"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448593,
+        "size": 66178,
+        "modified_unix_nanos": 1792957633208806000
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 158
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:38.930Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\09.bin",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 524288,
+      "sha256": "a288beb442317e766a8c1b6632047bfb59e68f8ebdb190c604c3857e20a802b8",
+      "file_kind": {
+        "kind": "unknown"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448594,
+        "size": 524288,
+        "modified_unix_nanos": 1792957633300025500
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 2
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 78
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.101Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\10.txt",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 970449,
+      "sha256": "e3bde95b7f82c3526ecdf87757b824ef0833d646cc89b4dac8cac9b80b791827",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448595,
+        "size": 970449,
+        "modified_unix_nanos": 1792957633525442200
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 3
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 168
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.194Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\11.html",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 2510356,
+      "sha256": "b0887e7a86dae221031c4519d9cc57c362e3860a5c4b2bc416c5fe589c1eaf4a",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448596,
+        "size": 2510356,
+        "modified_unix_nanos": 1792957633947353400
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 6
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 248
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.387Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\12.json",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 1045,
+      "sha256": "233f115538cca6977f1988173c6332c741f70657dbaeedf254a90981815d413c",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448597,
+        "size": 1045,
+        "modified_unix_nanos": 1792957633947353400
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 25
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.706Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\13.zip",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 754,
+      "sha256": "73877dcd7f5ef79c5e58f710be66c5040d02bbd616fb003d6899f1677b179e7f",
+      "file_kind": {
+        "kind": "zip"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448598,
+        "size": 754,
+        "modified_unix_nanos": 1792957633962979300
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 61
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.741Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\14.bin",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 4096,
+      "sha256": "10db1e981b3c247d7e3ec6c7175345006996cfc04e2652fa03ef9989baa46438",
+      "file_kind": {
+        "kind": "unknown"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448599,
+        "size": 4096,
+        "modified_unix_nanos": 1792957633962979300
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 25
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.813Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\15.txt",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 7577,
+      "sha256": "91867c6725a9c0ef64fa631e0ac6a27a1e7d64ec09c2333ab8661470714a1739",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448600,
+        "size": 7577,
+        "modified_unix_nanos": 1792957633979562600
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 25
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.847Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\16.html",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 17348,
+      "sha256": "9f8ebffb8283d54448b4f255cf2485e14d6f6f73431cbb092b6f41145b45cc72",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448601,
+        "size": 17348,
+        "modified_unix_nanos": 1792957633989469300
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 32
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.888Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\17.json",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 33274,
+      "sha256": "1e3f2a2c54dbcc24e98c13012d3ea95147e9a4c76a18ba4b8c4974e0d7bce7f9",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448602,
+        "size": 33274,
+        "modified_unix_nanos": 1792957634007752600
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 28
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.931Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\18.zip",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 16725,
+      "sha256": "b75d6a9c15c162d459d430d9f10c047a605f1b0a11526892fe058339565c1583",
+      "file_kind": {
+        "kind": "zip"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448603,
+        "size": 16725,
+        "modified_unix_nanos": 1792957634017582000
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 86
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:39.970Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\19.bin",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 131072,
+      "sha256": "ce2cede82b80f407e94f4fc84779e47a494632b7c4d3a8f460a5fdf489c7ad99",
+      "file_kind": {
+        "kind": "unknown"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448604,
+        "size": 131072,
+        "modified_unix_nanos": 1792957634044090500
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 1
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 39
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:40.066Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\20.txt",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 242549,
+      "sha256": "506cefe4e560f79064915cc1e31af86e568d601ba04bfac5e70c42b334c94af2",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448605,
+        "size": 242549,
+        "modified_unix_nanos": 1792957634110006100
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 1
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 53
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:40.116Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\21.html",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 611508,
+      "sha256": "4506a78f8256841aae151e8fdac02b50bed1eebfe2b56565484ffe93e94b2f26",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448606,
+        "size": 611508,
+        "modified_unix_nanos": 1792957634221169700
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 2
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 85
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:40.191Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\22.json",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 1062537,
+      "sha256": "dd0e100751021bcc4dd1741e5f51829bf4cf193a08e5919ed1967bbad67a744a",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448607,
+        "size": 1062537,
+        "modified_unix_nanos": 1792957634608963300
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 3
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 122
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:40.300Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\23.zip",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 527737,
+      "sha256": "a85432ed908fed73bc466a6c7de7ee2d420e69c3361a4a3851ee964215458ff6",
+      "file_kind": {
+        "kind": "zip"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448608,
+        "size": 527737,
+        "modified_unix_nanos": 1792957634737627600
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 2
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 813
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:40.443Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\24.bin",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 1024,
+      "sha256": "f7058a8ff8cde78645d1fa40f3aa37db5a1b108a91c31c8fa45472d5ea3bd425",
+      "file_kind": {
+        "kind": "unknown"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448609,
+        "size": 1024,
+        "modified_unix_nanos": 1792957634737627600
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 25
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:41.272Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\25.txt",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 1883,
+      "sha256": "dfd06c2a1657b76cee1dc7a6303325dec1ac36d2a5ede257ba0192a375d65c42",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448610,
+        "size": 1883,
+        "modified_unix_nanos": 1792957634737627600
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 25
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:41.307Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\26.html",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 4268,
+      "sha256": "df68fd5a53eaddfad49b18d50fe8d4591e8bfb74906bfa3284feae39710dfb33",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448611,
+        "size": 4268,
+        "modified_unix_nanos": 1792957634756459800
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 31
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:41.347Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\27.json",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 8295,
+      "sha256": "25e1ba8bdde9e340784e12db4077e39cf8c7d213d9ec1ee73497010219e02011",
+      "file_kind": {
+        "kind": "text"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448613,
+        "size": 8295,
+        "modified_unix_nanos": 1792957634766672700
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 26
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:41.388Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\28.zip",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 4366,
+      "sha256": "e65321a8962795528c9d06fcb79250d4e93835f6403242914b44752dd98538da",
+      "file_kind": {
+        "kind": "zip"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448614,
+        "size": 4366,
+        "modified_unix_nanos": 1792957634774673700
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 66
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:41.426Z"
+    },
+    {
+      "path": "C:\\Users\\Dima\\Desktop\\AXSafe\\messung-b18\\29.bin",
+      "object_type": "file",
+      "detection": "NoDetection",
+      "gaps": [],
+      "status": "no_detection",
+      "size": 32768,
+      "sha256": "81a066c9a6fbddb908ff98cfb2284b694970454e44499cf43d141616f1acb465",
+      "file_kind": {
+        "kind": "unknown"
+      },
+      "identity": {
+        "volume": 3595047190,
+        "file_id": 1125899908448615,
+        "size": 32768,
+        "modified_unix_nanos": 1792957634776388200
+      },
+      "engines": [
+        {
+          "engine": "yara-x",
+          "engine_version": "1.22.0",
+          "content_version": "rules-sha256:6c65b01e1aa5ff32",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 0
+        },
+        {
+          "engine": "clamav",
+          "engine_version": "ClamAV 1.5.4",
+          "content_version": "main-63/daily-28164/bytecode-339",
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": [],
+          "note": null,
+          "duration_ms": 30
+        }
+      ],
+      "notes": [],
+      "action": "report_only",
+      "scanned_utc": "2026-10-25T19:48:41.503Z"
+    }
+  ],
+  "disclaimer": "AXSafe Vorversion: Ergebnis gilt nur f\u00FCr den angegebenen Umfang, die genannten Engines und Inhaltsst\u00E4nde. \u0027Nichts erkannt\u0027 ist kein Beweis f\u00FCr Harmlosigkeit. Kein Echtzeitschutz, keine Quarant\u00E4ne, kein Ersatz f\u00FCr einen aktiven Virenschutz.",
+  "executed_by": {
+    "kind": "dienst",
+    "name": "AXSafeService",
+    "account": "NT AUTHORITY\\LOCAL SERVICE",
+    "process_id": 28268,
+    "client": "DESKTOP-VFUNAS0\\Dima",
+    "client_session": 4
+  }
+}

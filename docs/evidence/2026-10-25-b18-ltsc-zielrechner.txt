@@ -1,0 +1,20 @@
+# B-18 auf dem Zielrechner (Windows 10 Enterprise LTSC 19044, DESKTOP-VFUNAS0), Paket 849f00b, Defender aktiv
+# Quelle: Dienstbericht dienst-b945512d-00b5-40cf-abf7-3ad8363d253e.json (gleicher Ordner, ...-dienstscan.json),
+#         clamav-setup-20261025-204234.txt, dienst-installation-20261025-204522.txt (auf dem Zielrechner)
+
+Einrichtung 20:42: 26 Prüfungen, 0 fehlgeschlagen (Worker bereit, offizielle Signaturen, Abschottung
+nachgewiesen, Firewall-Regel für den Worker; EICAR von Defender abgefangen – Defender bleibt an).
+Dienst 20:45: axsafe-clamav-worker.exe nach Program Files kopiert, Firewall-Sperrregel gesetzt, Dienst läuft
+(LocalService, SeChangeNotifyPrivilege + SeImpersonatePrivilege).
+
+Dienstscan 20:48 (Auftraggeber DESKTOP-VFUNAS0\Dima, Sitzung 4; ausgeführt von AXSafeService / LOCAL SERVICE):
+  30 harmlose Laufzeit-Testdateien (scripts/ci/messdateien.py ohne EICAR), 7 041 641 Bytes
+  Ergebnis: no_detection, vollständig, 30/30 ohne Fund, 0 Prüflücken
+  ClamAV: offizielle Signaturen main-63/daily-28164/bytecode-339, abgeschottet (isolation.enforced=true)
+  Datenbank einmalig geladen beim Dienststart: 16 240 ms (Worker-Start Nr. 1)
+  ClamAV-Dauer je Datei: erste 33 ms; Folgedateien Mittel 87,6 ms, Median 37 ms, Maximum 813 ms (ZIP 1 MiB)
+  Summe ClamAV über 30 Dateien: 2,6 s
+
+Vorher (gleicher Rechner, Paket ed4df08, clamscan je Objekt): ~16,8 s je Datei (Dienstscan 25.10.2026,
+docs/evidence/2026-10-25-ltsc-zielrechner-dienstscan-clamav.json). Hochgerechnet für 30 Dateien ~500 s;
+das ist eine Hochrechnung, keine Messung auf dieser Dateimenge.

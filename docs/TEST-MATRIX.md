@@ -26,6 +26,7 @@ Zählregeln (Befund 8):
 | **Zielrechner LTSC 19044 – Dienstscan mit ClamAV** (Paket ed4df08, Defender an) | 2 harmlose Dateien über den Dienst: beide Engines bereit, ClamAV offiziell, isoliert, 0 Lücken. EICAR über den Dienst auf diesem PC bewusst nicht getestet (Defender bleibt an) | [`evidence/2026-10-25-ltsc-zielrechner-dienstscan-clamav.json`](evidence/2026-10-25-ltsc-zielrechner-dienstscan-clamav.json) |
 | Windows 10 Enterprise LTSC 21H2 – automatisierte Tests im Labor | **nicht ausgeführt** | B-02, B-03 |
 | **B-18: dauerhaft geladene ClamAV-Engine** (CI-Lauf 40208650884, Commit 849f00b, alle 6 Jobs grün) | Windows Server: erster Scan 10 641 ms → 16 ms, Folgescans Mittel 10 772 ms → 54 ms (Median 20 ms), Gesamt 31 Dateien 344,5 s → 11,5 s, Laden der DB einmalig 9,9 s, Speicherspitze ~994 MiB in beiden Arten; Linux: Gesamt 230 s → 7,7 s. Ergebnisse je Datei identisch (EICAR erkannt, 30 harmlos ohne Fund). Dienst-E2E 13/0, Worker-Tests 12/0 mit echter libclamav | [`Windows`](evidence/2026-10-25-b18-windows-dienst-messung.txt) · [`Linux`](evidence/2026-10-25-b18-messung-linux.txt) |
+| **B-18 auf dem Zielrechner LTSC 19044** (Paket 849f00b, Defender an) | Dienstscan 30 harmlose Dateien über AXSafeService: ClamAV offiziell, abgeschottet, Laden einmalig 16,2 s; erste Datei 33 ms, Folgedateien Median 37 ms / Mittel 87,6 ms (vorher ~16,8 s je Datei); 0 Lücken. EICAR auf diesem PC bewusst nicht (Defender an) | [`Zielrechner`](evidence/2026-10-25-b18-ltsc-zielrechner.txt) |
 
 ## Zuordnung zu Abnahmen und Befunden
 
