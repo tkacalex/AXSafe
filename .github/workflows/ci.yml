@@ -56,7 +56,7 @@ jobs:
           set -o pipefail
           cargo test --workspace --locked --no-fail-fast -- --include-ignored \
             --skip worker_with_mismatching_official_db_version_is_rejected 2>&1 | tee cargo-test.log
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ui/global.json
       - name: Oberflächen-Client gegen die echte CLI testen (xUnit)
@@ -292,7 +292,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Dienst, CLI und Worker bauen (Release)
         run: cargo build --release --locked -p axsafe-cli -p axsafe-service -p axsafe-clamav-worker
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ui/global.json
       - name: Systemtest Dienst (installieren, prüfen, C#-Client, deinstallieren)
@@ -362,7 +362,7 @@ jobs:
           grep -q "1 passed" cargo-test-symlink.log
       - name: CLI bauen (Release)
         run: cargo build --release --locked -p axsafe-cli -p axsafe-service -p axsafe-clamav-worker
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ui/global.json
       - name: Oberflächen-Client gegen die echte CLI testen (xUnit)
