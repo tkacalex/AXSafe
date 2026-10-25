@@ -47,6 +47,10 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+# Pfad normalisieren: Der Starter übergibt '...\scripts\windows\..\..\cli\axsafe.exe'.
+# Firewall-Regeln sollen den echten Programmpfad tragen, nicht einen mit '..'
+# (auf dem Zielrechner am 25.10.2026 so beobachtet).
+if ($AxsafeCli) { $AxsafeCli = [IO.Path]::GetFullPath($AxsafeCli) }
 $ProgressPreference = 'SilentlyContinue'
 
 $InstallDir = Join-Path $env:ProgramFiles 'ClamAV'
