@@ -155,7 +155,8 @@ fn cancel_running_job_and_service_restart_keeps_report() {
         .unwrap();
     assert!(r.ok, "{r:?}");
     let fin = wait_finished(&mut c, &job);
-    assert_eq!(fin["outcome"], "nothing_scanned", "{fin}");
+    // Abbruch vor dem ersten Objekt: unvollständig, nicht „nichts zu prüfen“.
+    assert_eq!(fin["outcome"], "incomplete", "{fin}");
     // „Neustart“: neuer Auftragsverwalter auf demselben Datenordner.
     let jobs2 = JobManager::start(
         JobLimits::default(),

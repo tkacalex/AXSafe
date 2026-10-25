@@ -212,6 +212,11 @@ jobs:
           set -o pipefail
           export PATH="/c/Program Files/ClamAV:$PATH"
           cargo test --locked -p axsafe-engine-clamav -p axsafe-cli --no-fail-fast -- --include-ignored --skip report_target_windows_symlink 2>&1 | tee cargo-test-clamav.log
+      - name: Messung Pfadauflösung im AppContainer (Ausgabe sichtbar)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          cargo test --locked -p axsafe-cli --test worker appcontainer_path_resolution_is_measured -- --nocapture 2>&1 | tee appcontainer-pfad.log
       - name: Testzusammenfassung
         if: always()
         shell: bash
@@ -226,6 +231,7 @@ jobs:
           path: |
             clamav-nachweis/
             cargo-test-clamav.log
+            appcontainer-pfad.log
           if-no-files-found: ignore
 
   windows-service:

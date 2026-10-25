@@ -300,7 +300,9 @@ pub fn job_outcome(summary: &Summary, job_gaps: &[Gap], cancelled: bool) -> (Job
         } else {
             JobOutcome::Detection
         }
-    } else if summary.objects_total == 0 {
+    } else if summary.objects_total == 0 && !cancelled {
+        // Befund 6: leerer Umfang. Ein Abbruch vor dem ersten Objekt ist
+        // dagegen nicht „keine prüfbaren Objekte“, sondern unvollständig.
         JobOutcome::NothingScanned
     } else if job_incomplete || summary.incomplete > 0 {
         JobOutcome::Incomplete
@@ -423,6 +425,12 @@ mod tests {
             (JobOutcome::NothingScanned, false)
         );
         assert_eq!(JobOutcome::NothingScanned.exit_code(), 5);
+        // Abbruch vor dem ersten Objekt: unvollständig, nicht „nichts zu prüfen“
+        // (im Windows-Systemtest aufgefallen).
+        assert_eq!(
+            job_outcome(&empty, &[], true),
+            (JobOutcome::Incomplete, false)
+        );
         // Nur Lückenobjekte (z. B. nicht lesbare Datei): unvollständig, nicht „nichts geprüft“.
         let gap_only =
             Summary::from_files(&[file(Verdict::NoDetection, vec![g(Verdict::AccessDenied)])]);

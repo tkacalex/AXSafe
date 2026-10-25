@@ -23,6 +23,9 @@ function Check([string]$id, [bool]$ok, [string]$detail) {
 $cli = Join-Path $BinDir 'axsafe.exe'
 function Short([string]$t, [int]$n) { $t = ($t -replace '\s+', ' ').Trim(); if ($t.Length -gt $n) { $t.Substring(0, $n) } else { $t } }
 function Dienst([string[]]$a) {
+    # Windows PowerShell 5.1 macht stderr nativer Programme bei
+    # ErrorActionPreference=Stop zum Abbruch; hier zählt nur der Exitcode.
+    $ErrorActionPreference = 'Continue'
     $out = & $cli dienst @a 2>&1 | Out-String
     [pscustomobject]@{ Code = $LASTEXITCODE; Text = $out; Json = $(try { $out | ConvertFrom-Json } catch { $null }) }
 }
