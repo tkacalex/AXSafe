@@ -47,3 +47,5 @@ $zip = Join-Path $Out 'axsafe-ltsc-testpaket.zip'
 if (Test-Path $zip) { Remove-Item $zip }
 Compress-Archive -Path $stage -DestinationPath $zip -CompressionLevel Optimal
 Write-Host "LTSC-Testpaket: $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB), $($tests.Count) Testprogramme"
+# robocopy meldet 1 = "Dateien kopiert"; das ist kein Fehler.
+exit 0
