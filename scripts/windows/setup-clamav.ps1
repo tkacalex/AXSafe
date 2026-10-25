@@ -252,7 +252,7 @@ public static extern IntPtr FreeSid(IntPtr sid);
     Log ("ACL vorher " + $InstallDir + ': ' + ((& icacls.exe $InstallDir) -join ' | '))
     & icacls.exe $InstallDir /grant "*${acSid}:(OI)(CI)RX" | Out-Null
     $hasAcProg = ((& icacls.exe (Join-Path $InstallDir 'certs')) -join ' ') -match [regex]::Escape($acSid)
-    Check 'appcontainer_leserecht_programm' $hasAcProg "AppContainer $ClamAvAppContainer: Lesen/Ausführen auf $InstallDir (inkl. certs)"
+    Check 'appcontainer_leserecht_programm' $hasAcProg "AppContainer ${ClamAvAppContainer}: Lesen/Ausführen auf $InstallDir (inkl. certs)"
 
     # --- 5. FreshClam-Konfiguration ----------------------------------------
     if (Test-Path $ConfFile) {
