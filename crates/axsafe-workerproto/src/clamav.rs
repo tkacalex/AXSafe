@@ -42,6 +42,11 @@ pub struct Init {
     pub max_files: u32,
     /// Interne Höchstlaufzeit je Scan in libclamav (ms).
     pub max_scantime_ms: u32,
+    /// Ordner mit den ClamAV-Zertifikaten zur Prüfung der CVD-Signatur
+    /// (`CL_ENGINE_CVDCERTSDIR`). Windows: `<ClamAV>\certs` – clamscan nutzt
+    /// denselben Ordner. `None` = Vorgabe der Bibliothek (Linux-Paket).
+    #[serde(default)]
+    pub certsdir: Option<String>,
 }
 
 /// Ergebnis des Ladens der Datenbank.

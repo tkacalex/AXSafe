@@ -103,6 +103,7 @@ pub fn worker_main_with(fault: Fault) -> i32 {
         max_recursion: init.max_recursion,
         max_files: init.max_files,
         max_scantime_ms: init.max_scantime_ms,
+        certsdir: init.certsdir.as_deref(),
     };
     let loaded = ffi::Engine::load(&lib, &init.database, &settings);
     let (engine, database) = match loaded {

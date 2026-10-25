@@ -20,6 +20,7 @@ pub const CL_ENGINE_MAX_FILES: c_int = 3;
 pub const CL_ENGINE_DB_VERSION: c_int = 8;
 pub const CL_ENGINE_DB_TIME: c_int = 9;
 pub const CL_ENGINE_TMPDIR: c_int = 13;
+pub const CL_ENGINE_CVDCERTSDIR: c_int = 37;
 pub const CL_ENGINE_MAX_SCANTIME: c_int = 31;
 
 // struct cl_scan_options
@@ -243,6 +244,7 @@ pub struct EngineSettings<'s> {
     pub max_recursion: u32,
     pub max_files: u32,
     pub max_scantime_ms: u32,
+    pub certsdir: Option<&'s str>,
 }
 
 impl<'a> Engine<'a> {
@@ -285,6 +287,13 @@ impl<'a> Engine<'a> {
             )?;
             let tmp = CString::new(s.tempdir).map_err(|e| e.to_string())?;
             lib.check("TMPDIR", (lib.set_str)(ptr, CL_ENGINE_TMPDIR, tmp.as_ptr()))?;
+            if let Some(c) = s.certsdir {
+                let c = CString::new(c).map_err(|e| e.to_string())?;
+                lib.check(
+                    "CVDCERTSDIR",
+                    (lib.set_str)(ptr, CL_ENGINE_CVDCERTSDIR, c.as_ptr()),
+                )?;
+            }
             let db = CString::new(database).map_err(|e| e.to_string())?;
             let mut sigs: u32 = 0;
             lib.check(

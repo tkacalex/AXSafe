@@ -67,23 +67,20 @@ pub fn required() -> bool {
 #[cfg(windows)]
 mod windows {
     use crate::protocol::SandboxReport;
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Foundation::HANDLE;
     use windows_sys::Win32::Security::{
         GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, IsTokenRestricted,
-        TokenIntegrityLevel, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+        TokenIntegrityLevel, TOKEN_MANDATORY_LABEL,
     };
-    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
     pub fn verify() -> SandboxReport {
         // SAFETY: dokumentierte Token-APIs mit lokalen Puffern.
         unsafe {
-            let mut tok: HANDLE = std::ptr::null_mut();
-            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut tok) == 0 {
-                return none(format!(
-                    "Token nicht lesbar: {}",
-                    std::io::Error::last_os_error()
-                ));
-            }
+            // Pseudo-Handle GetCurrentProcessToken() (-4): erlaubt TOKEN_QUERY
+            // ohne Zugriffsprüfung. OpenProcessToken liefert unter dem
+            // eingeschränkten Token „Zugriff verweigert“ (gemessen in CI,
+            // Lauf 40206964605).
+            let tok: HANDLE = -4isize as HANDLE;
             let restricted = IsTokenRestricted(tok) != 0;
             let mut buf = vec![0u64; 16];
             let mut len = 0u32;
@@ -94,7 +91,6 @@ mod windows {
                 (buf.len() * 8) as u32,
                 &mut len,
             );
-            CloseHandle(tok);
             if ok == 0 {
                 return none("Integritätsstufe nicht lesbar".into());
             }

@@ -417,6 +417,17 @@ impl ClamAvWorkerEngine {
             .unwrap_or_else(|| default_library(&self.clamscan))
     }
 
+    /// Windows: Zertifikatsordner der ClamAV-Installation (wie clamscan).
+    fn certsdir(&self) -> Option<PathBuf> {
+        if !cfg!(windows) {
+            return None;
+        }
+        self.library()
+            .parent()
+            .map(|d| d.join("certs"))
+            .filter(|d| d.is_dir())
+    }
+
     fn set_unavailable(&self, reason: String) {
         lock(&self.shared.info).health = EngineHealth::Unavailable { reason };
     }
@@ -459,6 +470,7 @@ impl ClamAvWorkerEngine {
             max_recursion: self.ws.max_recursion,
             max_files: self.ws.max_files,
             max_scantime_ms: 120_000,
+            certsdir: self.certsdir().map(|p| p.display().to_string()),
         };
         let frame = serde_json::to_vec(&init)
             .map_err(|e| e.to_string())
