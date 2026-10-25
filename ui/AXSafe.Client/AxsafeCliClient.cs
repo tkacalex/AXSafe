@@ -55,6 +55,18 @@ public sealed class AxsafeCliClient
         }
     }
 
+    /// <summary>Betriebszustand (AXS-019). <c>null</c> = keine gültige Antwort.</summary>
+    public async Task<HealthReport?> GetHealthAsync(bool useClamav, CancellationToken ct)
+    {
+        var psi = NewStartInfo();
+        psi.ArgumentList.Add("zustand");
+        psi.ArgumentList.Add("--json");
+        AddEngineArgs(psi, useClamav);
+        var run = await RunAsync(psi, ct).ConfigureAwait(false);
+        if (run.StartError is not null || run.ExitCode is not (0 or 2 or 3)) return null;
+        return HealthView.Parse(run.Stdout);
+    }
+
     public async Task<ScanResult> ScanAsync(IReadOnlyList<string> paths, bool useClamav, CancellationToken ct)
     {
         var jobId = Guid.NewGuid();

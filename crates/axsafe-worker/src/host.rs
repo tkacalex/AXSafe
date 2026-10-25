@@ -486,6 +486,7 @@ impl WorkerEngine {
     /// ist die Engine `Unavailable` mit Grund – nie still „bereit“.
     pub fn start(cfg: WorkerConfig) -> Self {
         let mut info = EngineInfo {
+            content_time_utc: None,
             name: "yara-x".into(),
             engine_version: YARAX_VERSION.into(),
             content_version: "nicht geladen".into(),

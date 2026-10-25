@@ -48,6 +48,7 @@ pub struct Scanner {
     excluded: Vec<(FileIdentity, String)>,
     access: std::sync::Arc<dyn FileAccess>,
     classify_in_engine: bool,
+    policy: Option<std::sync::Arc<crate::policy::Policy>>,
 }
 
 /// Mit wessen Rechten auf Dateien zugegriffen wird.
@@ -146,7 +147,15 @@ impl Scanner {
             excluded: Vec::new(),
             access: std::sync::Arc::new(ProcessAccess),
             classify_in_engine: false,
+            policy: None,
         }
+    }
+
+    /// Richtlinie mit Ausnahmen (AXS-017). Ausgenommene Objekte werden im
+    /// Bericht genannt und machen den Auftrag unvollständig.
+    pub fn with_policy(mut self, policy: std::sync::Arc<crate::policy::Policy>) -> Self {
+        self.policy = Some(policy);
+        self
     }
 
     /// Dateizugriff mit einer anderen Identität (Dienst: Auftraggeber).
@@ -230,6 +239,21 @@ impl Scanner {
             }
             self.visit(root, 0, cancel, &infos, &mut files, &mut excluded, progress);
         }
+        let by_policy = excluded
+            .iter()
+            .filter(|x| x.reason.starts_with(crate::policy::EXCLUSION_PREFIX))
+            .count();
+        if by_policy > 0 {
+            job_gaps.push(Gap::new(
+                Verdict::Unsupported,
+                GapReason::ExcludedByPolicy,
+                AXSAFE,
+                format!(
+                    "{by_policy} Objekt(e)/Ordner durch Ausnahmen der Richtlinie nicht geprüft – \
+                     verringerte Abdeckung (siehe scope.excluded)"
+                ),
+            ));
+        }
         let cancelled = cancel.load(Ordering::SeqCst);
         if cancelled {
             job_gaps.push(Gap::new(
@@ -246,7 +270,10 @@ impl Scanner {
             schema: crate::REPORT_SCHEMA_VERSION.into(),
             job_id,
             axsafe_version: crate::AXSAFE_VERSION.into(),
-            policy_version: crate::POLICY_VERSION.into(),
+            policy_version: match &self.policy {
+                Some(p) => format!("{}+{}", crate::POLICY_VERSION, p.version),
+                None => crate::POLICY_VERSION.into(),
+            },
             started_utc,
             finished_utc: now_utc(),
             utc_offset: chrono::Local::now().format("%:z").to_string(),
@@ -288,6 +315,16 @@ impl Scanner {
     ) {
         if cancel.load(Ordering::SeqCst) {
             return;
+        }
+        if let Some(pol) = &self.policy {
+            let abs = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+            if let Some(reason) = pol.exclusion_for(&abs) {
+                excluded.push(ExcludedObject {
+                    path: path.display().to_string(),
+                    reason,
+                });
+                return;
+            }
         }
         let guard = match self.access.enter() {
             Ok(g) => g,
@@ -779,6 +816,7 @@ mod tests {
         }
         fn info(&self) -> EngineInfo {
             EngineInfo {
+                content_time_utc: None,
                 name: self.name.into(),
                 engine_version: "0".into(),
                 content_version: "0".into(),
@@ -1020,6 +1058,39 @@ mod tests {
         let reasons: Vec<GapReason> = rep.files[0].gaps.iter().map(|g| g.reason).collect();
         assert!(reasons.contains(&GapReason::EngineError));
         assert!(reasons.contains(&GapReason::ContentNotInspected));
+    }
+
+    /// T-017: Ausnahmen der Richtlinie erscheinen als verringerte Abdeckung.
+    #[test]
+    fn policy_exclusion_is_reduced_coverage_never_complete() {
+        use crate::policy::{Exclusion, ExclusionKind, Policy};
+        let dir = tempfile::tempdir().unwrap();
+        let skip = dir.path().join("build");
+        fs::create_dir(&skip).unwrap();
+        fs::write(skip.join("out.bin"), b"PREFIX-EICAR").unwrap();
+        fs::write(dir.path().join("b.txt"), b"x").unwrap();
+        let mut pol = Policy::default_policy("test");
+        pol.version = "policy-file-v7".into();
+        pol.exclusions.push(Exclusion {
+            kind: ExclusionKind::Ordner,
+            path: skip.display().to_string(),
+            reason: "Build-Ausgabe".into(),
+            created_by: "Administrator".into(),
+            created_utc: "2026-10-20T00:00:00Z".into(),
+            expires_utc: "2026-11-20T00:00:00Z".into(),
+        });
+        let s = scanner(vec![Box::new(TestEngine::prefix())]).with_policy(std::sync::Arc::new(pol));
+        let rep = run(&s, dir.path());
+        assert_eq!(rep.files.len(), 1, "nur b.txt geprüft: {:?}", rep.files);
+        assert_eq!(rep.scope.excluded.len(), 1);
+        assert!(rep.scope.excluded[0].reason.contains("policy-file-v7"));
+        assert!(rep
+            .job_gaps
+            .iter()
+            .any(|g| g.reason == GapReason::ExcludedByPolicy));
+        assert!(!rep.complete);
+        assert_eq!(rep.outcome, JobOutcome::Incomplete);
+        assert!(rep.policy_version.ends_with("+policy-file-v7"));
     }
 
     #[test]

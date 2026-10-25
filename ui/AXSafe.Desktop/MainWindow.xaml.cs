@@ -166,21 +166,27 @@ public partial class MainWindow : Window
             new("Cloud", "aus", B("Muted")),
         };
 
-        // Gesundheit: nie grün, solange kein Echtzeitschutz und kein Dienst existiert.
-        if (_cli is null || yara is null || !yara.Ready)
+        // AXS-019: Betriebszustand aus `axsafe zustand` (Scanner, Sensor,
+        // Richtlinie, Definitionen, Primärschutz, Dienst getrennt). Keine oder
+        // ungültige Antwort = „Unbekannt“, nie grün.
+        var health = _cli is null ? null : await _cli.GetHealthAsync(UseClamav.IsChecked == true, CancellationToken.None);
+        var (label, color, detail) = HealthView.From(health);
+        HealthDot.Fill = color switch
         {
-            HealthDot.Fill = B("Red");
-            HealthText.Text = "Nicht betriebsbereit";
-            HealthDetail.Text = _cli is null ? "axsafe.exe nicht gefunden" : "Regelsatz nicht geladen";
-        }
-        else
+            HealthColor.Green => B("Green"),
+            HealthColor.Amber => B("Amber"),
+            HealthColor.Red => B("Red"),
+            _ => B("Muted"),
+        };
+        HealthText.Text = label;
+        HealthDetail.Text = _cli is null
+            ? "axsafe.exe nicht gefunden"
+            : $"{detail} · {_service.Label}{(testOnly ? " · nur Testregeln" : "")}";
+        HealthDetail.ToolTip = health is null ? null : string.Join("\n", new (string, HealthComponent?)[]
         {
-            HealthDot.Fill = B("Amber");
-            HealthText.Text = "Eingeschränkt";
-            HealthDetail.Text = testOnly
-                ? $"Nur Scan auf Anforderung · nur Testregeln · {_service.Label}"
-                : $"Nur Scan auf Anforderung · {_service.Label}";
-        }
+            ("Scanner", health.Scanner), ("Echtzeitsensor", health.Sensor), ("Richtlinie", health.Policy),
+            ("Definitionen", health.Definitions), ("Primärschutz", health.PrimaryProtection), ("Dienst", health.Service),
+        }.Select(t => $"{t.Item1}: {HealthView.StateText(t.Item2?.State ?? "")} – {t.Item2?.Detail}"));
     }
 
     private void Nav_Checked(object sender, RoutedEventArgs e)

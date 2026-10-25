@@ -91,8 +91,17 @@ if ($LASTEXITCODE -ne 0) { throw 'Rechte für den Datenordner nicht setzbar' }
 & icacls.exe $DataDir /setowner '*S-1-5-32-544' /T /C | Out-Null
 Log ("Datenordner: " + ((& icacls.exe $DataDir) -join ' | '))
 
+# Richtlinie (AXS-017): nur Administratoren/SYSTEM dürfen schreiben, alle lesen.
+# AXSafe wendet eine Richtlinie nur an, wenn das für Datei UND Ordner gilt.
+$PolicyDir = Join-Path $env:ProgramData 'AXSafe\Policy'
+New-Item -ItemType Directory -Force -Path $PolicyDir | Out-Null
+& icacls.exe $PolicyDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Rechte für den Richtlinienordner nicht setzbar' }
+& icacls.exe $PolicyDir /setowner '*S-1-5-32-544' /T /C | Out-Null
+Log ("Richtlinienordner: " + ((& icacls.exe $PolicyDir) -join ' | '))
+
 # Programmordner darf für Benutzer nicht beschreibbar sein.
-foreach ($d in $InstallDir, $DataDir) {
+foreach ($d in $InstallDir, $DataDir, $PolicyDir) {
     foreach ($r in (Get-Acl $d).Access) {
         $sid = try { $r.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { '' }
         if ($sid -in 'S-1-5-32-545', 'S-1-5-11', 'S-1-1-0', 'S-1-5-4' -and $r.AccessControlType -eq 'Allow' -and

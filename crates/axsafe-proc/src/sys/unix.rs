@@ -190,3 +190,19 @@ pub fn children_peak_rss() -> Option<u64> {
     let kb = u64::try_from(u.ru_maxrss).ok()?;
     (r == 0 && kb > 0).then_some(kb * 1024)
 }
+
+/// Darf diese Datei bzw. dieser Ordner NUR von root verändert werden?
+pub fn only_admins_can_modify(path: &std::path::Path) -> std::io::Result<Result<(), String>> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::metadata(path)?;
+    if m.uid() != 0 {
+        return Ok(Err(format!("Besitzer uid {} ist nicht root", m.uid())));
+    }
+    if m.mode() & 0o022 != 0 {
+        return Ok(Err(format!(
+            "Gruppe oder andere dürfen schreiben (Modus {:o})",
+            m.mode() & 0o777
+        )));
+    }
+    Ok(Ok(()))
+}

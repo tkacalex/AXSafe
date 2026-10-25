@@ -313,6 +313,7 @@ impl ClamAvWorkerEngine {
             .clone()
             .unwrap_or_else(|| PathBuf::from("/var/lib/clamav"));
         let info = EngineInfo {
+            content_time_utc: None,
             name: "clamav".into(),
             engine_version: "unbekannt".into(),
             content_version: "unbekannt".into(),
@@ -649,6 +650,13 @@ impl ClamAvWorkerEngine {
         info.content_version = a.content.version.clone();
         info.content_kind = a.content.kind;
         info.content_note = self.note(&a, None, previous);
+        // Erstellungszeit laut geladener Engine (cl_engine DB_TIME); bei
+        // eigener Testdatenbank ohne Zeit leer.
+        info.content_time_utc = a
+            .content
+            .daily
+            .and(chrono::DateTime::from_timestamp(a.stats.db_time, 0))
+            .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
         info.health = EngineHealth::Ready;
         inner.active = Some(a);
     }

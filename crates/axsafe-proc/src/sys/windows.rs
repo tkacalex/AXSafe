@@ -1441,3 +1441,111 @@ pub fn running_as_service_account() -> bool {
         .map(|b| is_service_account(b.as_ptr() as PSID))
         .unwrap_or(false)
 }
+
+/// Darf diese Datei bzw. dieser Ordner NUR von SYSTEM, Administratoren oder
+/// TrustedInstaller verändert werden (Besitzer und alle Schreib-ACEs)?
+/// Grundlage dafür, eine Richtliniendatei überhaupt anzuwenden (AXS-017).
+pub fn only_admins_can_modify(path: &std::path::Path) -> io::Result<Result<(), String>> {
+    use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows_sys::Win32::Security::{
+        GetAce, ACCESS_ALLOWED_ACE, ACE_HEADER, OWNER_SECURITY_INFORMATION,
+    };
+    const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
+    // Schreibende Rechte: Daten schreiben/anhängen (Datei) bzw. Datei/Ordner
+    // anlegen (Ordner), Attribute schreiben, Kind löschen, Löschen,
+    // DACL/Besitzer ändern, generisch Schreiben/Alles.
+    const WRITE_MASK: u32 = 0x0002
+        | 0x0004
+        | 0x0010
+        | 0x0100
+        | 0x0040
+        | 0x0001_0000
+        | 0x0004_0000
+        | 0x0008_0000
+        | 0x4000_0000
+        | 0x1000_0000;
+    let trusted = |s: &str| {
+        s == "S-1-5-18"
+            || s == "S-1-5-32-544"
+            || s == "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
+    };
+    let sid_str = |sid: PSID| -> String {
+        // SAFETY: gültige SID; Puffer mit LocalFree freigegeben.
+        unsafe {
+            let mut p: *mut u16 = std::ptr::null_mut();
+            if ConvertSidToStringSidW(sid, &mut p) == 0 {
+                return String::from("?");
+            }
+            let mut n = 0;
+            while *p.add(n) != 0 {
+                n += 1;
+            }
+            let s = String::from_utf16_lossy(std::slice::from_raw_parts(p, n));
+            LocalFree(p as _);
+            s
+        }
+    };
+    let w = wide(path.as_os_str());
+    // SAFETY: dokumentierte APIs; Deskriptor wird mit LocalFree freigegeben.
+    unsafe {
+        let mut owner: PSID = std::ptr::null_mut();
+        let mut dacl: *mut ACL = std::ptr::null_mut();
+        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let rc = GetNamedSecurityInfoW(
+            w.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION,
+            &mut owner,
+            std::ptr::null_mut(),
+            &mut dacl,
+            std::ptr::null_mut(),
+            &mut sd,
+        );
+        if rc != 0 {
+            return Err(io::Error::from_raw_os_error(rc as i32));
+        }
+        struct Sd(PSECURITY_DESCRIPTOR);
+        impl Drop for Sd {
+            fn drop(&mut self) {
+                // SAFETY: von GetNamedSecurityInfoW geliefert.
+                unsafe {
+                    LocalFree(self.0 as _);
+                }
+            }
+        }
+        let _sd = Sd(sd);
+        let o = sid_str(owner);
+        if !trusted(&o) {
+            return Ok(Err(format!("Besitzer {o} ist kein Administrator/SYSTEM")));
+        }
+        if dacl.is_null() {
+            return Ok(Err("keine DACL – jeder darf schreiben".into()));
+        }
+        let count = (*dacl).AceCount;
+        for i in 0..u32::from(count) {
+            let mut ace: *mut core::ffi::c_void = std::ptr::null_mut();
+            if GetAce(dacl, i, &mut ace) == 0 {
+                return Err(last_err("GetAce"));
+            }
+            let hdr = &*(ace as *const ACE_HEADER);
+            if hdr.AceType != ACCESS_ALLOWED_ACE_TYPE {
+                continue;
+            }
+            let a = &*(ace as *const ACCESS_ALLOWED_ACE);
+            if a.Mask & WRITE_MASK == 0 {
+                continue;
+            }
+            let sid = &a.SidStart as *const u32 as PSID;
+            let s = sid_str(sid);
+            // CREATOR OWNER (S-1-3-0) gilt nur für neu angelegte Kinder.
+            if !trusted(&s) && s != "S-1-3-0" {
+                return Ok(Err(format!(
+                    "{s} darf {} verändern (Maske 0x{:X})",
+                    path.display(),
+                    a.Mask
+                )));
+            }
+        }
+        Ok(Ok(()))
+    }
+}

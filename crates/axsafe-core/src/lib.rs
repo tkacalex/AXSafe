@@ -23,7 +23,9 @@
 
 pub mod engine;
 pub mod filetype;
+pub mod health;
 pub mod identity;
+pub mod policy;
 pub mod report;
 pub mod scan;
 pub mod verdict;

@@ -81,6 +81,7 @@ mod service {
             log: Some(Arc::clone(&log)),
             clamav_worker: Some(exe_dir.join("axsafe-clamav-worker.exe")).filter(|p| p.is_file()),
             shared_clamav: Arc::new(Mutex::new(None)),
+            policy_path: axsafe_core::policy::default_policy_path(),
         };
         log.line(match &runner.clamav_worker {
             Some(_) => "ClamAV: dauerhaft geladene Engine (axsafe-clamav-worker)",
@@ -117,16 +118,39 @@ mod service {
             });
         }
         let status_engines = Arc::clone(&engines);
-        let status = Arc::new(
-            move || match status_engines.lock().ok().and_then(|g| g.clone()) {
-                Some((at, v)) => serde_json::json!({
+        let status_runner = runner.clone();
+        let status = Arc::new(move || {
+            // AXS-019: Betriebszustand bei jeder Abfrage neu ableiten. ClamAV
+            // (gemeinsame Engine) live, YARA-X aus der letzten Prüfung,
+            // Richtlinie frisch gelesen und geprüft.
+            let stored = status_engines.lock().ok().and_then(|g| g.clone());
+            let mut infos: Option<Vec<axsafe_core::engine::EngineInfo>> = stored
+                .as_ref()
+                .and_then(|(_, v)| serde_json::from_value(v.clone()).ok());
+            if let (Some(list), Some(_)) = (&mut infos, &status_runner.clamav_worker) {
+                let live = axsafe_core::engine::Engine::info(&*status_runner.clamav_engine());
+                if let Some(slot) = list.iter_mut().find(|e| e.name == "clamav") {
+                    *slot = live;
+                }
+            }
+            let health = axsafe_core::health::derive(
+                infos.as_deref(),
+                &axsafe_core::health::ServiceObservation::Ready,
+                &status_runner.policy().observation(),
+                chrono::Utc::now(),
+            );
+            match stored {
+                Some((at, _)) => serde_json::json!({
                     "state": "geprüft",
                     "age_seconds": at.elapsed().as_secs(),
-                    "list": v,
+                    "list": infos,
+                    "health": health,
                 }),
-                None => serde_json::json!({ "state": "wird geprüft", "list": [] }),
-            },
-        );
+                None => {
+                    serde_json::json!({ "state": "wird geprüft", "list": [], "health": health })
+                }
+            }
+        });
         let jobs = JobManager::start(JobLimits::default(), data.join("reports"), Arc::new(runner));
         let ctx = Arc::new(ServiceCtx::new(
             Arc::clone(&jobs),

@@ -150,6 +150,21 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Betriebszustand (AXS-019): Scanner, Sensor, Richtlinie, Definitionen,
+    /// Primärschutz und Dienst getrennt; nie „geschützt“ ohne Beleg
+    Zustand {
+        #[command(flatten)]
+        engines: EngineArgs,
+        /// Maschinenlesbar als JSON ausgeben
+        #[arg(long)]
+        json: bool,
+    },
+    /// Richtlinie und Ausnahmen anzeigen bzw. eine Datei prüfen (AXS-017)
+    Richtlinie {
+        /// Zu prüfende Datei (Standard: die geltende Richtlinie)
+        #[arg(long)]
+        datei: Option<PathBuf>,
+    },
     /// Vorher/Nachher-Messung (B-18): clamscan je Objekt gegen die dauerhaft
     /// geladene ClamAV-Engine auf GENAU denselben Dateien des Ordners
     ClamavMessung {
@@ -362,6 +377,45 @@ fn build_engines(a: &EngineArgs, max_scan_bytes: Option<u64>) -> Vec<Box<dyn Eng
         }
     }
     v
+}
+
+/// Geltende Richtlinie (nur angewandt, wenn nur Administratoren sie ändern können).
+fn current_policy() -> axsafe_core::policy::Policy {
+    axsafe_core::policy::load_policy_checked(
+        &axsafe_core::policy::default_policy_path(),
+        chrono::Utc::now(),
+        axsafe_proc::only_admins_can_modify,
+    )
+}
+
+/// Was über den Dienst bekannt ist – nur eine gültige Antwort zählt als bereit.
+fn service_observation() -> axsafe_core::health::ServiceObservation {
+    use axsafe_core::health::ServiceObservation as S;
+    if !cfg!(windows) {
+        return S::NotApplicable;
+    }
+    match axsafe_service::client::connect() {
+        Err(e) => S::NoAnswer(e.to_string()),
+        Ok(mut c) => match c.call(axsafe_service::ipc::Body::Status) {
+            Ok(r) if r.ok => S::Ready,
+            Ok(r) => S::NoAnswer(format!("Fehlerantwort: {:?}", r.error)),
+            Err(e) => S::NoAnswer(e.to_string()),
+        },
+    }
+}
+
+fn print_health(h: &axsafe_core::health::HealthReport) {
+    println!("Betriebszustand: {}", h.summary);
+    for (name, c) in [
+        ("Scanner", &h.scanner),
+        ("Echtzeitsensor", &h.sensor),
+        ("Richtlinie", &h.policy),
+        ("Definitionen", &h.definitions),
+        ("Primärschutz", &h.primary_protection),
+        ("Dienst", &h.service),
+    ] {
+        println!("  {name:<15} {:<9} {}", format!("{:?}", c.state), c.detail);
+    }
 }
 
 fn default_clamav_worker() -> PathBuf {
@@ -773,6 +827,56 @@ fn main() -> ExitCode {
             nur_netz,
             json,
         ),
+        Cmd::Zustand { engines, json } => {
+            let built = build_engines(&engines, None);
+            let infos: Vec<EngineInfo> = built.iter().map(|e| e.info()).collect();
+            let h = axsafe_core::health::derive(
+                Some(&infos),
+                &service_observation(),
+                &current_policy().observation(),
+                chrono::Utc::now(),
+            );
+            if json {
+                println!("{}", serde_json::to_string_pretty(&h).unwrap_or_default());
+            } else {
+                print_health(&h);
+            }
+            match h.overall {
+                axsafe_core::health::Overall::Geschuetzt
+                | axsafe_core::health::Overall::Eingeschraenkt => ExitCode::from(0),
+                axsafe_core::health::Overall::NichtBetriebsbereit => ExitCode::from(2),
+                axsafe_core::health::Overall::Unbekannt => ExitCode::from(3),
+            }
+        }
+        Cmd::Richtlinie { datei } => {
+            let path = datei.unwrap_or_else(axsafe_core::policy::default_policy_path);
+            let p = axsafe_core::policy::load_policy_checked(
+                &path,
+                chrono::Utc::now(),
+                axsafe_proc::only_admins_can_modify,
+            );
+            println!("Richtlinie: {} ({})", p.version, p.source);
+            if let Some(e) = &p.invalid {
+                println!("UNGÜLTIG – es gilt die Vorgabe ohne Ausnahmen: {e}");
+            }
+            for x in &p.exclusions {
+                println!(
+                    "  Ausnahme {:?} {} – {} (von {}, bis {})",
+                    x.kind, x.path, x.reason, x.created_by, x.expires_utc
+                );
+            }
+            if p.expired > 0 {
+                println!(
+                    "  {} abgelaufene Ausnahme(n) werden nicht angewandt",
+                    p.expired
+                );
+            }
+            if p.invalid.is_some() {
+                ExitCode::from(2)
+            } else {
+                ExitCode::from(0)
+            }
+        }
         Cmd::ClamavMessung {
             ordner,
             clamscan,
@@ -882,7 +986,16 @@ fn main() -> ExitCode {
             };
             // P02: Mit Worker wird auch der Dateityp im abgeschotteten Worker
             // bestimmt; der CLI-Prozess parst keine Dateiinhalte.
-            let mut scanner = Scanner::new(engines, limits).classify_in_engine(!yara_in_process);
+            let policy = current_policy();
+            if let Some(e) = &policy.invalid {
+                eprintln!(
+                    "Hinweis: Richtlinie {} nicht angewandt ({e}) – Vorgabe ohne Ausnahmen",
+                    policy.source
+                );
+            }
+            let mut scanner = Scanner::new(engines, limits)
+                .classify_in_engine(!yara_in_process)
+                .with_policy(std::sync::Arc::new(policy));
             print_engines(&scanner.engine_infos());
             if let Some(t) = &target {
                 scanner.exclude_identity(t.identity().clone(), "Berichtsdatei dieses Auftrags");

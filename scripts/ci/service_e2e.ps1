@@ -84,6 +84,33 @@ try {
     $svcNow = Get-Service AXSafeService
     Check 'client_absturz' ($after.Code -eq 0 -and $svcNow.Status -eq 'Running') "Client-Prozess beendet; Dienst $($svcNow.Status), Status-Exit $($after.Code)"
 
+    # --- AXS-019: Betriebszustand des Dienstes ---------------------------------
+    $hs = (Dienst @('status')).Json.result.engines.health
+    Check 'betriebszustand' ($hs -and $hs.overall -eq 'eingeschraenkt' -and $hs.service.state -eq 'ready' -and $hs.sensor.state -eq 'missing' -and $hs.primary_protection.state -eq 'missing' -and $hs.policy.state -eq 'ready') "overall $($hs.overall): $($hs.summary)"
+
+    # --- AXS-017: Ausnahme nur aus admin-geschützter Richtlinie ---------------
+    $polDir = Join-Path $env:ProgramData 'AXSafe\Policy'
+    $polFile = Join-Path $polDir 'policy.json'
+    New-Item -ItemType Directory -Force -Path "$root\ausnahme\build" | Out-Null
+    Set-Content "$root\ausnahme\build\out.bin" 'Build-Ausgabe' -Encoding ASCII
+    Set-Content "$root\ausnahme\quelle.txt" 'Quelltext' -Encoding ASCII
+    $now = [DateTime]::UtcNow
+    $pol = [ordered]@{ schema = 'axsafe.policy/1'; version = 1; exclusions = @([ordered]@{
+        kind = 'ordner'; path = "$root\ausnahme\build"; reason = 'CI: Build-Ausgabe'; created_by = 'CI-Administrator'
+        created_utc = $now.AddMinutes(-5).ToString('yyyy-MM-ddTHH:mm:ssZ'); expires_utc = $now.AddDays(1).ToString('yyyy-MM-ddTHH:mm:ssZ') }) }
+    $pol | ConvertTo-Json -Depth 5 | Set-Content $polFile -Encoding ASCII
+    & icacls.exe $polFile /setowner '*S-1-5-32-544' | Out-Null
+    $ra = (Dienst @('scan', "$root\ausnahme", '--warten')).Json.result.report
+    $exGap = @($ra.job_gaps | Where-Object { $_.reason -eq 'excluded_by_policy' }).Count
+    Check 'richtlinie_ausnahme' ($ra -and @($ra.scope.excluded).Count -eq 1 -and $exGap -eq 1 -and $ra.complete -eq $false -and $ra.policy_version -match 'policy-file-v1' -and @($ra.files).Count -eq 1) "ausgenommen: $(@($ra.scope.excluded | ForEach-Object { $_.path }) -join ', '); Lücke excluded_by_policy: $exGap; vollständig: $($ra.complete); Richtlinie $($ra.policy_version)"
+    # Darf ein Standardbenutzer die Datei ändern, wird sie NICHT angewandt.
+    & icacls.exe $polFile /grant '*S-1-5-32-545:(M)' | Out-Null
+    $rb = (Dienst @('scan', "$root\ausnahme", '--warten')).Json.result.report
+    Check 'richtlinie_unsicher_nicht_angewandt' ($rb -and @($rb.scope.excluded).Count -eq 0 -and @($rb.files).Count -eq 2 -and $rb.policy_version -match 'vorgabe') "Richtlinie benutzerschreibbar → $($rb.policy_version), geprüft $(@($rb.files).Count) Dateien, ausgenommen $(@($rb.scope.excluded).Count)"
+    $hs2 = (Dienst @('status')).Json.result.engines.health
+    Check 'richtlinie_unsicher_sichtbar' ($hs2.policy.state -eq 'degraded' -and $hs2.policy.detail -match 'unsicher') "Zustand Richtlinie: $($hs2.policy.state) – $(Short $hs2.policy.detail 160)"
+    Remove-Item $polFile -Force
+
     # --- Zweiter Benutzer ----------------------------------------------------
     Add-Type -AssemblyName System.Web
     $pw = [System.Web.Security.Membership]::GeneratePassword(24, 4) + 'aA1!'
@@ -103,6 +130,8 @@ D @('bericht', '$ownJob') 'fremder_bericht'
 D @('abbrechen', '$jid') 'fremder_abbruch'
 D @('auftrag', '$ownJob') 'fremder_auftrag'
 D @('scan', '$root\privat', '--warten') 'privat_scan'
+try { Set-Content -Path '$env:ProgramData\AXSafe\Policy\policy.json' -Value '{}' -ErrorAction Stop; `$w = 'GESCHRIEBEN' } catch { `$w = 'VERWEIGERT: ' + `$_.Exception.Message }
+Set-Content '$out\richtlinie_schreiben.txt' `$w -Encoding UTF8
 `$sc = & sc.exe stop AXSafeService 2>&1 | Out-String; Set-Content '$out\sc_stop.txt' ("EXIT=`$LASTEXITCODE`n" + `$sc) -Encoding UTF8
 `$sd = & sc.exe delete AXSafeService 2>&1 | Out-String; Set-Content '$out\sc_delete.txt' ("EXIT=`$LASTEXITCODE`n" + `$sd) -Encoding UTF8
 "@
@@ -116,6 +145,8 @@ D @('scan', '$root\privat', '--warten') 'privat_scan'
         $t = ReadOut $n
         Check $n ($t -match 'EXIT=7' -and $t -match 'not_found') (Short $t 160)
     }
+    $rw = ReadOut 'richtlinie_schreiben'
+    Check 'nicht_admin_richtlinie' ($rw -match 'VERWEIGERT' -and -not (Test-Path (Join-Path $env:ProgramData 'AXSafe\Policy\policy.json'))) (Short $rw 160)
     $ps = ReadOut 'privat_scan'
     Check 'unberechtigter_dateizugriff' ($ps -match 'EXIT=0' -and $ps -match '"access_denied"' -and $ps -notmatch 'nur fuer den Runner') "Scan eines nicht lesbaren Ordners als Testbenutzer: $(if ($ps -match '"access_denied"') { 'AccessDenied-Lücke' } else { Short $ps 200 })"
     foreach ($n in 'sc_stop', 'sc_delete') {

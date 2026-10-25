@@ -335,6 +335,7 @@ impl Engine for YaraXEngine {
             Err(_) => (ContentKind::Unknown, "Regelsatz nicht geladen".into()),
         };
         EngineInfo {
+            content_time_utc: None,
             name: "yara-x".into(),
             engine_version: YARAX_VERSION.into(),
             content_version,

@@ -36,6 +36,9 @@ pub struct ServiceRunner {
     pub clamav_worker: Option<PathBuf>,
     /// Gemeinsame ClamAV-Engine aller Aufträge (erst beim ersten Bedarf).
     pub shared_clamav: Arc<Mutex<Option<Arc<ClamAvWorkerEngine>>>>,
+    /// Richtliniendatei (AXS-017); nur angewandt, wenn nur Administratoren
+    /// sie ändern können.
+    pub policy_path: PathBuf,
 }
 
 impl ServiceRunner {
@@ -73,11 +76,30 @@ impl ServiceRunner {
     }
 }
 
+impl ServiceRunner {
+    /// Aktuelle Richtlinie (bei jedem Auftrag neu gelesen und geprüft).
+    pub fn policy(&self) -> axsafe_core::policy::Policy {
+        axsafe_core::policy::load_policy_checked(
+            &self.policy_path,
+            chrono::Utc::now(),
+            axsafe_proc::only_admins_can_modify,
+        )
+    }
+}
+
 impl JobRunner for ServiceRunner {
     fn run(&self, job: &JobSpec, cancel: &AtomicBool) -> Result<ScanReport, String> {
+        let policy = self.policy();
+        if let (Some(log), Some(e)) = (&self.log, &policy.invalid) {
+            log.line(&format!(
+                "Auftrag {}: Richtlinie {} nicht angewandt ({e}) – Vorgabe ohne Ausnahmen",
+                job.job_id, policy.source
+            ));
+        }
         let scanner = Scanner::new(self.engines(job.use_clamav), self.limits.clone())
             .with_file_access(job.access.clone())
-            .classify_in_engine(true);
+            .classify_in_engine(true)
+            .with_policy(Arc::new(policy));
         let mut rep = scanner.scan_job(job.job_id.clone(), &job.paths, cancel, &mut NoProgress);
         rep.executed_by = Some(ExecutedBy {
             kind: "dienst".into(),
@@ -162,11 +184,13 @@ pub fn job_summary(rep: &ScanReport) -> String {
             .unwrap_or_else(|| "unbekannt".into())
     };
     format!(
-        "Auftrag {} für {} (Client-Prozess {}, Dienstprozess {}): Ergebnis {:?}, vollständig={}, Objekte {}, Funde {}, Lücken {} | Engines: {} | Engine-Ergebnisse: {:?} | Lückengründe: {:?}",
+        "Auftrag {} für {} (Client-Prozess {}, Dienstprozess {}, Richtlinie {}, ausgenommen {}): Ergebnis {:?}, vollständig={}, Objekte {}, Funde {}, Lücken {} | Engines: {} | Engine-Ergebnisse: {:?} | Lückengründe: {:?}",
         rep.job_id,
         client,
         proc_of(|x| x.client_process.as_ref()),
         proc_of(|x| x.process.as_ref()),
+        rep.policy_version,
+        rep.scope.excluded.len(),
         rep.outcome,
         rep.complete,
         rep.summary.objects_total,

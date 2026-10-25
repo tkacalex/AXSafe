@@ -55,6 +55,26 @@ public sealed class ClientTests : IDisposable
         System.Text.Encoding.ASCII.GetBytes("X5O!P%@AP[4\\PZX54(P^)7CC)7}$" + "EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*");
 
     [Fact]
+    public async Task Real_health_report_is_parsed_and_never_green_without_sensor()
+    {
+        var h = await Client().GetHealthAsync(useClamav: false, CancellationToken.None);
+        Assert.NotNull(h);
+        Assert.Equal(HealthView.Schema, h!.Schema);
+        Assert.Equal("missing", h.Sensor!.State);
+        Assert.Equal("missing", h.PrimaryProtection!.State);
+        Assert.NotEqual(HealthColor.Green, HealthView.From(h).Color);
+    }
+
+    [Fact]
+    public async Task Missing_cli_gives_unknown_health()
+    {
+        var c = new AxsafeCliClient(Path.Combine(_tmp, "gibt-es-nicht"), Path.Combine(_tmp, "r"), Path.Combine(RepoRoot(), "rules"));
+        var h = await c.GetHealthAsync(useClamav: false, CancellationToken.None);
+        Assert.Null(h);
+        Assert.Equal(HealthColor.Gray, HealthView.From(h).Color);
+    }
+
+    [Fact]
     public async Task Scan_returns_validated_report_of_this_job()
     {
         var dir = Folder("a", ("brief.txt", "Hallo"u8.ToArray()));
@@ -302,5 +322,45 @@ public sealed class LiveServiceTests
         {
             Directory.Delete(dir, true);
         }
+    }
+}
+
+/// <summary>T-019: Fehlende oder kaputte Antworten erzeugen nie einen grünen Status.</summary>
+public sealed class HealthViewTests
+{
+    private static HealthReport Full(string overall, string state) => new()
+    {
+        Schema = HealthView.Schema,
+        Overall = overall,
+        Summary = "x",
+        Scanner = new() { State = state },
+        Sensor = new() { State = state },
+        Policy = new() { State = state },
+        Definitions = new() { State = state },
+        PrimaryProtection = new() { State = state },
+        Service = new() { State = state },
+    };
+
+    [Fact]
+    public void Missing_or_invalid_answer_is_unknown_never_green()
+    {
+        Assert.Equal(HealthColor.Gray, HealthView.From(null).Color);
+        Assert.Equal(HealthColor.Gray, HealthView.From(HealthView.Parse("{ kaputt")).Color);
+        Assert.Equal(HealthColor.Gray, HealthView.From(HealthView.Parse("{\"overall\":\"geschuetzt\"}")).Color);
+        var partial = Full("geschuetzt", "ready");
+        partial.Sensor = null;
+        Assert.Equal(HealthColor.Gray, HealthView.From(partial).Color);
+    }
+
+    [Fact]
+    public void Green_only_when_everything_is_ready()
+    {
+        Assert.Equal(HealthColor.Green, HealthView.From(Full("geschuetzt", "ready")).Color);
+        var r = Full("geschuetzt", "ready");
+        r.Sensor!.State = "missing";
+        Assert.NotEqual(HealthColor.Green, HealthView.From(r).Color);
+        Assert.Equal(HealthColor.Amber, HealthView.From(Full("eingeschraenkt", "degraded")).Color);
+        Assert.Equal(HealthColor.Red, HealthView.From(Full("nicht_betriebsbereit", "missing")).Color);
+        Assert.Equal(HealthColor.Gray, HealthView.From(Full("etwas_neues", "ready")).Color);
     }
 }

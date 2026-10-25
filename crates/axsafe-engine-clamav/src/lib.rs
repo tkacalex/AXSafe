@@ -132,6 +132,7 @@ pub struct ClamAvEngine {
     content_version: String,
     content_kind: ContentKind,
     content_note: String,
+    content_time_utc: Option<String>,
     health: EngineHealth,
     /// Arbeitsordner für entpackte Archivinhalte (AppContainer: dessen
     /// eigener Ordner).
@@ -390,6 +391,18 @@ pub struct DbContent {
     pub note: String,
     /// Version der daily-Datenbank laut Dateikopf (nur offizielle Datenbank).
     pub daily: Option<u64>,
+    /// Erstellungszeit der daily-Datenbank (UTC, RFC 3339) laut Dateikopf.
+    pub daily_time_utc: Option<String>,
+}
+
+/// Zeit aus dem CVD-Kopf („25 Oct 2026 06-24 +0000“) als UTC-Zeitstempel.
+pub fn cvd_time_utc(built: &str) -> Option<String> {
+    chrono::DateTime::parse_from_str(built.trim(), "%d %b %Y %H-%M %z")
+        .ok()
+        .map(|t| {
+            t.with_timezone(&chrono::Utc)
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+        })
 }
 
 /// Liest den Stand einer Datenbank (Ordner oder Datei). Offizielle
@@ -425,6 +438,7 @@ pub fn database_content(db: &Path) -> Result<DbContent, String> {
                 db.display()
             ),
             daily: Some(daily),
+            daily_time_utc: cvd_time_utc(&d.built),
         });
     }
     let d = database_digest(&files)
@@ -435,6 +449,7 @@ pub fn database_content(db: &Path) -> Result<DbContent, String> {
         kind,
         note,
         daily: None,
+        daily_time_utc: None,
     })
 }
 
@@ -447,6 +462,7 @@ impl ClamAvEngine {
             content_version: "unbekannt".into(),
             content_kind: ContentKind::Unknown,
             content_note: "nicht geprüft".into(),
+            content_time_utc: None,
             health: EngineHealth::Unavailable {
                 reason: "nicht geprüft".into(),
             },
@@ -665,6 +681,7 @@ impl ClamAvEngine {
                     self.content_version = c.version;
                     self.content_kind = c.kind;
                     self.content_note = c.note;
+                    self.content_time_utc = c.daily_time_utc;
                 }
                 Err(e) => return self.unavailable(e),
             }
@@ -831,6 +848,7 @@ impl Engine for ClamAvEngine {
 
     fn info(&self) -> EngineInfo {
         EngineInfo {
+            content_time_utc: self.content_time_utc.clone(),
             name: "clamav".into(),
             engine_version: self.engine_version.clone(),
             content_version: self.content_version.clone(),
@@ -941,6 +959,10 @@ mod tests {
         let h = cvd_header(&dir.join("daily.cld")).unwrap();
         assert_eq!((h.version, h.signatures), (28163, 355788));
         assert_eq!(h.built, "24 Oct 2026 06-26 +0000");
+        assert_eq!(
+            cvd_time_utc(&h.built).as_deref(),
+            Some("2026-10-24T06:26:00Z")
+        );
         assert!(cvd_header(&dir.join("kaputt.cvd")).is_none());
         let files = db_files(&dir).unwrap();
         let v = official_versions(&files);

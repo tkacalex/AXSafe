@@ -535,7 +535,10 @@ fn detection_is_traceable_from_event_to_action() {
         .find(|e| !e["detections"].as_array().unwrap().is_empty())
         .expect("Engine mit Fund");
     assert!(!e["engine_version"].as_str().unwrap().is_empty());
-    assert!(e["content_version"].as_str().unwrap().starts_with("rules-sha256:"));
+    assert!(e["content_version"]
+        .as_str()
+        .unwrap()
+        .starts_with("rules-sha256:"));
     assert_eq!(e["detections"][0]["rule_id"], "AXS-TEST-0001");
     assert_eq!(e["detections"][0]["name"], "AXSafe.Test.EICAR");
     // Aktion: diese Vorversion meldet nur.

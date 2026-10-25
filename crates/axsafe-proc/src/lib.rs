@@ -35,6 +35,7 @@ pub use identity::{current_process, process_start, ProcessStart};
 pub use session::{Session, SessionError};
 #[cfg(unix)]
 pub use sys::children_peak_rss;
+pub use sys::only_admins_can_modify;
 #[cfg(windows)]
 pub use sys::{
     appcontainer_folder, appcontainer_grant, create_probe_file, mitigation_summary,

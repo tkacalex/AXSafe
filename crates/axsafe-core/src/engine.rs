@@ -80,6 +80,8 @@ pub enum GapReason {
     Cancelled,
     /// Keine Engine konfiguriert.
     NoEngine,
+    /// Objekte durch eine Ausnahme der Richtlinie nicht geprüft (AXS-017).
+    ExcludedByPolicy,
 }
 
 /// Eine Prüflücke: Was wurde nicht (vollständig) geprüft, wodurch, warum.
@@ -174,6 +176,10 @@ pub struct EngineInfo {
     /// Wo und wie abgeschottet die Engine läuft (AXS-013, P02).
     #[serde(default)]
     pub isolation: Isolation,
+    /// Erstellungszeit des geladenen Erkennungsinhalts (UTC, RFC 3339), wenn
+    /// bekannt – Grundlage für „Definitionen aktuell“ (AXS-019).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_time_utc: Option<String>,
 }
 
 /// Ausführungsort einer Engine.

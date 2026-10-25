@@ -210,6 +210,7 @@ public static class Texts
         "changed_during_scan" => "während der Prüfung geändert",
         "cancelled" => "abgebrochen",
         "no_engine" => "keine Engine",
+        "excluded_by_policy" => "durch Richtlinie ausgenommen",
         _ => r,
     };
 }
