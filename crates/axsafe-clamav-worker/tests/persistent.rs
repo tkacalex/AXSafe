@@ -5,7 +5,8 @@
 //!
 //! Vorbedingung: libclamav ist installiert (Linux-CI: Paket `clamav`,
 //! Windows-CI: `scripts/windows/setup-clamav.ps1`). Fehlt sie, schlagen die
-//! Tests fehl – sie bestehen nie still.
+//! Tests fehl – sie bestehen nie still. Sie tragen deshalb `#[ignore]` mit
+//! Grund und laufen mit `--include-ignored` (Linux-CI, windows-clamav).
 
 use axsafe_core::engine::{Engine, EngineHealth, GapReason, ScanInput};
 use axsafe_core::verdict::Verdict;
@@ -117,6 +118,7 @@ fn ready(e: &ClamAvWorkerEngine) {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn loads_once_and_scans_many_objects() {
     let f = fixture("worker");
     let e = ClamAvWorkerEngine::start(settings(&f, &[]), PathBuf::from("clamscan"));
@@ -143,6 +145,7 @@ fn loads_once_and_scans_many_objects() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn parallel_jobs_get_their_own_results() {
     let f = fixture("worker");
     let e = Arc::new(ClamAvWorkerEngine::start(
@@ -177,6 +180,7 @@ fn parallel_jobs_get_their_own_results() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn crash_is_a_gap_and_worker_restarts() {
     let f = fixture("testhelper");
     let e = ClamAvWorkerEngine::start(settings(&f, &["crash"]), PathBuf::from("clamscan"));
@@ -197,6 +201,7 @@ fn crash_is_a_gap_and_worker_restarts() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn hanging_engine_times_out_and_is_replaced() {
     let f = fixture("testhelper");
     let mut ws = settings(&f, &["hang"]);
@@ -218,6 +223,7 @@ fn hanging_engine_times_out_and_is_replaced() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn full_queue_is_a_visible_gap() {
     let f = fixture("testhelper");
     let mut ws = settings(&f, &["hang"]);
@@ -241,6 +247,7 @@ fn full_queue_is_a_visible_gap() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn repeated_failures_disable_the_engine() {
     let f = fixture("testhelper");
     let mut ws = settings(&f, &["crash"]);
@@ -266,6 +273,7 @@ fn repeated_failures_disable_the_engine() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn signature_update_becomes_active_only_after_successful_load() {
     let f = fixture("worker");
     let e = ClamAvWorkerEngine::start(settings(&f, &[]), PathBuf::from("clamscan"));
@@ -311,6 +319,7 @@ fn signature_update_becomes_active_only_after_successful_load() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn object_size_limit_is_a_gap() {
     let f = fixture("worker");
     let mut ws = settings(&f, &[]);
@@ -323,6 +332,7 @@ fn object_size_limit_is_a_gap() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn idle_worker_is_stopped_and_restarted_on_demand() {
     let f = fixture("worker");
     let mut ws = settings(&f, &[]);
@@ -340,6 +350,7 @@ fn idle_worker_is_stopped_and_restarted_on_demand() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn missing_library_is_unavailable_never_clean() {
     let f = fixture("worker");
     let mut ws = settings(&f, &[]);
@@ -355,6 +366,7 @@ fn missing_library_is_unavailable_never_clean() {
 }
 
 #[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
 fn broken_database_is_unavailable_never_clean() {
     let f = fixture("worker");
     std::fs::write(f.db.join("axsafe-test.hdb"), "kaputt\n").unwrap();
