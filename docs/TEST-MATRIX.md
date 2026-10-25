@@ -21,7 +21,8 @@ Zählregeln (Befund 8):
 | **Windows Server – Dienst-Systemtest** (CI `windows-service`, Commit 4185958, Lauf 40174054483) | **22 / 0** Prüfungen (Installation, Pipe, zweiter Benutzer, Abstürze, C#-Client gegen echten Dienst, Deinstallation) | [`evidence/2026-10-25-windows-dienst-systemtest.txt`](evidence/2026-10-25-windows-dienst-systemtest.txt) |
 | Windows Server – ClamAV im AppContainer (Messung) | ClamAV 1.5 dort **nicht lauffähig** (Pfadauflösung verweigert) → eingeschränktes Token | [`evidence/2026-10-25-clamav-appcontainer-messung.txt`](evidence/2026-10-25-clamav-appcontainer-messung.txt) |
 | **Windows Server – ClamAV-Einrichtung** (CI `windows-clamav`, Commit 47b6db5, Lauf 40187023506) | Setup **27 / 0** (a–g, Token-Probe, Netzsperre wirksam, FreshClam), zweiter Lauf ohne Fehler; echte ClamAV-Tests mit eingeschränktem Token alle bestanden | [`evidence/2026-10-25-windows-clamav-einrichtung.txt`](evidence/2026-10-25-windows-clamav-einrichtung.txt) |
-| Windows 10 Enterprise LTSC 21H2 | **nicht ausgeführt** | B-02, B-03 |
+| **Windows 10 Enterprise LTSC 19044 – Zielrechner** (Paket be74f15, Defender an) | ClamAV-Einrichtung **24 / 0** (EICAR von Defender abgefangen und protokolliert; ClamAV-Fund mit eigener Testsignatur belegt); Dienst installiert (LocalService, 2 Privilegien). Automatisierte Testsuite auf LTSC weiterhin offen | [`evidence/2026-10-25-ltsc-zielrechner-clamav-und-dienst.txt`](evidence/2026-10-25-ltsc-zielrechner-clamav-und-dienst.txt) |
+| Windows 10 Enterprise LTSC 21H2 – automatisierte Tests im Labor | **nicht ausgeführt** | B-02, B-03 |
 
 ## Zuordnung zu Abnahmen und Befunden
 

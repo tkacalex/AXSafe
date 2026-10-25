@@ -1,0 +1,58 @@
+AXSafe – Zielrechner Windows 10 Enterprise LTSC 19044 (Defender-Echtzeitschutz AN), Paket be74f15 (CI-Lauf 40191029736)
+ClamAV-Einrichtung: 24 Prüfungen, 0 fehlgeschlagen; EICAR von Defender abgefangen (Defender-Protokoll belegt), ClamAV-Erkennung mit eigener Testsignatur (Datei und stdin) belegt.
+Ein vorheriger Lauf (13:17) endete vorzeitig ohne Fehlerzeile (Fenster geschlossen); maßgeblich ist der Lauf 13:20.
+Benutzername im Pfad ersetzt.
+
+=== ClamAV-Einrichtung ===
+[13:20:07] System: Microsoft Windows 10 Enterprise LTSC 10.0.19044 (Build 19044), AMD64
+[13:20:08] Microsoft Defender: Echtzeitschutz=True (wird nicht verändert)
+[13:20:09] Vorhanden: ClamAV 1.5.4 1.5.4 C:\Program Files\ClamAV\
+[13:20:09] ClamAV 1.5.4 ist bereits installiert – keine Neuinstallation.
+[13:20:09] OK   datenordner_acl: C:\ProgramData\AXSafe\ClamAV: nur SYSTEM/Administratoren schreiben, Benutzer lesen
+[13:20:12] OK   firewall_regel_clamscan: Regel 'AXSafe: clamscan ohne Netzwerk': ausgehend gesperrt für C:\Program Files\ClamAV\clamscan.exe
+[13:20:12] OK   firewall_profile_aktiv: Domäne, Privat und Öffentlich eingeschaltet
+[13:20:12] OK   freshclam_nicht_gesperrt: keine ausgehende Sperrregel für freshclam.exe
+[13:20:12] Vorhandene freshclam.conf gesichert: C:\ProgramData\AXSafe\ClamAV\freshclam.conf.bak-20261025-132007
+ClamAV update process started at Sun Oct 25 13:20:13 2026
+Sun Oct 25 13:20:13 2026 -> daily.cvd database is up-to-date (version: 28164, sigs: 355788, f-level: 90, builder: svc.clamav-publisher)
+Sun Oct 25 13:20:13 2026 -> main.cvd database is up-to-date (version: 63, sigs: 3287027, f-level: 90, builder: tomjudge)
+Sun Oct 25 13:20:13 2026 -> bytecode.cvd database is up-to-date (version: 339, sigs: 80, f-level: 90, builder: nrandolp)
+
+[13:20:13] OK   b_erstes_update: Ergebnis updated, Exitcode 0, Sun Oct 25 13:20:13 2026 -> daily.cvd database is up-to-date (version: 28164, sigs: 355788, f-level: 90, builder: svc.clamav-publisher) | Sun Oct 25 13:20:13 2026 -> main.cvd database is up-to-date (version: 63, sigs: 3287027, f-level: 90, builder: tomjudge) | Sun Oct 25 13:20:13 2026 -> bytecode.cvd database is up-to-date (version: 339, sigs: 80, f-level: 90, builder: nrandolp)
+[13:20:13] OK   b_datenbank: main.cvd v63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily.cvd v28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode.cvd v339 (80 Signaturen, 11 Sep 2025 08-29 -0400)
+[13:20:13] OK   a_versionen: clamscan: ClamAV 1.5.4/28164/Sun Oct 25 07:24:12 2026 | freshclam: ClamAV 1.5.4/28164/Sun Oct 25 07:24:12 2026
+[13:20:30] OK   c_harmlos: Exitcode 0: C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-4574811b491440edaac45f4393d0e9ed\brief.txt: OK
+[13:20:46] OK   d_engine_fund_datei: Exitcode 1: C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-4574811b491440edaac45f4393d0e9ed\axsafe-selbsttest.txt: AXSafe.Selbsttest.UNOFFICIAL FOUND
+[13:21:03] OK   d_engine_fund_stdin: Exitcode 1: stdin: AXSafe.Selbsttest.UNOFFICIAL FOUND
+[13:21:42] HINWEIS d_eicar: Von Microsoft Defender abgefangen, bevor ClamAV die Daten lesen konnte. Defender meldet: Virus:DOS/EICAR_Test_File (13:21:39, file:_C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-4574811b491440edaac45f4393d0e9ed\eicar-test.com); Virus:DOS/EICAR_Test_File (13:21:19, file:_C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-4574811b491440edaac45f4393d0e9ed\eicar-test.com, file:_C:\Users\<Benutzer>\AppData\Local\Temp\clamav-6264e599c778079e6e173d9d5016528b.tmp). ClamAV-Erkennung von EICAR ist auf diesem PC deshalb nicht nachweisbar (Nachweis: Windows-CI ohne Defender-Echtzeitschutz). Engine-Fund mit Testsignatur: siehe d_engine_fund_*. Ausgaben: stdin: Exitcode 2: stdin: Can't open file or directory ERROR  | Datei: Exitcode 2:  LibClamAV Warning: Can't open file C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-4574811b491440edaac45f4393d0e9ed\eicar-test.com: 225
+WARNING: Can't open file C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-4574811b491440edaac45f4393d0e9ed\eicar-test.com: Invalid argument
+[13:21:42] OK   testdaten_entfernt: C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-clamav-selbsttest-4574811b491440edaac45f4393d0e9ed
+[13:21:44] Geplanter Auftrag 'AXSafe ClamAV Signaturupdate' existiert – wird mit gleicher Definition aktualisiert.
+[13:21:45] OK   f_erneutes_update: Ergebnis updated, letzte Erfolgszeit 2026-10-25T12:21:45.0029820Z
+[13:21:51] OK   g_geplanter_auftrag: LastTaskResult 0, Lauf um 2026-10-25T12:21:46.1347946Z, Ergebnis updated, nächster Lauf 10/25/2026 13:50:50
+[13:22:12] OK   e_axsafe: axsafe engines: clamav=ready official_signatures main-63/daily-28164/bytecode-339 – offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\ProgramData\AXSafe\ClamAV\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\last-update.json 
+[13:22:12] OK   e_axsafe_abschottung: ClamAV-Isolation: sandboxed_worker / Eingeschränktes Token (Token vor dem Start geprüft): keine Privilegien, Integritätsstufe Niedrig, kein Zugriff auf Dateien, die nur der Benutzer lesen darf; schreiben nur im eigenen Arbeitsordner; Job Object (Zeit, Speicher, Prozessbaum). Netzwerk über diese Abschottung NICHT gesperrt (ausgehende Firewall-Sperrregel durch die Einrichtung). AppContainer nicht möglich: ClamAV 1.5 kann dort seinen Zertifikatsordner nicht auflösen
+[13:22:12] OK   token_datenbank_lesbar: lesen:C:\ProgramData\AXSafe\ClamAV\database: erlaubt (erwartet erlaubt) – 7 Einträge, C:\ProgramData\AXSafe\ClamAV\database\bytecode-339.cvd.sign gelesen (16 Bytes)
+[13:22:12] OK   token_zertifikate_aufloesbar: aufloesen:C:\Program Files\ClamAV\certs: erlaubt (erwartet erlaubt) – \\?\C:\Program Files\ClamAV\certs
+[13:22:12] OK   token_zertifikate_lesbar: lesen:C:\Program Files\ClamAV\certs: erlaubt (erwartet erlaubt) – 1 Einträge, C:\Program Files\ClamAV\certs\clamav.crt gelesen (16 Bytes)
+[13:22:12] OK   token_arbeitsordner_schreibbar: anlegen:C:\Users\<Benutzer>\AppData\Local\AXSafe\ClamAV-Arbeitsordner\11932-0-1792930932730521: erlaubt (erwartet erlaubt) – angelegt und gelöscht
+[13:22:12] OK   token_benutzerdatei_unlesbar: lesen:C:\Users\<Benutzer>\AppData\Local\Temp\axsafe-abschottung-11932.txt: verweigert (erwartet verweigert) – Access is denied. (os error 5)
+[13:22:12] OK   token_benutzer_temp_unbeschreibbar: anlegen:C:\Users\<Benutzer>\AppData\Local\Temp\: verweigert (erwartet verweigert) – Access is denied. (os error 5)
+[13:22:12] OK   token_programmordner_unbeschreibbar: anlegen:C:\Program Files\ClamAV: verweigert (erwartet verweigert) – Access is denied. (os error 5)
+[13:22:12] OK   token_probe_vollstaendig: Exitcode 0; Hinweise:  
+[13:22:16] OK   netzsperre_wirksam: Ziel database.clamav.net:443 – ohne Regel: verbunden mit 104.17.196.15:443 | mit gleich gebauter Regel: An attempt was made to access a socket in a way forbidden by its access permissions. (os error 10013)
+[13:22:16] Hinweis: Die AXSafe-Oberfläche läuft bereits; sie prüft Engines beim Start – bitte neu starten.
+[13:22:16] Fertig: 24 Prüfungen, 0 fehlgeschlagen; EICAR von Defender abgefangen (siehe HINWEIS). Bericht: C:\Users\<Benutzer>\Desktop\AXSafe\Programm\scripts\windows\..\..\..\nachweise\clamav-setup-20261025-132007.txt
+
+=== Dienstinstallation ===
+[13:21:39] Programmdateien nach C:\Program Files\AXSafe\service kopiert.
+[13:21:39] sc create AXSafeService binPath= "C:\Program Files\AXSafe\service\axsafe-service.exe" run start= auto obj= NT AUTHORITY\LocalService DisplayName= AXSafe Scan-Dienst: OK
+[13:21:39] sc description AXSafeService AXSafe (Vorversion): prüft Dateien auf Anforderung mit den Rechten des Auftraggebers. Kein Echtzeitschutz.: OK
+[13:21:39] sc sidtype AXSafeService unrestricted: OK
+[13:21:39] sc privs AXSafeService SeChangeNotifyPrivilege/SeImpersonatePrivilege: OK
+[13:21:40] sc failure AXSafeService reset= 86400 actions= restart/5000/restart/30000//0: OK
+[13:21:40] Datenordner: C:\ProgramData\AXSafe\Service NT SERVICE\AXSafeService:(OI)(CI)(M) |                               BUILTIN\Administrators:(OI)(CI)(F) |                               NT AUTHORITY\SYSTEM:(OI)(CI)(F) |  | Successfully processed 1 files; Failed processing 0 files
+[13:21:40] Rechte geprüft: Benutzer können Programm- und Datenordner nicht verändern.
+[13:21:40] Dienst läuft. [SC] QueryServiceConfig SUCCESS |  | SERVICE_NAME: AXSafeService |         TYPE               : 10  WIN32_OWN_PROCESS  |         START_TYPE         : 2   AUTO_START |         ERROR_CONTROL      : 1   NORMAL |         BINARY_PATH_NAME   : "C:\Program Files\AXSafe\service\axsafe-service.exe" run |         LOAD_ORDER_GROUP   :  |         TAG                : 0 |         DISPLAY_NAME       : AXSafe Scan-Dienst |         DEPENDENCIES       :  |         SERVICE_START_NAME : NT AUTHORITY\LocalService
+[13:21:40] Privilegien: [SC] QueryServiceConfig2 SUCCESS |  | SERVICE_NAME: AXSafeService |         PRIVILEGES       : SeChangeNotifyPrivilege |                          : SeImpersonatePrivilege
+[13:21:40] Fertig. Bericht: C:\Users\<Benutzer>\Desktop\AXSafe\Programm\scripts\windows\..\..\..\nachweise\dienst-installation-20261025-132139.txt
