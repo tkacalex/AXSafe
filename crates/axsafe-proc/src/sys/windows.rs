@@ -730,6 +730,21 @@ fn restricted_low_token() -> io::Result<Handle> {
                 });
             }
         }
+        // Dienstkontext (LocalService/NetworkService): Die Fensterstation des
+        // Dienstes ist nur für das Dienstkonto freigegeben; ohne dessen SID in
+        // der Einschränkungsliste scheitert der Prozessstart mit
+        // STATUS_DLL_INIT_FAILED (in CI gemessen). Dateien eines Benutzers
+        // bleiben trotzdem unerreichbar – sie sind nicht für das Dienstkonto
+        // freigegeben. Für normale Benutzer wird die eigene SID NICHT
+        // aufgenommen (sonst wären deren Dateien lesbar).
+        let user_buf = token_user_sid(own.0)?;
+        let user_sid = user_buf.as_ptr() as PSID;
+        if is_service_account(user_sid) {
+            sids.push(SID_AND_ATTRIBUTES {
+                Sid: user_sid,
+                Attributes: 0,
+            });
+        }
         let mut tok: HANDLE = std::ptr::null_mut();
         if CreateRestrictedToken(
             own.0,
@@ -765,6 +780,38 @@ fn restricted_low_token() -> io::Result<Handle> {
         }
         Ok(tok)
     }
+}
+
+/// Benutzer-SID eines Tokens als eigener Puffer (TOKEN_USER-Struktur).
+fn token_user_sid(tok: HANDLE) -> io::Result<Vec<u64>> {
+    use windows_sys::Win32::Security::{GetTokenInformation, TokenUser};
+    let mut len = 0u32;
+    // SAFETY: Größenabfrage, dann Abfrage in ausreichend großen Puffer.
+    unsafe {
+        GetTokenInformation(tok, TokenUser, std::ptr::null_mut(), 0, &mut len);
+        let mut buf = vec![0u64; (len as usize).div_ceil(8).max(1)];
+        if GetTokenInformation(tok, TokenUser, buf.as_mut_ptr() as _, len, &mut len) == 0 {
+            return Err(last_err("GetTokenInformation(TokenUser)"));
+        }
+        // TOKEN_USER beginnt mit SID_AND_ATTRIBUTES; den SID-Zeiger als
+        // eigenen Puffer kopieren, damit er unabhängig weiterlebt.
+        let sa = &*(buf.as_ptr() as *const windows_sys::Win32::Security::SID_AND_ATTRIBUTES);
+        let n = windows_sys::Win32::Security::GetLengthSid(sa.Sid) as usize;
+        let mut out = vec![0u64; n.div_ceil(8)];
+        std::ptr::copy_nonoverlapping(sa.Sid as *const u8, out.as_mut_ptr() as *mut u8, n);
+        Ok(out)
+    }
+}
+
+/// LocalService (S-1-5-19) oder NetworkService (S-1-5-20); SYSTEM bewusst nicht.
+fn is_service_account(sid: PSID) -> bool {
+    use windows_sys::Win32::Security::{EqualSid, WinLocalServiceSid, WinNetworkServiceSid};
+    [WinLocalServiceSid, WinNetworkServiceSid].iter().any(|k| {
+        well_known_sid(*k)
+            // SAFETY: beide SIDs gültig.
+            .map(|w| unsafe { EqualSid(sid, w.as_ptr() as PSID) } != 0)
+            .unwrap_or(false)
+    })
 }
 
 /// Prüft vor dem Fortsetzen: eingeschränktes Token mit Integritätsstufe Niedrig.

@@ -50,7 +50,7 @@ try {
     $names = @($ec.detections | ForEach-Object { $_.name }) -join ', '
     Check 'eicar_durch_clamav' ($ec -and $ec.verdict -eq 'Malicious' -and $names -match 'Eicar' -and $names -notmatch 'AXSafe' -and @($ec.gaps).Count -eq 0) "eicar.com: clamav $($ec.verdict) ($names), Inhalt $($ec.content_version)"
     Check 'keine_luecken' ($rep.complete -eq $true -and @($rep.job_gaps).Count -eq 0 -and $rep.summary.incomplete -eq 0) "outcome $($rep.outcome), complete $($rep.complete), Auftragslücken $(@($rep.job_gaps).Count), Objekte mit Lücke $($rep.summary.incomplete)"
-    $svcLog = Get-Content "$env:ProgramData\AXSafe\Service\logs\service.log" -Raw
+    $svcLog = Get-Content "$env:ProgramData\AXSafe\Service\logs\service.log" -Raw -Encoding UTF8
     $line = ($svcLog -split "`n" | Where-Object { $_ -match [regex]::Escape($rep.job_id) }) -join ' '
     Check 'dienstprotokoll' ($line -match 'clamav' -and $line -match 'main-\d+') "Protokoll: $line"
 } catch {
