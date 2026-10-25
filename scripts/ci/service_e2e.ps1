@@ -21,6 +21,7 @@ function Check([string]$id, [bool]$ok, [string]$detail) {
     Log ("{0} {1}: {2}" -f $(if ($ok) { 'OK  ' } else { 'FEHL' }), $id, $detail)
 }
 $cli = Join-Path $BinDir 'axsafe.exe'
+function Short([string]$t, [int]$n) { $t = ($t -replace '\s+', ' ').Trim(); if ($t.Length -gt $n) { $t.Substring(0, $n) } else { $t } }
 function Dienst([string[]]$a) {
     $out = & $cli dienst @a 2>&1 | Out-String
     [pscustomobject]@{ Code = $LASTEXITCODE; Text = $out; Json = $(try { $out | ConvertFrom-Json } catch { $null }) }
@@ -66,9 +67,10 @@ try {
     $st = Dienst @('scan', "$root\offen")
     $jid = $st.Json.result.job_id
     $c = Dienst @('abbrechen', $jid)
-    Start-Sleep -Seconds 3
-    $j = Dienst @('auftrag', $jid)
-    Check 'abbruch' ($c.Code -eq 0 -or $j.Json.result.state -eq 'finished') "Abbruch-Exit $($c.Code), Zustand $($j.Json.result.state) $($j.Json.result.outcome)"
+    $deadline = (Get-Date).AddSeconds(60)
+    do { Start-Sleep -Milliseconds 500; $j = Dienst @('auftrag', $jid) } while ($j.Json.result.state -in 'queued', 'running' -and (Get-Date) -lt $deadline)
+    $cr = (Dienst @('bericht', $jid)).Json.result.report
+    Check 'abbruch' ($c.Code -eq 0 -and $j.Json.result.state -eq 'finished' -and $cr.cancelled -eq $true -and $cr.complete -eq $false) "Abbruch-Exit $($c.Code), Zustand $($j.Json.result.state), Bericht: cancelled=$($cr.cancelled), complete=$($cr.complete), outcome=$($cr.outcome), Objekte $($cr.summary.objects_total)"
 
     # --- Client bricht mitten im Auftrag ab (Prozess beendet) ----------------
     $cp = Start-Process $cli -ArgumentList @('dienst', 'scan', "$root\offen", '--warten') -PassThru -WindowStyle Hidden
@@ -109,13 +111,13 @@ D @('scan', '$root\privat', '--warten') 'privat_scan'
     Check 'zweiter_benutzer_status' ($st2 -match 'EXIT=0' -and $st2 -match $user) ($st2 -split "`n" | Select-Object -First 1)
     foreach ($n in 'fremder_bericht', 'fremder_abbruch', 'fremder_auftrag') {
         $t = ReadOut $n
-        Check $n ($t -match 'EXIT=7' -and $t -match 'not_found') (($t -replace '\s+', ' ').Substring(0, [Math]::Min(160, $t.Length)))
+        Check $n ($t -match 'EXIT=7' -and $t -match 'not_found') (Short $t 160)
     }
     $ps = ReadOut 'privat_scan'
-    Check 'unberechtigter_dateizugriff' ($ps -match 'EXIT=0' -and $ps -match '"access_denied"' -and $ps -notmatch 'nur fuer den Runner') "Scan eines nicht lesbaren Ordners als Testbenutzer: $(if ($ps -match '"access_denied"') { 'AccessDenied-Lücke' } else { ($ps -replace '\s+',' ').Substring(0, [Math]::Min(200, $ps.Length)) })"
+    Check 'unberechtigter_dateizugriff' ($ps -match 'EXIT=0' -and $ps -match '"access_denied"' -and $ps -notmatch 'nur fuer den Runner') "Scan eines nicht lesbaren Ordners als Testbenutzer: $(if ($ps -match '"access_denied"') { 'AccessDenied-Lücke' } else { Short $ps 200 })"
     foreach ($n in 'sc_stop', 'sc_delete') {
         $t = ReadOut $n
-        Check "nicht_admin_$n" ($t -notmatch 'EXIT=0' -and (Get-Service AXSafeService).Status -eq 'Running') (($t -replace '\s+', ' ').Substring(0, [Math]::Min(120, $t.Length)))
+        Check "nicht_admin_$n" ($t -notmatch 'EXIT=0' -and (Get-Service AXSafeService).Status -eq 'Running') (Short $t 120)
     }
 
     # --- Dienstabsturz während eines Scans: Wiederanlauf, Dateien unverändert ---
