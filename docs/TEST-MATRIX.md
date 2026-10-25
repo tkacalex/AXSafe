@@ -20,6 +20,7 @@ Zählregeln (Befund 8):
 | Reproduktion Befunde 1–6, vorher (491956e) / nachher | siehe Dateien | [`vorher`](evidence/2026-10-24-befunde-vorher-491956e.txt) · [`nachher`](evidence/2026-10-24-befunde-nachher.txt) |
 | **Windows Server – Dienst-Systemtest** (CI `windows-service`, Commit 4185958, Lauf 40174054483) | **22 / 0** Prüfungen (Installation, Pipe, zweiter Benutzer, Abstürze, C#-Client gegen echten Dienst, Deinstallation) | [`evidence/2026-10-25-windows-dienst-systemtest.txt`](evidence/2026-10-25-windows-dienst-systemtest.txt) |
 | Windows Server – ClamAV im AppContainer (Messung) | ClamAV 1.5 dort **nicht lauffähig** (Pfadauflösung verweigert) → eingeschränktes Token | [`evidence/2026-10-25-clamav-appcontainer-messung.txt`](evidence/2026-10-25-clamav-appcontainer-messung.txt) |
+| **Windows Server – ClamAV-Einrichtung** (CI `windows-clamav`, Commit 47b6db5, Lauf 40187023506) | Setup **27 / 0** (a–g, Token-Probe, Netzsperre wirksam, FreshClam), zweiter Lauf ohne Fehler; echte ClamAV-Tests mit eingeschränktem Token alle bestanden | [`evidence/2026-10-25-windows-clamav-einrichtung.txt`](evidence/2026-10-25-windows-clamav-einrichtung.txt) |
 | Windows 10 Enterprise LTSC 21H2 | **nicht ausgeführt** | B-02, B-03 |
 
 ## Zuordnung zu Abnahmen und Befunden
@@ -76,7 +77,7 @@ Spalten: **Linux** = lokal und Linux-CI · **Win Server** = `windows-latest` in 
 | T-015 | core · `verdict::tests::*` (6), `scan::tests::unavailable_engine_never_yields_clean_and_is_job_gap`, `no_engine_is_gap`, `missing_path_is_gap` | keine Lücke wird „sauber“ | ✅ | ✅ | offen |
 | T-018 | core · `identity::tests::*` (4), `scan::tests::symlink_is_not_followed` | Austausch/Änderung erkannt; Link nicht verfolgt | ✅ | ✅ | offen |
 | T-020 (Teil) | core · `scan::tests::access_denied_is_reported` | Datei ohne Leserechte → `AccessDenied` (benötigt Nicht-root) | ✅ (Nicht-root) | n/a (Unix-Rechte) | offen |
-| T-021 | clamav · `positive_benign_and_test_only_content`, `without_database_is_unavailable`; cli · `both_engines_detect_eicar_with_real_clamav` | echter ClamAV: Fund, gutartig, leere DB → nicht verfügbar | ✅ (echter ClamAV) | ausgelassen: kein ClamAV | offen |
+| T-021 | clamav · `positive_benign_and_test_only_content`, `without_database_is_unavailable`; cli · `both_engines_detect_eicar_with_real_clamav` | echter ClamAV: Fund, gutartig, leere DB → nicht verfügbar | ✅ (echter ClamAV) | ✅ Job `windows-clamav` (eingeschränktes Token); im Job `windows` ausgelassen: kein ClamAV | offen |
 | T-022 | yarax · `eicar_positive`, `benign_counterexamples`, `timeout_is_reported_as_timeout`, Regelvalidierung (4) | EICAR (Funktionstest), Gegenbeispiele, Zeitlimit | ✅ | ✅ | offen |
 | T-023 / T-028 | core · `filetype::tests::*` (5); cli · `filetype_uses_content_not_extension` | Typ nach Inhalt; gekürzte PE ohne Panic | ✅ | ✅ | offen |
 | T-026 | core · `positive_benign_and_counts`, `cancel_marks_incomplete`, `size_limit_is_reported_not_clean` | Zählungen, Abbruch, Größenlimit | ✅ | ✅ | offen |

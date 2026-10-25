@@ -1,0 +1,43 @@
+AXSafe – ClamAV-Einrichtung und echte ClamAV-Tests auf Windows Server (CI)
+Commit 47b6db5 · CI-Lauf 40187023506 · Job 121149894368 · windows-latest = Windows Server 2025 (kein LTSC-Nachweis)
+Erster Lauf: 27 Prüfungen, 0 fehlgeschlagen; zweiter Lauf (Wiederholung, -SkipFileEicar) ebenfalls ohne Fehler.
+
+[11:10:42] OK   paket_sha256: SHA-256 a025fa23a4b9d64fce448d5a211afcf30dc26ba6528186e6223d1b945f9d95d6 (erwartet a025fa23a4b9d64fce448d5a211afcf30dc26ba6528186e6223d1b945f9d95d6)
+[11:10:44] OK   paket_pgp: Talos-Signatur (gpg: C:\Program Files\Git\usr\bin\gpg.exe): gültig, Fingerabdruck 5BADCA2665EF59DCF8A23D8B707F0DB480836771
+[11:10:54] OK   installation: msiexec Exitcode 0
+[11:10:54] OK   datenordner_acl: C:\ProgramData\AXSafe\ClamAV: nur SYSTEM/Administratoren schreiben, Benutzer lesen
+[11:10:57] OK   firewall_regel_clamscan: Regel 'AXSafe: clamscan ohne Netzwerk': ausgehend gesperrt für C:\Program Files\ClamAV\clamscan.exe
+[11:10:57] OK   firewall_profile_aktiv: Domäne, Privat und Öffentlich eingeschaltet
+[11:10:57] OK   freshclam_nicht_gesperrt: keine ausgehende Sperrregel für freshclam.exe
+[11:11:07] OK   b_erstes_update: Ergebnis updated, Exitcode 0, Database test passed. | Sun Oct 25 11:11:06 2026 -> main.cvd updated (version: 63, sigs: 3287027, f-level: 90, builder: tomjudge) | Sun Oct 25 11:11:06 2026 -> bytecode database available for download (remote version: 339) | Testing database: 'C:\ProgramData\AXSafe\ClamAV\database\tmp.8b54b26746\bytecode.cvd' ... | Database test passed. | Sun Oct 25 11:11:06 2026 -> bytecode.cvd updated (version: 339, sigs: 80, f-level: 90, builder: nrandolp)
+[11:11:08] OK   b_datenbank: main.cvd v63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily.cvd v28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode.cvd v339 (80 Signaturen, 11 Sep 2025 08-29 -0400)
+[11:11:08] OK   a_versionen: clamscan: ClamAV 1.5.4/28164/Sun Oct 25 06:24:12 2026 | freshclam: ClamAV 1.5.4/28164/Sun Oct 25 06:24:12 2026
+[11:11:17] OK   c_harmlos: Exitcode 0: C:\Users\RUNNER~1\AppData\Local\Temp\axsafe-clamav-selbsttest-64b213b966fd476f96f8e478c08f0f72\brief.txt: OK
+[11:11:26] OK   d_eicar_stdin: Exitcode 1: stdin: Eicar-Test-Signature FOUND
+[11:11:38] OK   d_eicar_datei: Exitcode 1: C:\Users\RUNNER~1\AppData\Local\Temp\axsafe-clamav-selbsttest-64b213b966fd476f96f8e478c08f0f72\eicar-test.com: Eicar-Test-Signature FOUND
+[11:11:38] OK   testdaten_entfernt: C:\Users\RUNNER~1\AppData\Local\Temp\axsafe-clamav-selbsttest-64b213b966fd476f96f8e478c08f0f72
+[11:11:40] OK   f_erneutes_update: Ergebnis updated, letzte Erfolgszeit 2026-10-25T11:11:39.9349836Z
+[11:11:45] OK   g_geplanter_auftrag: LastTaskResult 0, Lauf um 2026-10-25T11:11:40.4339409Z, Ergebnis updated, nächster Lauf 10/25/2026 11:31:25
+[11:11:57] OK   e_axsafe: axsafe engines: clamav=ready official_signatures main-63/daily-28164/bytecode-339 – offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\ProgramData\AXSafe\ClamAV\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\last-update.json 
+[11:11:57] OK   e_axsafe_abschottung: ClamAV-Isolation: sandboxed_worker / Eingeschränktes Token (Token vor dem Start geprüft): keine Privilegien, Integritätsstufe Niedrig, kein Zugriff auf Dateien, die nur der Benutzer lesen darf; schreiben nur im eigenen Arbeitsordner; Job Object (Zeit, Speicher, Prozessbaum). Netzwerk über diese Abschottung NICHT gesperrt (ausgehende Firewall-Sperrregel durch die Einrichtung). AppContainer nicht möglich: ClamAV 1.5 kann dort seinen Zertifikatsordner nicht auflösen
+[11:11:57] OK   token_datenbank_lesbar: lesen:C:\ProgramData\AXSafe\ClamAV\database: erlaubt (erwartet erlaubt) – 7 Einträge, C:\ProgramData\AXSafe\ClamAV\database\bytecode-339.cvd.sign gelesen (16 Bytes)
+[11:11:57] OK   token_zertifikate_aufloesbar: aufloesen:C:\Program Files\ClamAV\certs: erlaubt (erwartet erlaubt) – \\?\C:\Program Files\ClamAV\certs
+[11:11:57] OK   token_zertifikate_lesbar: lesen:C:\Program Files\ClamAV\certs: erlaubt (erwartet erlaubt) – 1 Einträge, C:\Program Files\ClamAV\certs\clamav.crt gelesen (16 Bytes)
+[11:11:57] OK   token_arbeitsordner_schreibbar: anlegen:C:\Users\runneradmin\AppData\Local\AXSafe\ClamAV-Arbeitsordner\7272-0-1792926717739915: erlaubt (erwartet erlaubt) – angelegt und gelöscht
+[11:11:57] OK   token_benutzerdatei_unlesbar: lesen:C:\Users\RUNNER~1\AppData\Local\Temp\axsafe-abschottung-7272.txt: verweigert (erwartet verweigert) – Access is denied. (os error 5)
+[11:11:57] OK   token_benutzer_temp_unbeschreibbar: anlegen:C:\Users\RUNNER~1\AppData\Local\Temp\: verweigert (erwartet verweigert) – Access is denied. (os error 5)
+[11:11:57] OK   token_programmordner_unbeschreibbar: anlegen:C:\Program Files\ClamAV: verweigert (erwartet verweigert) – Access is denied. (os error 5)
+[11:11:57] OK   token_probe_vollstaendig: Exitcode 0; Hinweise:  
+[11:12:00] OK   netzsperre_wirksam: Ziel database.clamav.net:443 – ohne Regel: verbunden mit 104.18.203.90:443 | mit gleich gebauter Regel: An attempt was made to access a socket in a way forbidden by its access permissions. (os error 10013)
+[11:12:00] Fertig: 27 Prüfungen, 0 fehlgeschlagen. Bericht: D:\a\AXSafe\AXSafe\clamav-nachweis\clamav-setup-20261025-111037.txt
+
+--- Echte ClamAV-Integrationstests (cargo test --include-ignored) ---
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 9.41s
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.73s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.02s
