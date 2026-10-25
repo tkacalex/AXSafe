@@ -1,0 +1,44 @@
+# B-18: Vorher/Nachher-Messung ClamAV (Linux-CI, offizielle Signaturen)
+# CI-Lauf 40206964605, Job clamav-signatures, Commit 9308584, ubuntu-24.04, ClamAV 1.5.4
+# Dateimenge: scripts/ci/messdateien.py (30 harmlos, 1 EICAR zur Laufzeit), identisch für beide Betriebsarten
+
+ClamAV-Messung: 31 Dateien, 7041709 Bytes, linux x86_64 (4 CPUs)
+
+clamscan je Objekt:
+  Engine: bereit – offizielle ClamAV-Signaturen, daily 28164 vom Sun Oct 25 06:24:12 2026. Aktualisierungspfad (FreshClam) separat nachzuweisen.
+  Stand: ClamAV 1.5.4 / daily-28164
+  Start (Datenbank laden): 7634 ms
+  Erster Scan: 7312.7 ms
+  Folgescans: 30 Stück, Mittel 7168.53 ms, Median 7152.48 ms
+  Gesamt: 230006 ms
+  Speicherspitze: 978.0 MiB (getrusage(RUSAGE_CHILDREN).ru_maxrss: größter clamscan-Lauf)
+
+dauerhaft (axsafe-clamav-worker):
+  Engine: bereit – offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad /var/lib/clamav. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\last-update.json; dauerhaft geladen im ClamAV-Worker (3628192 Signaturen, Laden 6698 ms, Worker-Start Nr. 1); Worker-Starts 1, Neustarts 0
+  Stand: ClamAV 1.5.4 / main-63/daily-28164/bytecode-339
+  Start (Datenbank laden): 6700 ms
+  Erster Scan: 7.1 ms
+  Folgescans: 30 Stück, Mittel 34.09 ms, Median 11.56 ms
+  Gesamt: 7734 ms
+  Speicherspitze: 1009.2 MiB (VmHWM des Worker-Prozesses)
+
+Ergebnisse je Datei: identisch
+Gesamtdauer clamscan / dauerhaft: 29.7
+
+# Worker-Tests mit offizieller Datenbank (inkl. worker_with_mismatching_official_db_version_is_rejected):
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test broken_database_is_unavailable_never_clean ... ok
+test crash_is_a_gap_and_worker_restarts ... ok
+test loads_once_and_scans_many_objects ... ok
+test missing_library_is_unavailable_never_clean ... ok
+test object_size_limit_is_a_gap ... ok
+test parallel_jobs_get_their_own_results ... ok
+test repeated_failures_disable_the_engine ... ok
+test signature_update_becomes_active_only_after_successful_load ... ok
+test idle_worker_is_stopped_and_restarted_on_demand ... ok
+test hanging_engine_times_out_and_is_replaced ... ok
+test full_queue_is_a_visible_gap ... ok
+test worker_with_mismatching_official_db_version_is_rejected ... ok
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.40s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
