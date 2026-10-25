@@ -1,0 +1,10 @@
+# Tests, die auf dem Alltagsrechner (Defender aktiv) NICHT laufen – mit Grund.
+# Format: Testname|Grund. Sie laufen weiterhin in der CI (Wegwerf-Runner).
+yara_detects_eicar_and_ignores_names|schreibt die EICAR-Testdatei auf die Platte (Defender würde sie entfernen und melden)
+detection_plus_engine_error_is_exit_4_and_visible|schreibt die EICAR-Testdatei auf die Platte
+both_engines_detect_eicar_with_real_clamav|schreibt die EICAR-Testdatei auf die Platte
+detection_is_traceable_from_event_to_action|schreibt die EICAR-Testdatei auf die Platte
+positive_benign_and_test_only_content|clamscan legt die übergebene EICAR-Probe als temporäre Datei ab
+content_formats_are_backed_by_real_clamav|clamscan legt Container mit EICAR-Inhalt als temporäre Datei ab
+harmless_archives_normal_encrypted_nested|clamscan legt ein ZIP mit EICAR-Inhalt als temporäre Datei ab
+report_target_windows_symlink_is_refused|braucht Administratorrechte zum Anlegen symbolischer Links

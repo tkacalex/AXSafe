@@ -1,0 +1,36 @@
+name: LTSC-Testpaket
+
+# Baut die Testprogramme für den Lauf auf dem Zielrechner (Windows 10 LTSC,
+# B-02/B-10) und führt das Startskript einmal hier aus, um das Paket selbst zu
+# prüfen. Nur auf Anforderung; kein Release, keine Schlüssel.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paket:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust-Toolchain
+        run: rustup show active-toolchain; if ($LASTEXITCODE -ne 0) { rustup toolchain install }
+      - name: Testpaket bauen (unter C:\axsafe-ltsc)
+        shell: powershell
+        run: .\scripts\ci\build_ltsc_testpaket.ps1 -Out "$PWD\ltsc" -Commit "${{ github.sha }}" -RunId "${{ github.run_id }}"
+      - name: Paket hier ausführen (Selbstprüfung des Startskripts; Windows Server, kein LTSC)
+        shell: powershell
+        run: |
+          Remove-Item -Recurse -Force C:\axsafe-ltsc
+          Expand-Archive "$PWD\ltsc\axsafe-ltsc-testpaket.zip" -DestinationPath C:\
+          & C:\axsafe-ltsc\run-ltsc-tests.ps1
+          $code = $LASTEXITCODE
+          Get-ChildItem C:\axsafe-ltsc\ergebnis, "$env:USERPROFILE\Desktop\AXSafe\nachweise" -Filter 'ltsc-tests-*' -ErrorAction SilentlyContinue | Copy-Item -Destination "$PWD\ltsc"
+          if ($code -ne 0) { throw "Selbstprüfung des Testpakets fehlgeschlagen ($code)" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ltsc-testpaket
+          path: ltsc/
+          if-no-files-found: error
