@@ -2,9 +2,15 @@ name: LTSC-Testpaket
 
 # Baut die Testprogramme für den Lauf auf dem Zielrechner (Windows 10 LTSC,
 # B-02/B-10) und führt das Startskript einmal hier aus, um das Paket selbst zu
-# prüfen. Nur auf Anforderung; kein Release, keine Schlüssel.
+# prüfen. Auf Anforderung oder bei Änderungen am Testpaket; kein Release,
+# keine Schlüssel.
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "scripts/ltsc/**"
+      - "scripts/ci/build_ltsc_testpaket.ps1"
+      - ".github/workflows/ltsc-testpaket.yml"
 
 permissions:
   contents: read
