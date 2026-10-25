@@ -170,7 +170,8 @@ Set-Content '$out\dienstdaten_lesen.txt' `$d -Encoding UTF8
     Check 'absturz_wiederanlauf' ($svc.State -eq 'Running' -and $svc.ProcessId -ne $pid0 -and $s2.Code -eq 0) "alter Prozess $pid0, neuer $($svc.ProcessId), Status-Exit $($s2.Code)"
     $old = Dienst @('bericht', $ownJob)
     Check 'bericht_nach_neustart' ($old.Code -eq 0 -and $old.Json.result.report.job_id -eq $ownJob) "Bericht $ownJob nach Neustart lesbar"
-    $hashAfter = Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -notlike 'f*.txt' } | ForEach-Object { "$($_.FullName)=$((Get-FileHash $_.FullName).Hash)" }
+    # Neu angelegte Testdateien (Richtlinientest) zählen nicht als Nutzdaten.
+    $hashAfter = Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -notlike 'f*.txt' -and $_.FullName -notlike "$root\ausnahme\*" } | ForEach-Object { "$($_.FullName)=$((Get-FileHash $_.FullName).Hash)" }
     $before = $hashBefore | Where-Object { $_ -notmatch '\\f\d+\.txt=' }
     Check 'nutzdateien_unveraendert' ((Compare-Object $before $hashAfter).Count -eq 0) "$(@($before).Count) Dateien, Hashes vor/nach Scans und Absturz verglichen"
 

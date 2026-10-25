@@ -478,9 +478,24 @@ fn client_process(pipe: HANDLE) -> Option<axsafe_core::report::ProcessIdentity> 
     if unsafe { GetNamedPipeClientProcessId(pipe, &mut pid) } == 0 || pid == 0 {
         return None;
     }
-    axsafe_proc::process_start(pid)
-        .ok()
-        .map(|p| axsafe_core::report::ProcessIdentity::new(p.pid, p.start_unix_ns, p.image))
+    // Das Dienstkonto darf Prozesse anderer Benutzer meist nicht öffnen;
+    // dann mit den Rechten des Clients (Impersonation) abfragen – der Client
+    // darf seinen eigenen Prozess lesen.
+    let p = axsafe_proc::process_start(pid).ok().or_else(|| {
+        // SAFETY: Impersonation nur für diese Abfrage; RevertToSelf wird
+        // immer ausgeführt, scheitert es, endet der Prozess.
+        unsafe {
+            if ImpersonateNamedPipeClient(pipe) == 0 {
+                return None;
+            }
+            let r = axsafe_proc::process_start(pid).ok();
+            if RevertToSelf() == 0 {
+                std::process::abort();
+            }
+            r
+        }
+    });
+    p.map(|p| axsafe_core::report::ProcessIdentity::new(p.pid, p.start_unix_ns, p.image))
 }
 
 fn handle_client(pipe: OwnedHandle, ev: OwnedHandle, ctx: &ServiceCtx, log: &Log) -> ConnEnd {

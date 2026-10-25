@@ -410,6 +410,9 @@ fn p02_gate_service_is_no_file_reader_or_deleter() {
     assert_eq!(wait_finished(&mut c, &job)["state"], "finished");
     let rep = c.call(Body::Report { job_id: job }).unwrap();
     let text = serde_json::to_string(&rep).unwrap();
-    assert!(!text.contains("GEHEIMER-INHALT"), "Bericht enthält Dateiinhalt");
+    assert!(
+        !text.contains("GEHEIMER-INHALT"),
+        "Bericht enthält Dateiinhalt"
+    );
     assert_eq!(std::fs::read(&secret).unwrap(), before, "Datei verändert");
 }

@@ -206,7 +206,10 @@ mod tests {
                 .spawn()
                 .unwrap()
         } else {
-            std::process::Command::new("sleep").arg("30").spawn().unwrap()
+            std::process::Command::new("sleep")
+                .arg("30")
+                .spawn()
+                .unwrap()
         };
         let id = process_start(c.id()).unwrap();
         c.kill().unwrap();
