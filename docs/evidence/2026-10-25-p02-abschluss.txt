@@ -1,0 +1,108 @@
+# P02-Abschluss: Nachweise aus CI-Lauf 40231666989 (Commit 5df00af, alle 6 Jobs grün)
+# windows-latest = Windows Server, KEIN LTSC-Nachweis
+
+## Dienst-Systemtest (scripts/ci/service_e2e.ps1)
+[20:44:07] OK   installiert_konto: Konto NT AUTHORITY\LocalService, Zustand Running
+[20:44:07] OK   privilegien_minimal: [SC] QueryServiceConfig2 SUCCESS  SERVICE_NAME: AXSafeService         PRIVILEGES       : SeChangeNotifyPrivilege                          : SeImpersonatePrivilege
+[20:44:11] OK   status: Exit 0; Client runnervmdaln5\runneradmin, Sitzung 2
+[20:44:11] OK   dienst_worker_isoliert: yara-x: ready / sandboxed_worker / AppContainer ohne Fähigkeiten: kein Netzwerk, kein Zugriff auf Benutzerdateien; dazu Job Object (1 Prozess, Speicher- und Zeitgrenze); Probe: 5 verbotene Aktionen verweigert; Mitigationen: keine Erweiterungspunkte (AppInit u. a.), strikte Handle-Prüfung, keine Fremdschriften, keine DLLs von Netzlaufwerken oder mit Integrität Niedrig, nur Microsoft-signierte DLLs, ASLR, Heap-Abbruch 
+[20:44:14] OK   scan_ende_zu_ende: outcome detection, Funde 1, Objekte 2
+[20:44:14] OK   typ_im_worker: Dateitypen aus dem Worker: [{"kind":"text"},{"kind":"text"}]
+[20:44:17] OK   abbruch: Abbruch-Exit 0, Zustand finished, Bericht: cancelled=True, complete=False, outcome=incomplete, Objekte 0
+[20:44:20] OK   client_absturz: Client-Prozess beendet; Dienst Running, Status-Exit 0
+[20:44:20] OK   betriebszustand: overall eingeschraenkt: Eingeschränkt: kein Echtzeitschutz, Definitionen eingeschränkt, Engine-Teilausfall
+[20:44:23] OK   richtlinie_ausnahme: ausgenommen: C:\axsafe-e2e\ausnahme\build; Lücke excluded_by_policy: 1; vollständig: False; Richtlinie policy-2026.10.24-2+policy-file-v1
+[20:44:27] OK   richtlinie_unsicher_nicht_angewandt: Richtlinie benutzerschreibbar → policy-2026.10.24-2+vorgabe, geprüft 2 Dateien, ausgenommen 0
+[20:44:27] OK   richtlinie_unsicher_sichtbar: Zustand Richtlinie: degraded – Richtlinie ungültig, sichere Vorgabe ohne Ausnahmen aktiv: unsicher, C:\ProgramData\AXSafe\Policy\policy.json ist nicht nur für Administratoren änderbar: S-1-5-
+[20:44:49] Testbenutzer-Prozess beendet mit 0
+[20:44:49] OK   zweiter_benutzer_status: EXIT=0
+[20:44:49] OK   fremder_bericht: EXIT=7 { "protocol": "axsafe.ipc/1", "seq": 1, "ok": false, "error": { "code": "not_found", "message": "kein eigener Bericht" }, "result": null }
+[20:44:49] OK   fremder_abbruch: EXIT=7 { "protocol": "axsafe.ipc/1", "seq": 1, "ok": false, "error": { "code": "not_found", "message": "kein abbrechbarer eigener Auftrag" }, "result": null }
+[20:44:49] OK   fremder_auftrag: EXIT=7 { "protocol": "axsafe.ipc/1", "seq": 1, "ok": false, "error": { "code": "not_found", "message": "kein eigener Auftrag" }, "result": null }
+[20:44:49] OK   nicht_admin_dienstdaten: VERWEIGERT: Access is denied | Protokoll verweigert
+[20:44:49] OK   nicht_admin_richtlinie: VERWEIGERT: Access to the path 'C:\ProgramData\AXSafe\Policy\policy.json' is denied.
+[20:44:49] OK   unberechtigter_dateizugriff: Scan eines nicht lesbaren Ordners als Testbenutzer: AccessDenied-Lücke
+[20:44:49] OK   nicht_admin_sc_stop: EXIT=5 [SC] OpenService FAILED 5: Access is denied.
+[20:44:49] OK   nicht_admin_sc_delete: EXIT=5 [SC] OpenService FAILED 5: Access is denied.
+[20:44:57] OK   absturz_wiederanlauf: alter Prozess 8164, neuer 3492, Status-Exit 0
+[20:44:57] OK   bericht_nach_neustart: Bericht afb74ba2-2929-436b-ac79-e96fee35fed5 nach Neustart lesbar
+[20:44:58] OK   nutzdateien_unveraendert: 3 Dateien, Hashes vor/nach Scans und Absturz verglichen
+[20:45:24] OK   oberflaechen_client_dienst: dotnet test Kategorie=Dienst: Exit 0; Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 3 s - AXSafe.Client.Tests.dll (net10.0)
+[20:45:24] OK   gestoppt_nicht_erreichbar: Exit 6: axsafe.exe : AXSafe-Dienst nicht erreichbar: The system cannot find the file specified. (os error 2)
+At D:\a\AXSafe\AXSafe\scripts\ci\service_e2e.ps1:29 char:12
++     $out = & $cli dienst @a 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (AXSafe-Dienst n...d. (os error 2):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+[20:45:26] OK   neustart: nach Start wieder erreichbar
+[20:45:26] OK   deinstallation: Dienst und Programmordner entfernt
+[20:45:26] 28 Prüfungen, 0 fehlgeschlagen
+
+## Dienst + ClamAV (scripts/ci/service_clamav_e2e.ps1)
+[20:55:51] Defender-Echtzeitschutz auf dem Runner: False
+[20:56:05] OK   dienst_sieht_clamav: Dienst-Sicht: clamav ready / official_signatures / main-63/daily-28164/bytecode-339 / isoliert=True
+[20:56:09] OK   ausgefuehrt_vom_dienst: executed_by: {"kind":"dienst","name":"AXSafeService","account":"NT AUTHORITY\\LOCAL SERVICE","process_id":3416,"client":"runnervmdaln5\\runneradmin","client_session":2,"process":{"pid":3416,"started_utc":"2026-10-25T20:55:53.413056Z","image":"C:\\Program Files\\AXSafe\\service\\axsafe-service.exe"},"client_process":{"pid":7364,"started_utc":"2026-10-25T20:56
+[20:56:11] OK   prozessidentitaet: Dienst 3416@2026-10-25T20:55:53.413056Z (laufend: 3416), Client 7364@2026-10-25T20:56:05.894183Z D:\a\AXSafe\AXSafe\target\release\axsafe.exe
+[20:56:11] OK   auftrag_clamav_offiziell: Auftrag: clamav ready official_signatures main-63/daily-28164/bytecode-339
+[20:56:11] OK   harmlos_ohne_fund: brief.txt: clamav NoDetection, Lücken 0
+[20:56:11] OK   eicar_durch_clamav: eicar.com: clamav Malicious (Eicar-Test-Signature), Inhalt main-63/daily-28164/bytecode-339
+[20:56:11] OK   keine_luecken: outcome detection, complete True, Auftragslücken 0, Objekte mit Lücke 0
+[20:56:11] OK   dauerhaft_geladen: Auftrag: offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\ProgramData\AXSafe\ClamAV\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\last-update.json; dauerhaft geladen im ClamA
+[20:56:11] OK   worker_ohne_netz: Firewall-Sperrregel für C:\Program Files\AXSafe\service\axsafe-clamav-worker.exe: AXSafe: ClamAV-Worker (Dienst) ohne Netzwerk
+[20:56:11] ClamAV-Dauer je Datei im ersten Auftrag (ms): 15, 4
+[20:56:15] OK   parallel_eigene_ergebnisse: A: no_detection 15 Dateien; B: detection 16 Dateien, ClamAV-Fund nur in eicar-b.com
+[20:56:15] OK   datenbank_einmal_geladen: Worker-Start Nr.: erster Auftrag 1, parallel A 1, B 1
+[20:56:15] ClamAV-Dauer je Datei, Auftrag A (ms): 14, 14, 14, 14, 15, 14, 14, 14, 14, 14, 14, 14, 14, 13, 14
+[20:56:19] OK   abbruch: Bericht: cancelled=True, complete=False, outcome=incomplete, geprüft 0 von 200
+[20:56:22] OK   nach_abbruch_weiter: eicar.com nach Abbruch: clamav Malicious 4 ms
+[20:56:22] OK   dienstprotokoll: Protokoll: 2026-10-25T20:56:08.941Z Auftrag c2f7137e-29ef-4fa9-9526-83ef57f82be7 für runnervmdaln5\runneradmin (Client-Prozess 7364@2026-10-25T20:56:05.894183Z, Dienstprozess 3416@2026-10-25T20:55:53.413056Z, Richtlinie policy-2026.10.24-2+vorgabe, ausgenommen 0): Ergebnis Detection, vollständig=true, Objekte 2, Funde 1, Lücken 0 | Engines: yara-x 1.22.0 Ready i
+[20:56:22] 14 Prüfungen, 0 fehlgeschlagen
+
+## Windows-Unit-Tests P02 (Auszug cargo-test.log)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 12 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 15 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 9.45s
+test real_worker_is_isolated_and_scans ... ok
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.67s
+test health::tests::missing_answers_are_unknown_never_green ... ok
+test health::tests::broken_engine_changes_status ... ok
+test health::tests::invalid_policy_is_visible ... ok
+test health::tests::service_loss_changes_status ... ok
+test health::tests::unisolated_engine_is_degraded ... ok
+test health::tests::stale_or_test_definitions_are_degraded ... ok
+test health::tests::without_sensor_never_protected ... ok
+test policy::tests::exclusion_matches_exact_file_or_folder_only ... ok
+test policy::tests::global_exclusions_are_refused ... ok
+test policy::tests::missing_file_is_default_without_exclusions ... ok
+test policy::tests::narrow_exclusion_needs_reason_author_and_expiry ... ok
+test policy::tests::user_writable_policy_is_never_applied ... ok
+test policy::tests::invalid_file_falls_back_to_safe_default_visibly ... ok
+test scan::tests::alternate_data_streams_are_scanned_separately ... ok
+test scan::tests::file_id_128_is_read_on_windows ... ok
+test scan::tests::long_and_unicode_paths_are_scanned ... ok
+test scan::tests::junction_is_not_followed ... ok
+test result: ok. 54 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 0 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.81s
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.08s
+test identity::tests::exited_process_is_not_still_running ... ok
+test identity::tests::exited_but_not_released_process_is_not_running ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.25s
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
