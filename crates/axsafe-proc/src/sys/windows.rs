@@ -435,6 +435,17 @@ fn appcontainer_sid(profile: &str) -> io::Result<Sid> {
 /// wenn das Programm nicht unter Program Files liegt). Fehler werden
 /// zurückgegeben; CreateProcess entscheidet danach endgültig.
 fn grant_read_execute(path: &OsStr, sid: &Sid) -> io::Result<()> {
+    grant_access(
+        path,
+        sid,
+        FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+        NO_INHERITANCE,
+    )
+}
+
+/// Fügt der DACL von `path` einen Erlaubt-Eintrag für die AppContainer-SID
+/// hinzu (vorhandene Einträge bleiben).
+fn grant_access(path: &OsStr, sid: &Sid, mask: u32, inherit: u32) -> io::Result<()> {
     let p = wide(path);
     // SAFETY: dokumentierte Sicherheits-APIs; alle Zeiger lokal und gültig,
     // zurückgegebene Puffer werden mit LocalFree freigegeben.
@@ -455,9 +466,9 @@ fn grant_read_execute(path: &OsStr, sid: &Sid) -> io::Result<()> {
             return Err(io::Error::from_raw_os_error(rc as i32));
         }
         let ea = EXPLICIT_ACCESS_W {
-            grfAccessPermissions: FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+            grfAccessPermissions: mask,
             grfAccessMode: GRANT_ACCESS,
-            grfInheritance: NO_INHERITANCE,
+            grfInheritance: inherit,
             Trustee: TRUSTEE_W {
                 pMultipleTrustee: std::ptr::null_mut(),
                 MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
@@ -488,6 +499,108 @@ fn grant_read_execute(path: &OsStr, sid: &Sid) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Gibt dem AppContainer `profile` Lesezugriff (bzw. Ändern bei
+/// `write`) auf einen Ordner samt Inhalt. Gelingt nur, wenn der Aufrufer
+/// die Rechte des Ordners ändern darf (z. B. eigener Ordner).
+pub fn appcontainer_grant(profile: &str, dir: &std::path::Path, write: bool) -> io::Result<()> {
+    use windows_sys::Win32::Security::{CONTAINER_INHERIT_ACE, OBJECT_INHERIT_ACE};
+    use windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_WRITE;
+    let sid = appcontainer_sid(profile)?;
+    let mut mask = FILE_GENERIC_READ | FILE_GENERIC_EXECUTE;
+    if write {
+        mask |= FILE_GENERIC_WRITE | 0x0001_0000 /* DELETE */;
+    }
+    grant_access(
+        dir.as_os_str(),
+        &sid,
+        mask,
+        CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE,
+    )
+}
+
+/// Eigener, für den AppContainer beschreibbarer Ordner (…\Packages\<Profil>\AC).
+pub fn appcontainer_folder(profile: &str) -> io::Result<std::path::PathBuf> {
+    use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows_sys::Win32::Security::Isolation::GetAppContainerFolderPath;
+    use windows_sys::Win32::System::Com::CoTaskMemFree;
+    let sid = appcontainer_sid(profile)?;
+    // SAFETY: SID gültig; zurückgegebene Zeichenketten werden freigegeben.
+    unsafe {
+        let mut ssid: *mut u16 = std::ptr::null_mut();
+        if ConvertSidToStringSidW(sid.0, &mut ssid) == 0 {
+            return Err(last_err("ConvertSidToStringSidW"));
+        }
+        let mut path: *mut u16 = std::ptr::null_mut();
+        let hr = GetAppContainerFolderPath(ssid, &mut path);
+        LocalFree(ssid as _);
+        if hr < 0 || path.is_null() {
+            return Err(io::Error::other(format!(
+                "GetAppContainerFolderPath: HRESULT 0x{:08X}",
+                hr as u32
+            )));
+        }
+        let mut n = 0;
+        while *path.add(n) != 0 {
+            n += 1;
+        }
+        let s = String::from_utf16_lossy(std::slice::from_raw_parts(path, n));
+        CoTaskMemFree(path as _);
+        Ok(std::path::PathBuf::from(s))
+    }
+}
+
+/// Prüft vor dem Fortsetzen, dass der Prozess wirklich ein AppContainer-
+/// Token ohne Fähigkeiten hat.
+fn verify_appcontainer_token(process: HANDLE) -> io::Result<()> {
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenCapabilities, TokenIsAppContainer, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::System::Threading::OpenProcessToken;
+    // SAFETY: gültiges Prozess-Handle; Puffer lokal.
+    unsafe {
+        let mut tok: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(process, TOKEN_QUERY, &mut tok) == 0 {
+            return Err(last_err("OpenProcessToken"));
+        }
+        let _g = Handle(tok);
+        let mut is_ac = 0u32;
+        let mut len = 0u32;
+        if GetTokenInformation(
+            tok,
+            TokenIsAppContainer,
+            &mut is_ac as *mut u32 as _,
+            4,
+            &mut len,
+        ) == 0
+            || is_ac == 0
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "gestarteter Prozess hat KEIN AppContainer-Token",
+            ));
+        }
+        let mut buf = vec![0u8; 4096];
+        if GetTokenInformation(
+            tok,
+            TokenCapabilities,
+            buf.as_mut_ptr() as _,
+            buf.len() as u32,
+            &mut len,
+        ) == 0
+        {
+            return Err(last_err("GetTokenInformation(TokenCapabilities)"));
+        }
+        let count = u32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]);
+        if count != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("AppContainer-Token hat {count} Fähigkeit(en); erwartet keine"),
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Anonyme Pipe; `child_end_is_read` bestimmt, welches Ende vererbt wird.
@@ -678,6 +791,13 @@ fn spawn_appcontainer(cmd: &Command, limits: &Limits, profile: &str) -> io::Resu
                 let e = last_err("AssignProcessToJobObject");
                 TerminateJobObject(job, 1);
                 windows_sys::Win32::System::Threading::TerminateProcess(pi.hProcess, 1);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+                return Err(e);
+            }
+            // Token VOR dem ersten Befehl des Prozesses prüfen.
+            if let Err(e) = verify_appcontainer_token(pi.hProcess) {
+                TerminateJobObject(job, 1);
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
                 return Err(e);

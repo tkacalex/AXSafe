@@ -31,6 +31,37 @@ mod session;
 mod sys;
 
 pub use session::{Session, SessionError};
+#[cfg(windows)]
+pub use sys::{appcontainer_folder, appcontainer_grant};
+
+/// Minimale Umgebung für abgeschottete Kindprozesse: unter Windows nur
+/// Systempfade, die der Start eines AppContainer-Prozesses benötigt (ohne
+/// `LOCALAPPDATA`/`USERPROFILE` scheitert CreateProcess mit Fehler 203; auf
+/// dem Windows-Runner beobachtet), sonst leer. Zugangsdaten, Token o. Ä.
+/// aus der Umgebung des Benutzers werden nie weitergegeben.
+pub fn minimal_env() -> Vec<(String, String)> {
+    if cfg!(windows) {
+        let mut v = Vec::new();
+        for (k, default) in [
+            ("SystemRoot", r"C:\Windows"),
+            ("SystemDrive", "C:"),
+            ("windir", r"C:\Windows"),
+            ("USERPROFILE", ""),
+            ("LOCALAPPDATA", ""),
+            ("TEMP", ""),
+            ("TMP", ""),
+        ] {
+            match std::env::var(k) {
+                Ok(val) => v.push((k.to_string(), val)),
+                Err(_) if !default.is_empty() => v.push((k.to_string(), default.to_string())),
+                Err(_) => {}
+            }
+        }
+        v
+    } else {
+        Vec::new()
+    }
+}
 
 /// Rechtebeschränkung für einen Kindprozess (zusätzlich zu den [`Limits`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,7 +177,18 @@ fn reader<R: Read + Send + 'static>(
 
 /// Startet `cmd` unter den angegebenen Grenzen und liefert spätestens zum
 /// Ablaufdatum (plus kurzer Aufräumzeit) ein Ergebnis.
-pub fn run(mut cmd: Command, stdin: Option<Vec<u8>>, limits: &Limits) -> io::Result<RunOutcome> {
+pub fn run(cmd: Command, stdin: Option<Vec<u8>>, limits: &Limits) -> io::Result<RunOutcome> {
+    run_sandboxed(cmd, stdin, limits, &Sandbox::None)
+}
+
+/// Wie [`run`], zusätzlich mit Rechtebeschränkung (Windows: AppContainer,
+/// Token wird vor dem Start geprüft).
+pub fn run_sandboxed(
+    mut cmd: Command,
+    stdin: Option<Vec<u8>>,
+    limits: &Limits,
+    sandbox: &Sandbox,
+) -> io::Result<RunOutcome> {
     let start = Instant::now();
     let deadline = start + limits.timeout;
     cmd.stdin(if stdin.is_some() {
@@ -157,7 +199,7 @@ pub fn run(mut cmd: Command, stdin: Option<Vec<u8>>, limits: &Limits) -> io::Res
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
 
-    let mut contained = sys::Contained::spawn(&mut cmd, limits)?;
+    let mut contained = sys::Contained::spawn_sandboxed(&mut cmd, limits, sandbox)?;
     let (child_in, child_out, child_err) = contained.take_stdio();
     let (tx, rx) = mpsc::channel();
 

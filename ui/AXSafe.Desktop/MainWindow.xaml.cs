@@ -17,6 +17,10 @@ public partial class MainWindow : Window
 {
     private readonly AxsafeCliClient? _cli = CliLocator.Create();
     private CancellationTokenSource? _scanCts;
+    /// <summary>Zuletzt festgestellter Dienstzustand (P02); null = noch nicht geprüft.</summary>
+    private ServiceStatus? _service;
+    /// <summary>Wie der letzte Auftrag lief (für die Zusammenfassung).</summary>
+    private string _lastScanPath = "";
 
     public sealed record ModuleState(string Name, string State, Brush Brush);
 
@@ -106,6 +110,8 @@ public partial class MainWindow : Window
 
     private async Task RefreshEnginesAsync()
     {
+        // P02: Dienstzustand nur so anzeigen, wie der Dienst ihn bestätigt.
+        _service = await ServiceClient.ProbeAsync(CancellationToken.None, 1500);
         // Beim ersten Start prüfen, ob ClamAV überhaupt vorhanden ist. Fehlt es,
         // wird es abgewählt und der kleinere Prüfumfang sichtbar erklärt,
         // statt jeden Scan mit „Fehler“ enden zu lassen.
@@ -141,6 +147,12 @@ public partial class MainWindow : Window
         ModuleList.ItemsSource = new List<ModuleState>
         {
             new("Dateiprüfung auf Anforderung", _cli is not null ? "verfügbar" : "CLI fehlt", _cli is not null ? B("Green") : B("Red")),
+            new("Hintergrunddienst (P02)", _service.Label, _service.State switch
+            {
+                ServiceState.Bereit => B("Green"),
+                ServiceState.Startet or ServiceState.Fehlt => B("Amber"),
+                _ => B("Red"),
+            }),
             new("Eigene Regeln (YARA-X)", EngState(yara), EngBrush(yara)),
             new("ClamAV-Signaturen", EngState(clam), clam is null ? B("Muted") : EngBrush(clam)),
             new("Echtzeitschutz", "fehlt · P08", B("Amber")),
@@ -166,8 +178,8 @@ public partial class MainWindow : Window
             HealthDot.Fill = B("Amber");
             HealthText.Text = "Eingeschränkt";
             HealthDetail.Text = testOnly
-                ? "Nur Scan auf Anforderung · nur Testregeln · Dienst fehlt (P02)"
-                : "Nur Scan auf Anforderung · Dienst fehlt (P02)";
+                ? $"Nur Scan auf Anforderung · nur Testregeln · {_service.Label}"
+                : $"Nur Scan auf Anforderung · {_service.Label}";
         }
     }
 
@@ -235,13 +247,34 @@ public partial class MainWindow : Window
         ScanStatus.Text = $"Prüfe {paths.Count} Auswahl(en) …";
         try
         {
-            var r = await _cli.ScanAsync(paths, UseClamav.IsChecked == true, _scanCts.Token);
+            ScanResult r;
+            if (_service?.State == ServiceState.Bereit && OperatingSystem.IsWindows())
+            {
+                _lastScanPath = "über den AXSafe-Dienst, mit deinen Benutzerrechten";
+                try
+                {
+                    r = await ServiceScan.RunAsync(paths, UseClamav.IsChecked == true, _scanCts.Token);
+                }
+                catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException or InvalidDataException)
+                {
+                    // Kein stiller Rückfall: Der Auftrag lief über den Dienst und ist ohne Ergebnis.
+                    r = ScanResult.Failed(Guid.Empty, null, $"Dienst während des Auftrags nicht erreichbar – kein Ergebnis ({ex.Message}).");
+                }
+            }
+            else
+            {
+                _lastScanPath = $"lokal mit deinen Benutzerrechten ({_service?.Label ?? "Dienst nicht geprüft"})";
+                r = await _cli.ScanAsync(paths, UseClamav.IsChecked == true, _scanCts.Token);
+            }
             if (r.Cancelled)
                 ScanStatus.Text = "Abgebrochen. Es liegt kein Ergebnis vor.";
             else if (!r.Success || r.Report is null)
                 ScanStatus.Text = $"Fehler (Auftrag {r.JobId:D}): {r.Error}";
             else
+            {
                 ShowReport(r.Report);
+                ScanSummary.Text += "\nPrüfweg: " + _lastScanPath;
+            }
         }
         finally
         {

@@ -40,7 +40,10 @@ param(
     [string]$Version = '1.5.4',
     [string]$MsiSha256 = 'a025fa23a4b9d64fce448d5a211afcf30dc26ba6528186e6223d1b945f9d95d6',
     [string]$TalosFingerprint = '5BADCA2665EF59DCF8A23D8B707F0DB480836771',
-    [switch]$SkipFileEicar
+    [switch]$SkipFileEicar,
+    # AppContainer, in dem AXSafe clamscan startet; bekommt NUR Leserecht auf
+    # die Signaturdatenbank.
+    [string]$ClamAvAppContainer = 'AXSafe.ClamAV.v1'
 )
 
 Set-StrictMode -Version 2.0
@@ -216,6 +219,25 @@ try {
     }
     Check 'datenordner_acl' ($weak.Count -eq 0) $(if ($weak) { 'Schreibrechte für Benutzer: ' + ($weak -join '; ') } else { "${DataRoot}: nur SYSTEM/Administratoren schreiben, Benutzer lesen" })
 
+    # Leserecht für den AppContainer von AXSafe (nur Datenbankordner).
+    Add-Type -Namespace AXSafeSetup -Name Ac -MemberDefinition @'
+[DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+public static extern int DeriveAppContainerSidFromAppContainerName(string name, out IntPtr sid);
+[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern bool ConvertSidToStringSid(IntPtr sid, out string str);
+[DllImport("advapi32.dll")]
+public static extern IntPtr FreeSid(IntPtr sid);
+'@ -ErrorAction SilentlyContinue
+    $acPtr = [IntPtr]::Zero
+    $hr = [AXSafeSetup.Ac]::DeriveAppContainerSidFromAppContainerName($ClamAvAppContainer, [ref]$acPtr)
+    if ($hr -ne 0) { throw ("AppContainer-SID nicht ableitbar (HRESULT 0x{0:X8})" -f $hr) }
+    $acSid = $null
+    [void][AXSafeSetup.Ac]::ConvertSidToStringSid($acPtr, [ref]$acSid)
+    [void][AXSafeSetup.Ac]::FreeSid($acPtr)
+    & icacls.exe $DbDir /grant "*${acSid}:(OI)(CI)RX" | Out-Null
+    $hasAc = ((& icacls.exe $DbDir) -join ' ') -match [regex]::Escape($acSid)
+    Check 'appcontainer_leserecht' $hasAc "AppContainer $ClamAvAppContainer ($acSid): Lesen/Ausführen auf $DbDir"
+
     # --- 5. FreshClam-Konfiguration ----------------------------------------
     if (Test-Path $ConfFile) {
         $bak = "$ConfFile.bak-$stamp"
@@ -270,6 +292,12 @@ try {
         $eicar = [Text.Encoding]::ASCII.GetBytes('X5O!P%@AP[4\PZX54(P^)7CC)7}$' + 'EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*')
         $r = Run $clamscan @("--database=$DbDir", '--no-summary', '-') $eicar
         Check 'd_eicar_stdin' ($r.Code -eq 1 -and $r.Out -match 'FOUND') "Exitcode $($r.Code): $($r.Out.Trim())"
+        if ($r.Code -ne 1) {
+            # Diagnose: Wie viele Bytes kamen über stdin an, was hat clamscan geprüft?
+            $dbg = Run $clamscan @("--database=$DbDir", '--debug', '-') $eicar
+            $lines = (($dbg.Out + "`n" + $dbg.Err) -split "`r?`n") | Where-Object { $_ -match 'Data read|Data scanned|Scanning|stdin|size|tmp|temp|Infected|FOUND|ERROR' } | Select-Object -First 25
+            Log ("Diagnose stdin (Exitcode $($dbg.Code)): " + ($lines -join ' | '))
+        }
 
         if (-not $SkipFileEicar) {
             $ef = Join-Path $t 'eicar-test.com'
@@ -327,7 +355,8 @@ try {
         $engines = $ax.Out | ConvertFrom-Json
         $c = $engines | Where-Object { $_.name -eq 'clamav' }
         $ok = $c -and $c.health.state -eq 'ready' -and $c.content_kind -eq 'official_signatures'
-        Check 'e_axsafe' $ok "axsafe engines: clamav=$($c.health.state) $($c.content_kind) $($c.content_version) – $($c.content_note)"
+        Check 'e_axsafe' $ok "axsafe engines: clamav=$($c.health.state) $($c.content_kind) $($c.content_version) – $($c.content_note) $($c.health.reason)"
+        Check 'e_axsafe_abschottung' ($c -and $c.isolation.enforced) "ClamAV-Isolation: $($c.isolation.kind) / $($c.isolation.detail)"
         $running = Get-Process AXSafe -ErrorAction SilentlyContinue
         if ($running) { Log 'Hinweis: Die AXSafe-Oberfläche läuft bereits; sie prüft Engines beim Start – bitte neu starten.' }
     } else {

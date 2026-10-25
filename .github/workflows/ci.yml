@@ -58,7 +58,7 @@ jobs:
         run: |
           cargo build --locked -p axsafe-cli
           AXSAFE_CLI="$PWD/target/debug/axsafe" dotnet test ui/AXSafe.Client.Tests -p:RestoreLockedMode=true \
-            --logger "trx;LogFileName=client.trx" --results-directory trx
+            --filter "Kategorie!=Dienst" --logger "trx;LogFileName=client.trx" --results-directory trx
       - name: Testzusammenfassung (bestanden / fehlgeschlagen / ausgelassen getrennt)
         if: always()
         run: |
@@ -171,8 +171,16 @@ jobs:
             if ($err) { $bad++; $err | ForEach-Object { Write-Host "$($f.Name): $_" } }
           }
           if ($bad) { throw "$bad Skript(e) mit Syntaxfehlern" }
+          # Funktionsnamen dürfen keine eingebauten Aliasse sein (z. B. sc = Set-Content,
+          # r = Invoke-History): Aliasse haben Vorrang vor Funktionen.
+          $clash = foreach ($f in Get-ChildItem scripts -Recurse -Filter *.ps1) {
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$null)
+            $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true) |
+              Where-Object { Get-Alias -Name $_.Name -ErrorAction SilentlyContinue } | ForEach-Object { "$($f.Name): $($_.Name)" }
+          }
+          if ($clash) { throw "Funktionsname kollidiert mit Alias: $($clash -join ', ')" }
       - name: AXSafe-CLI bauen (Release)
-        run: cargo build --release --locked -p axsafe-cli
+        run: cargo build --release --locked -p axsafe-cli -p axsafe-service
       - name: ClamAV einrichten (Skript, wie auf dem PC)
         shell: powershell
         run: |
@@ -196,6 +204,9 @@ jobs:
           } finally { $m.ReleaseMutex(); $m.Dispose() }
           Write-Host "OK: zweiter Updater endet sofort (already_running)"
       - name: Echte ClamAV-Integrationstests unter Windows
+        # Läuft auch, wenn eine Abnahme des Einrichtungsskripts scheitert –
+        # dann zeigen die Engine-Tests, ob ClamAV selbst funktioniert.
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -o pipefail
@@ -231,10 +242,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Dienst, CLI und Worker bauen (Release)
         run: cargo build --release --locked -p axsafe-cli -p axsafe-service
-      - name: Systemtest Dienst (installieren, prüfen, deinstallieren)
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ui/global.json
+      - name: Systemtest Dienst (installieren, prüfen, C#-Client, deinstallieren)
         shell: powershell
         run: |
-          .\scripts\ci\service_e2e.ps1 -BinDir "$PWD\target\release" -RulesDir "$PWD\rules" -EvidenceDir "$PWD\dienst-nachweis"
+          .\scripts\ci\service_e2e.ps1 -BinDir "$PWD\target\release" -RulesDir "$PWD\rules" -EvidenceDir "$PWD\dienst-nachweis" -ClientTests "$PWD\ui\AXSafe.Client.Tests"
           if ($LASTEXITCODE -ne 0) { throw "Dienst-Systemtest fehlgeschlagen" }
       - uses: actions/upload-artifact@v4
         if: always()
@@ -297,7 +311,7 @@ jobs:
           cargo test -p axsafe-cli --test cli --locked -- --ignored report_target_windows_symlink_is_refused --exact 2>&1 | tee cargo-test-symlink.log
           grep -q "1 passed" cargo-test-symlink.log
       - name: CLI bauen (Release)
-        run: cargo build --release --locked -p axsafe-cli
+        run: cargo build --release --locked -p axsafe-cli -p axsafe-service
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: ui/global.json
@@ -306,7 +320,7 @@ jobs:
         run: |
           cargo build --locked -p axsafe-cli
           AXSAFE_CLI="$PWD/target/debug/axsafe.exe" dotnet test ui/AXSafe.Client.Tests -p:RestoreLockedMode=true \
-            --logger "trx;LogFileName=client.trx" --results-directory trx
+            --filter "Kategorie!=Dienst" --logger "trx;LogFileName=client.trx" --results-directory trx
       - name: Testzusammenfassung (ausgelassene Tests mit Grund)
         if: always()
         shell: bash

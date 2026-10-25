@@ -9,6 +9,8 @@ pub(crate) use unix::Contained;
 mod windows;
 #[cfg(windows)]
 pub(crate) use windows::Contained;
+#[cfg(windows)]
+pub use windows::{appcontainer_folder, appcontainer_grant};
 
 #[cfg(not(any(unix, windows)))]
 compile_error!("axsafe-proc unterstützt nur Unix und Windows");

@@ -62,6 +62,10 @@ struct EngineArgs {
     /// Eigene ClamAV-Datenbank (Datei oder Ordner); Standard: ClamAV-Standard
     #[arg(long)]
     clamav_db: Option<PathBuf>,
+    /// ClamAV AUSDRÜCKLICH ohne AppContainer starten (nur zur Fehlersuche;
+    /// wird in der Isolationsangabe sichtbar ausgewiesen)
+    #[arg(long)]
+    clamav_ohne_abschottung: bool,
 }
 
 #[derive(Subcommand)]
@@ -267,7 +271,12 @@ fn build_engines(a: &EngineArgs, max_scan_bytes: Option<u64>) -> Vec<Box<dyn Eng
         if let Some(p) = &a.clamscan {
             cfg.clamscan = p.clone();
         }
-        cfg.database = a.clamav_db.clone();
+        if a.clamav_db.is_some() {
+            cfg.database = a.clamav_db.clone();
+        }
+        if a.clamav_ohne_abschottung {
+            cfg.sandbox = axsafe_proc::Sandbox::None;
+        }
         v.push(Box::new(ClamAvEngine::new(cfg)));
     }
     v

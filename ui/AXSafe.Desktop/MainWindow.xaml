@@ -52,7 +52,7 @@
                                 <TextBlock x:Name="HealthText" Margin="8,0,0,0" FontSize="13" Text="Wird geprüft …"/>
                             </StackPanel>
                             <TextBlock x:Name="HealthDetail" Style="{StaticResource MutedText}" FontSize="11" Margin="0,4,0,0"
-                                       Text="Dienst: noch nicht vorhanden (Phase P02)"/>
+                                       Text="Dienst: wird geprüft …"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>

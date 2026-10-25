@@ -56,6 +56,11 @@ try {
     Check ($verText -eq "Vorversion $($cliVer[0]).$($cliVer[1])") "Versionsanzeige passt zur CLI (ist: '$verText')"
     $detail = Find $win 'HealthDetail'
     Check ($null -ne $detail -and $detail.Current.Name -like '*nur Testregeln*') "Statuszeile nennt 'nur Testregeln'"
+    # P02: Ohne installierten Dienst muss das sichtbar sein (nie "bereit" ohne Bestätigung).
+    $svcInstalled = $null -ne (Get-Service AXSafeService -ErrorAction SilentlyContinue)
+    if (-not $svcInstalled) {
+        Check ($detail.Current.Name -like '*Dienst fehlt*') "Statuszeile nennt 'Dienst fehlt' (ist: '$($detail.Current.Name)')"
+    }
 
     if ($expected) {
         $prefix = @{

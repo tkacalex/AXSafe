@@ -6,7 +6,10 @@
 param(
     [Parameter(Mandatory = $true)][string]$BinDir,
     [Parameter(Mandatory = $true)][string]$RulesDir,
-    [Parameter(Mandatory = $true)][string]$EvidenceDir
+    [Parameter(Mandatory = $true)][string]$EvidenceDir,
+    # Optional: Pfad zu ui/AXSafe.Client.Tests – dann laufen die C#-Dienst-Tests
+    # (Kategorie=Dienst) gegen den installierten Dienst.
+    [string]$ClientTests = ''
 )
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $EvidenceDir | Out-Null
@@ -92,17 +95,17 @@ D @('scan', '$root\privat', '--warten') 'privat_scan'
     Set-Content "$out\als-testbenutzer.ps1" $script -Encoding UTF8
     $p = Start-Process powershell.exe -Credential $cred -LoadUserProfile -WorkingDirectory $out -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$out\als-testbenutzer.ps1") -Wait -PassThru -WindowStyle Hidden
     Log "Testbenutzer-Prozess beendet mit $($p.ExitCode)"
-    function R([string]$n) { if (Test-Path "$out\$n.txt") { Get-Content "$out\$n.txt" -Raw } else { "FEHLT" } }
-    $st2 = R 'status'
+    function ReadOut([string]$n) { if (Test-Path "$out\$n.txt") { Get-Content "$out\$n.txt" -Raw } else { "FEHLT" } }
+    $st2 = ReadOut 'status'
     Check 'zweiter_benutzer_status' ($st2 -match 'EXIT=0' -and $st2 -match $user) ($st2 -split "`n" | Select-Object -First 1)
     foreach ($n in 'fremder_bericht', 'fremder_abbruch', 'fremder_auftrag') {
-        $t = R $n
+        $t = ReadOut $n
         Check $n ($t -match 'EXIT=7' -and $t -match 'not_found') (($t -replace '\s+', ' ').Substring(0, [Math]::Min(160, $t.Length)))
     }
-    $ps = R 'privat_scan'
+    $ps = ReadOut 'privat_scan'
     Check 'unberechtigter_dateizugriff' ($ps -match 'EXIT=0' -and $ps -match '"access_denied"' -and $ps -notmatch 'nur fuer den Runner') "Scan eines nicht lesbaren Ordners als Testbenutzer: $(if ($ps -match '"access_denied"') { 'AccessDenied-Lücke' } else { ($ps -replace '\s+',' ').Substring(0, [Math]::Min(200, $ps.Length)) })"
     foreach ($n in 'sc_stop', 'sc_delete') {
-        $t = R $n
+        $t = ReadOut $n
         Check "nicht_admin_$n" ($t -notmatch 'EXIT=0' -and (Get-Service AXSafeService).Status -eq 'Running') (($t -replace '\s+', ' ').Substring(0, [Math]::Min(120, $t.Length)))
     }
 
@@ -120,6 +123,18 @@ D @('scan', '$root\privat', '--warten') 'privat_scan'
     $hashAfter = Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -notlike 'f*.txt' } | ForEach-Object { "$($_.FullName)=$((Get-FileHash $_.FullName).Hash)" }
     $before = $hashBefore | Where-Object { $_ -notmatch '\\f\d+\.txt=' }
     Check 'nutzdateien_unveraendert' ((Compare-Object $before $hashAfter).Count -eq 0) "$(@($before).Count) Dateien, Hashes vor/nach Scans und Absturz verglichen"
+
+    # --- Oberflächen-Client (C#) gegen den echten Dienst --------------------
+    if ($ClientTests) {
+        $env:AXSAFE_SERVICE_TEST = '1'
+        $trx = Join-Path $EvidenceDir 'trx'
+        $o = & dotnet test $ClientTests -p:RestoreLockedMode=true --filter 'Kategorie=Dienst' --logger 'trx;LogFileName=dienst-client.trx' --results-directory $trx 2>&1 | Out-String
+        $code = $LASTEXITCODE
+        Add-Content (Join-Path $EvidenceDir 'dienst-client-tests.txt') $o -Encoding UTF8
+        $sum = ($o -split "`n" | Where-Object { $_ -match 'Passed!|Failed!|Bestanden!|Fehler!|Total tests|Gesamtzahl' }) -join ' '
+        Check 'oberflaechen_client_dienst' ($code -eq 0 -and $o -notmatch 'No test matches') "dotnet test Kategorie=Dienst: Exit $code; $($sum.Trim())"
+        Remove-Item Env:AXSAFE_SERVICE_TEST
+    }
 
     # --- Kontrollierter Stopp/Start -----------------------------------------
     Stop-Service AXSafeService; (Get-Service AXSafeService).WaitForStatus('Stopped', '00:00:30')

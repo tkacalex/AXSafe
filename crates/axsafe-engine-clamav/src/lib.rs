@@ -29,7 +29,7 @@ use axsafe_core::engine::{
 };
 use axsafe_core::filetype::ContentFormat;
 use axsafe_core::verdict::{aggregate, Confidence, Severity, Verdict};
-use axsafe_proc::{run, Limits, RunOutcome};
+use axsafe_proc::{run_sandboxed, Limits, RunOutcome, Sandbox};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -64,7 +64,15 @@ pub struct ClamAvConfig {
     pub max_memory_bytes: u64,
     /// Höchstmenge der Ausgabe je Kanal.
     pub max_output_bytes: usize,
+    /// Rechtebeschränkung für clamscan. Windows-Standard: AppContainer
+    /// [`CLAMAV_APPCONTAINER`] ohne Fähigkeiten. `Sandbox::None` nur nach
+    /// ausdrücklicher Entscheidung (`--clamav-ohne-abschottung`), sichtbar in
+    /// der Isolationsangabe.
+    pub sandbox: Sandbox,
 }
+
+/// AppContainer-Profil für clamscan.
+pub const CLAMAV_APPCONTAINER: &str = "AXSafe.ClamAV.v1";
 
 /// Feste Windows-Pfade der von `scripts/windows/setup-clamav.ps1`
 /// eingerichteten Installation. AXSafe sucht ClamAV unter Windows bewusst
@@ -101,6 +109,13 @@ impl Default for ClamAvConfig {
             max_recursion: 17,
             max_memory_bytes: 4 * 1024 * 1024 * 1024,
             max_output_bytes: 1024 * 1024,
+            sandbox: if cfg!(windows) {
+                Sandbox::AppContainer {
+                    profile: CLAMAV_APPCONTAINER.into(),
+                }
+            } else {
+                Sandbox::None
+            },
         }
     }
 }
@@ -113,6 +128,9 @@ pub struct ClamAvEngine {
     content_kind: ContentKind,
     content_note: String,
     health: EngineHealth,
+    /// Arbeitsordner für entpackte Archivinhalte (AppContainer: dessen
+    /// eigener Ordner).
+    tempdir: Option<std::path::PathBuf>,
 }
 
 fn first_line(s: &[u8]) -> String {
@@ -316,13 +334,96 @@ impl ClamAvEngine {
             health: EngineHealth::Unavailable {
                 reason: "nicht geprüft".into(),
             },
+            tempdir: None,
         };
+        if let Err(e) = engine.prepare_sandbox() {
+            engine.unavailable(format!(
+                "ClamAV-Abschottung nicht vorbereitbar: {e} – ClamAV wird nicht ohne Abschottung genutzt"
+            ));
+            return engine;
+        }
         engine.probe();
         engine
     }
 
+    /// AppContainer vorbereiten: eigenen Arbeitsordner ermitteln und – wenn
+    /// der Aufrufer es darf – der Datenbank Lesezugriff geben. Die offizielle
+    /// Datenbank unter ProgramData gibt setup-clamav.ps1 frei.
+    #[cfg(windows)]
+    fn prepare_sandbox(&mut self) -> std::io::Result<()> {
+        if let Sandbox::AppContainer { profile } = &self.cfg.sandbox {
+            let tmp = axsafe_proc::appcontainer_folder(profile)?.join("Temp");
+            std::fs::create_dir_all(&tmp)?;
+            self.tempdir = Some(tmp);
+            if let Some(db) = &self.cfg.database {
+                let dir = if db.is_dir() {
+                    db.clone()
+                } else {
+                    db.parent().map(|p| p.to_path_buf()).unwrap_or_default()
+                };
+                // Scheitert bei fremden Ordnern (z. B. ProgramData) – dort
+                // hat die Einrichtung die Freigabe bereits gesetzt.
+                let _ = axsafe_proc::appcontainer_grant(profile, &dir, false);
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    fn prepare_sandbox(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn isolation(&self) -> axsafe_core::engine::Isolation {
+        use axsafe_core::engine::{Isolation, IsolationKind};
+        match (&self.cfg.sandbox, &self.health) {
+            (Sandbox::AppContainer { profile }, EngineHealth::Ready) => Isolation {
+                kind: IsolationKind::SandboxedWorker,
+                enforced: true,
+                detail: format!(
+                    "AppContainer {profile} ohne Fähigkeiten (Token vor dem Start geprüft), Job \
+                     Object (Zeit, Speicher, Prozessbaum); Signaturdatenbank nur lesbar \
+                     freigegeben. Verhaltensprobe nicht möglich (fremdes Programm)"
+                ),
+            },
+            (Sandbox::AppContainer { profile }, _) => Isolation {
+                kind: IsolationKind::SandboxedWorker,
+                enforced: false,
+                detail: format!("AppContainer {profile} vorgesehen, Start nicht gelungen"),
+            },
+            (Sandbox::None, _) if cfg!(windows) => Isolation {
+                kind: IsolationKind::ChildProcess,
+                enforced: false,
+                detail: "AUSDRÜCKLICH ohne Abschottung gestartet (--clamav-ohne-abschottung): \
+                         eigener Prozess im Job Object, aber mit den Rechten des Benutzers"
+                    .into(),
+            },
+            (Sandbox::None, _) => Isolation {
+                kind: IsolationKind::ChildProcess,
+                enforced: false,
+                detail: "Linux (Entwicklung): eigener Prozess in eigener Prozessgruppe (Zeit, \
+                         Speicher begrenzt), keine Rechtebeschränkung für clamscan"
+                    .into(),
+            },
+        }
+    }
+
+    fn sandboxed(&self) -> bool {
+        matches!(self.cfg.sandbox, Sandbox::AppContainer { .. })
+    }
+
     fn base_command(&self) -> Command {
         let mut c = Command::new(&self.cfg.clamscan);
+        if self.sandboxed() {
+            // Nur die minimale Umgebung; Temp zeigt in den AppContainer-Ordner.
+            c.env_clear();
+            c.envs(axsafe_proc::minimal_env());
+            if let Some(t) = &self.tempdir {
+                c.env("TEMP", t)
+                    .env("TMP", t)
+                    .arg(format!("--tempdir={}", t.display()));
+            }
+        }
         c.arg("--no-summary")
             .arg("--stdout")
             .arg("--alert-encrypted=yes")
@@ -351,8 +452,17 @@ impl ClamAvEngine {
 
     fn probe(&mut self) {
         let mut v = Command::new(&self.cfg.clamscan);
+        if self.sandboxed() {
+            v.env_clear();
+            v.envs(axsafe_proc::minimal_env());
+        }
         v.arg("--version");
-        match run(v, None, &self.limits(Duration::from_secs(15))) {
+        match run_sandboxed(
+            v,
+            None,
+            &self.limits(Duration::from_secs(15)),
+            &self.cfg.sandbox,
+        ) {
             Ok(o) if o.clean_success() => {
                 // Format: "ClamAV 1.5.4" oder "ClamAV 1.5.4/27789/Fri Oct 23 09:28:02 2026"
                 let line = first_line(&o.stdout);
@@ -452,7 +562,12 @@ impl ClamAvEngine {
         // Schlägt fehl, wenn z. B. keine Signaturdatenbank vorhanden ist.
         let mut c = self.base_command();
         c.arg("-");
-        match run(c, Some(Vec::new()), &self.limits(Duration::from_secs(120))) {
+        match run_sandboxed(
+            c,
+            Some(Vec::new()),
+            &self.limits(Duration::from_secs(120)),
+            &self.cfg.sandbox,
+        ) {
             Ok(o) if o.clean_success() => self.health = EngineHealth::Ready,
             Ok(o) if o.timed_out => self
                 .unavailable("Funktionstest: Zeitüberschreitung beim Laden der Datenbank".into()),
@@ -613,19 +728,7 @@ impl Engine for ClamAvEngine {
             content_kind: self.content_kind,
             content_note: self.content_note.clone(),
             inspects_contents_of: VERIFIED_CONTENT_FORMATS.to_vec(),
-            isolation: axsafe_core::engine::Isolation {
-                kind: axsafe_core::engine::IsolationKind::ChildProcess,
-                // Grenzen (Zeit, Speicher, Prozessbaum) ja, Rechtebeschränkung nein.
-                enforced: false,
-                detail: if cfg!(windows) {
-                    "eigener Prozess im Job Object (Zeit, Speicher, Prozessbaum begrenzt), \
-                     aber mit den Rechten des Benutzers"
-                } else {
-                    "eigener Prozess in eigener Prozessgruppe (Zeit, Speicher begrenzt), \
-                     aber mit den Rechten des Benutzers"
-                }
-                .into(),
-            },
+            isolation: self.isolation(),
         }
     }
 
@@ -641,7 +744,12 @@ impl Engine for ClamAvEngine {
         }
         let mut c = self.base_command();
         c.arg("-");
-        match run(c, Some(input.data.to_vec()), &self.limits(input.timeout)) {
+        match run_sandboxed(
+            c,
+            Some(input.data.to_vec()),
+            &self.limits(input.timeout),
+            &self.cfg.sandbox,
+        ) {
             Ok(r) => self.interpret(&r, start, input.timeout),
             Err(e) => self.failed(
                 start,

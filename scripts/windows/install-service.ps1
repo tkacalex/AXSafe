@@ -27,7 +27,8 @@ $DataDir = Join-Path $env:ProgramData 'AXSafe\Service'
 New-Item -ItemType Directory -Force -Path $EvidenceDir | Out-Null
 $Report = Join-Path $EvidenceDir ("dienst-installation-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.txt')
 function Log([string]$m) { $l = "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $m; Write-Host $l; Add-Content $Report $l -Encoding UTF8 }
-function Sc([string[]]$a) {
+# Nicht 'Sc' nennen: In Windows PowerShell 5.1 ist sc ein Alias für Set-Content.
+function Invoke-ScExe([string[]]$a) {
     $out = & sc.exe @a 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { throw "sc.exe $($a -join ' ') fehlgeschlagen ($LASTEXITCODE): $out" }
     Log ("sc " + ($a -join ' ') + ": OK")
@@ -43,7 +44,7 @@ $existing = Get-Service -Name $Name -ErrorAction SilentlyContinue
 if ($existing) {
     Log "Vorhandener Dienst $Name ($($existing.Status)) wird ersetzt."
     if ($existing.Status -ne 'Stopped') { Stop-Service -Name $Name -Force; (Get-Service $Name).WaitForStatus('Stopped', '00:00:30') }
-    Sc @('delete', $Name)
+    Invoke-ScExe @('delete', $Name)
     Start-Sleep -Seconds 2
 }
 
@@ -54,11 +55,11 @@ Copy-Item -Recurse $RulesDir (Join-Path $InstallDir 'rules')
 Log "Programmdateien nach $InstallDir kopiert."
 
 $exe = Join-Path $InstallDir 'axsafe-service.exe'
-Sc @('create', $Name, 'binPath=', "`"$exe`" run", 'start=', 'auto', 'obj=', 'NT AUTHORITY\LocalService', 'DisplayName=', 'AXSafe Scan-Dienst')
-Sc @('description', $Name, 'AXSafe (Vorversion): prüft Dateien auf Anforderung mit den Rechten des Auftraggebers. Kein Echtzeitschutz.')
-Sc @('sidtype', $Name, 'unrestricted')
-Sc @('privs', $Name, 'SeChangeNotifyPrivilege/SeImpersonatePrivilege')
-Sc @('failure', $Name, 'reset=', '86400', 'actions=', 'restart/5000/restart/30000//0')
+Invoke-ScExe @('create', $Name, 'binPath=', "`"$exe`" run", 'start=', 'auto', 'obj=', 'NT AUTHORITY\LocalService', 'DisplayName=', 'AXSafe Scan-Dienst')
+Invoke-ScExe @('description', $Name, 'AXSafe (Vorversion): prüft Dateien auf Anforderung mit den Rechten des Auftraggebers. Kein Echtzeitschutz.')
+Invoke-ScExe @('sidtype', $Name, 'unrestricted')
+Invoke-ScExe @('privs', $Name, 'SeChangeNotifyPrivilege/SeImpersonatePrivilege')
+Invoke-ScExe @('failure', $Name, 'reset=', '86400', 'actions=', 'restart/5000/restart/30000//0')
 
 New-Item -ItemType Directory -Force -Path (Join-Path $DataDir 'reports'), (Join-Path $DataDir 'logs') | Out-Null
 & icacls.exe $DataDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' "NT SERVICE\${Name}:(OI)(CI)M" | Out-Null

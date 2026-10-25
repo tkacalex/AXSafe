@@ -224,3 +224,83 @@ public sealed class ClientTests : IDisposable
         Assert.Empty(ReportValidator.Validate(r, Guid.Parse(r.JobId), new[] { "/d" }, 4));
     }
 }
+
+/// <summary>Protokoll axsafe.ipc/1 auf Client-Seite (plattformneutral).</summary>
+public sealed class ServiceProtocolTests
+{
+    [Fact]
+    public void Request_frame_has_length_prefix_and_no_identity_fields()
+    {
+        var frame = ServiceClient.Encode(7, "0123456789abcdef0123456789abcdef", ServiceClient.ScanStart(new[] { @"C:\x" }, true));
+        var len = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(frame);
+        Assert.Equal(frame.Length - 4, (int)len);
+        var json = System.Text.Encoding.UTF8.GetString(frame, 4, frame.Length - 4);
+        Assert.Contains("\"protocol\":\"axsafe.ipc/1\"", json);
+        Assert.Contains("\"seq\":7", json);
+        Assert.Contains("\"type\":\"scan_start\"", json);
+        foreach (var forbidden in new[] { "sid", "session", "pid", "user" })
+            Assert.DoesNotContain(forbidden, json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Oversized_response_length_is_rejected_before_allocation()
+    {
+        var bytes = new byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, ServiceClient.MaxResponseBytes + 1);
+        await Assert.ThrowsAsync<InvalidDataException>(() => ServiceClient.ReadResponseAsync(new MemoryStream(bytes), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Probe_without_service_never_reports_ready()
+    {
+        if (Environment.GetEnvironmentVariable("AXSAFE_SERVICE_TEST") == "1") return; // Dienst läuft absichtlich (Dienst-Job)
+        var s = await ServiceClient.ProbeAsync(CancellationToken.None, 500);
+        Assert.NotEqual(ServiceState.Bereit, s.State);
+        Assert.False(string.IsNullOrEmpty(s.Detail));
+    }
+}
+
+/// <summary>
+/// Gegen den echten Dienst (nur im Windows-Dienst-Job, Filter Kategorie=Dienst).
+/// Scheitert laut, wenn der Dienst fehlt.
+/// </summary>
+[Trait("Kategorie", "Dienst")]
+public sealed class LiveServiceTests
+{
+    [Fact]
+    public async Task Status_scan_and_report_through_real_service()
+    {
+        var s = await ServiceClient.ProbeAsync(CancellationToken.None, 5000);
+        Assert.True(s.State is ServiceState.Bereit or ServiceState.Startet, $"{s.State}: {s.Detail}");
+        var dir = Path.Combine(Path.GetTempPath(), "axsafe-dienst-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "brief.txt"), "harmlos");
+        try
+        {
+            Assert.True(OperatingSystem.IsWindows(), "Dienst-Tests nur unter Windows");
+#pragma warning disable CA1416
+            using var c = ServiceClient.Connect(5000);
+#pragma warning restore CA1416
+            var r = await c.CallAsync(ServiceClient.ScanStart(new[] { dir }, false), CancellationToken.None);
+            Assert.True(r["ok"]!.GetValue<bool>(), r.ToJsonString());
+            var job = (string)r["result"]!["job_id"]!;
+            string state;
+            var t = DateTime.UtcNow;
+            do
+            {
+                await Task.Delay(200);
+                var j = await c.CallAsync(ServiceClient.Job(job), CancellationToken.None);
+                state = (string)j["result"]!["state"]!;
+            } while (state is "queued" or "running" && DateTime.UtcNow - t < TimeSpan.FromMinutes(2));
+            Assert.Equal("finished", state);
+            var rep = await c.CallAsync(ServiceClient.Report(job), CancellationToken.None);
+            var report = rep["result"]!["report"]!.Deserialize<ScanReport>()!;
+            Assert.Equal(job, report.JobId);
+            Assert.Equal("no_detection", report.Outcome);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+}

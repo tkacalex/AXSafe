@@ -89,7 +89,7 @@ jobs:
       - name: Tests
         run: cargo test --workspace --locked
       - name: CLI bauen
-        run: cargo build --release --locked -p axsafe-cli
+        run: cargo build --release --locked -p axsafe-cli -p axsafe-service
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: ui/global.json

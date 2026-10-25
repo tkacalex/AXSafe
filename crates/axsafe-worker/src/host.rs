@@ -68,34 +68,7 @@ pub fn memory_for(max_scan_bytes: u64) -> u64 {
 /// AppContainer-Profil des Scanworkers.
 pub const APPCONTAINER_PROFILE: &str = "AXSafe.ScanWorker.v1";
 
-/// Minimale Umgebung: unter Windows nur Systempfade, die der Start eines
-/// AppContainer-Prozesses benötigt (ohne `LOCALAPPDATA`/`USERPROFILE`
-/// scheitert CreateProcess mit Fehler 203; auf dem Windows-Runner
-/// beobachtet), sonst leer. Zugangsdaten, Token o. Ä. aus der Umgebung des
-/// Benutzers werden nie weitergegeben.
-pub fn minimal_env() -> Vec<(String, String)> {
-    if cfg!(windows) {
-        let mut v = Vec::new();
-        for (k, default) in [
-            ("SystemRoot", r"C:\Windows"),
-            ("SystemDrive", "C:"),
-            ("windir", r"C:\Windows"),
-            ("USERPROFILE", ""),
-            ("LOCALAPPDATA", ""),
-            ("TEMP", ""),
-            ("TMP", ""),
-        ] {
-            match std::env::var(k) {
-                Ok(val) => v.push((k.to_string(), val)),
-                Err(_) if !default.is_empty() => v.push((k.to_string(), default.to_string())),
-                Err(_) => {}
-            }
-        }
-        v
-    } else {
-        Vec::new()
-    }
-}
+pub use axsafe_proc::minimal_env;
 
 impl WorkerConfig {
     pub fn new(worker_exe: PathBuf, rules: Result<Vec<RuleSource>, String>) -> Self {

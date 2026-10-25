@@ -7,8 +7,11 @@ $ErrorActionPreference = 'Stop'
 
 # CLI in Unterordner: Windows unterscheidet axsafe.exe und AXSafe.exe nicht.
 New-Item -ItemType Directory "$Dist/cli/rules" -Force | Out-Null
-Copy-Item target/release/axsafe.exe, target/release/axsafe-worker.exe "$Dist/cli/"
+Copy-Item target/release/axsafe.exe, target/release/axsafe-worker.exe, target/release/axsafe-service.exe "$Dist/cli/"
 Copy-Item -Recurse rules/* "$Dist/cli/rules/"
+# Einrichtungsskripte (Dienst, ClamAV) – laufen nur nach ausdrücklicher UAC-Bestätigung.
+New-Item -ItemType Directory "$Dist/scripts/windows" -Force | Out-Null
+Copy-Item scripts/windows/*.ps1, scripts/windows/*.cmd, scripts/windows/*.asc "$Dist/scripts/windows/"
 if (-not (Test-Path "$Dist/AXSafe.dll")) { throw "Oberfläche fehlt im Paket" }
 Copy-Item README.md, CHANGELOG.md, SECURITY.md $Dist
 Get-ChildItem *.pdb -Path $Dist -Recurse | Remove-Item
