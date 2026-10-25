@@ -1,0 +1,549 @@
+{
+  "schema": "axsafe.clamav-messung/1",
+  "axsafe_version": "0.2.0",
+  "os": "windows x86_64",
+  "cpus": 4,
+  "files": 31,
+  "total_bytes": 7041709,
+  "per_file_timeout_s": 120,
+  "modes": [
+    {
+      "mode": "clamscan je Objekt",
+      "engine_ready": true,
+      "engine_detail": "offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\\ProgramData\\AXSafe\\ClamAV\\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\\last-update.json",
+      "engine_version": "ClamAV 1.5.4",
+      "content_version": "main-63/daily-28164/bytecode-339",
+      "start_ms": 10724,
+      "first_scan_ms": 10640.625,
+      "followup_scans_ms": [
+        10682.19,
+        10660.815,
+        10718.669,
+        10725.202,
+        10724.063,
+        10701.469,
+        10707.172,
+        10797.573,
+        10770.275,
+        10740.594,
+        10849.563,
+        10666.866,
+        10734.585,
+        10716.425,
+        10686.632,
+        10711.016,
+        10750.917,
+        11005.695,
+        10725.973,
+        10754.107,
+        10760.836,
+        10858.02,
+        11208.865,
+        10879.381,
+        10752.423,
+        10864.831,
+        10791.679,
+        10711.513,
+        10752.856,
+        10756.942
+      ],
+      "followup_mean_ms": 10772.238233333332,
+      "followup_median_ms": 10750.917,
+      "total_ms": 344532,
+      "peak_memory_bytes": 1042255872,
+      "peak_memory_source": "Job Object PeakJobMemoryUsed: größter clamscan-Lauf",
+      "results": [
+        {
+          "file": "00.txt",
+          "bytes": 937,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "01.html",
+          "bytes": 2092,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "02.json",
+          "bytes": 4145,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "03.zip",
+          "bytes": 2306,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "04.bin",
+          "bytes": 16384,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "05.txt",
+          "bytes": 30254,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "06.html",
+          "bytes": 72644,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "07.json",
+          "bytes": 132782,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "08.zip",
+          "bytes": 66178,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "09.bin",
+          "bytes": 524288,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "10.txt",
+          "bytes": 970449,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "11.html",
+          "bytes": 2510356,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "12.json",
+          "bytes": 1045,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "13.zip",
+          "bytes": 754,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "14.bin",
+          "bytes": 4096,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "15.txt",
+          "bytes": 7577,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "16.html",
+          "bytes": 17348,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "17.json",
+          "bytes": 33274,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "18.zip",
+          "bytes": 16725,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "19.bin",
+          "bytes": 131072,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "20.txt",
+          "bytes": 242549,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "21.html",
+          "bytes": 611508,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "22.json",
+          "bytes": 1062537,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "23.zip",
+          "bytes": 527737,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "24.bin",
+          "bytes": 1024,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "25.txt",
+          "bytes": 1883,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "26.html",
+          "bytes": 4268,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "27.json",
+          "bytes": 8295,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "28.zip",
+          "bytes": 4366,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "29.bin",
+          "bytes": 32768,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "99-eicar.com",
+          "bytes": 68,
+          "verdict": "Malicious",
+          "detections": [
+            "Eicar-Test-Signature"
+          ],
+          "gaps": []
+        }
+      ]
+    },
+    {
+      "mode": "dauerhaft (axsafe-clamav-worker)",
+      "engine_ready": true,
+      "engine_detail": "offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\\ProgramData\\AXSafe\\ClamAV\\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\\last-update.json; dauerhaft geladen im ClamAV-Worker (3628192 Signaturen, Laden 9850 ms, Worker-Start Nr. 1); Worker-Starts 1, Neustarts 0",
+      "engine_version": "ClamAV 1.5.4",
+      "content_version": "main-63/daily-28164/bytecode-339",
+      "start_ms": 9865,
+      "first_scan_ms": 16.176,
+      "followup_scans_ms": [
+        12.709,
+        15.111,
+        46.674,
+        18.32,
+        18.404,
+        16.836,
+        23.344,
+        110.173,
+        51.731,
+        93.808,
+        142.118,
+        15.424,
+        39.599,
+        15.74,
+        15.14,
+        13.282,
+        16.854,
+        59.301,
+        28.354,
+        35.192,
+        44.57,
+        83.219,
+        569.841,
+        15.971,
+        15.387,
+        13.295,
+        16.27,
+        48.457,
+        20.055,
+        4.659
+      ],
+      "followup_mean_ms": 53.99460000000001,
+      "followup_median_ms": 20.055,
+      "total_ms": 11501,
+      "peak_memory_bytes": 1041723392,
+      "peak_memory_source": "Job Object PeakJobMemoryUsed des Workers",
+      "results": [
+        {
+          "file": "00.txt",
+          "bytes": 937,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "01.html",
+          "bytes": 2092,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "02.json",
+          "bytes": 4145,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "03.zip",
+          "bytes": 2306,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "04.bin",
+          "bytes": 16384,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "05.txt",
+          "bytes": 30254,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "06.html",
+          "bytes": 72644,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "07.json",
+          "bytes": 132782,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "08.zip",
+          "bytes": 66178,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "09.bin",
+          "bytes": 524288,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "10.txt",
+          "bytes": 970449,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "11.html",
+          "bytes": 2510356,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "12.json",
+          "bytes": 1045,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "13.zip",
+          "bytes": 754,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "14.bin",
+          "bytes": 4096,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "15.txt",
+          "bytes": 7577,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "16.html",
+          "bytes": 17348,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "17.json",
+          "bytes": 33274,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "18.zip",
+          "bytes": 16725,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "19.bin",
+          "bytes": 131072,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "20.txt",
+          "bytes": 242549,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "21.html",
+          "bytes": 611508,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "22.json",
+          "bytes": 1062537,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "23.zip",
+          "bytes": 527737,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "24.bin",
+          "bytes": 1024,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "25.txt",
+          "bytes": 1883,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "26.html",
+          "bytes": 4268,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "27.json",
+          "bytes": 8295,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "28.zip",
+          "bytes": 4366,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "29.bin",
+          "bytes": 32768,
+          "verdict": "NoDetection",
+          "detections": [],
+          "gaps": []
+        },
+        {
+          "file": "99-eicar.com",
+          "bytes": 68,
+          "verdict": "Malicious",
+          "detections": [
+            "Eicar-Test-Signature"
+          ],
+          "gaps": []
+        }
+      ]
+    }
+  ],
+  "results_identical": true,
+  "differences": [],
+  "speedup_total": 29.95669941744196,
+  "note": "Einmalige Messung auf diesem Rechner; Werte hängen von Hardware, Datenbankgröße und Dateimenge ab und sind keine Zusage."
+}

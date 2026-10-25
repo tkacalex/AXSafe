@@ -1,0 +1,73 @@
+# B-18: Windows-Nachweise (CI-Lauf 40208650884, Commit 849f00b, windows-latest = Windows Server, KEIN LTSC-Nachweis)
+
+## Vorher/Nachher-Messung (identische 31 Dateien, offizielle Signaturen)
+ClamAV-Messung: 31 Dateien, 7041709 Bytes, windows x86_64 (4 CPUs)
+
+clamscan je Objekt:
+  Engine: bereit – offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\ProgramData\AXSafe\ClamAV\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\last-update.json
+  Stand: ClamAV 1.5.4 / main-63/daily-28164/bytecode-339
+  Start (Datenbank laden): 10724 ms
+  Erster Scan: 10640.6 ms
+  Folgescans: 30 Stück, Mittel 10772.24 ms, Median 10750.92 ms
+  Gesamt: 344532 ms
+  Speicherspitze: 994.0 MiB (Job Object PeakJobMemoryUsed: größter clamscan-Lauf)
+
+dauerhaft (axsafe-clamav-worker):
+  Engine: bereit – offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\ProgramData\AXSafe\ClamAV\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\last-update.json; dauerhaft geladen im ClamAV-Worker (3628192 Signaturen, Laden 9850 ms, Worker-Start Nr. 1); Worker-Starts 1, Neustarts 0
+  Stand: ClamAV 1.5.4 / main-63/daily-28164/bytecode-339
+  Start (Datenbank laden): 9865 ms
+  Erster Scan: 16.2 ms
+  Folgescans: 30 Stück, Mittel 53.99 ms, Median 20.05 ms
+  Gesamt: 11501 ms
+  Speicherspitze: 993.5 MiB (Job Object PeakJobMemoryUsed des Workers)
+
+Ergebnisse je Datei: identisch
+Gesamtdauer clamscan / dauerhaft: 30.0
+
+## Dienst + dauerhafte Engine + offizielle Signaturen (scripts/ci/service_clamav_e2e.ps1)
+[16:09:33] Defender-Echtzeitschutz auf dem Runner: False
+[16:09:50] OK   dienst_sieht_clamav: Dienst-Sicht: clamav ready / official_signatures / main-63/daily-28164/bytecode-339 / isoliert=True
+[16:09:54] OK   ausgefuehrt_vom_dienst: executed_by: {"kind":"dienst","name":"AXSafeService","account":"NT AUTHORITY\\LOCAL SERVICE","process_id":8328,"client":"runnervmdaln5\\runneradmin","client_session":2}
+[16:09:54] OK   auftrag_clamav_offiziell: Auftrag: clamav ready official_signatures main-63/daily-28164/bytecode-339
+[16:09:54] OK   harmlos_ohne_fund: brief.txt: clamav NoDetection, Lücken 0
+[16:09:54] OK   eicar_durch_clamav: eicar.com: clamav Malicious (Eicar-Test-Signature), Inhalt main-63/daily-28164/bytecode-339
+[16:09:54] OK   keine_luecken: outcome detection, complete True, Auftragslücken 0, Objekte mit Lücke 0
+[16:09:54] OK   dauerhaft_geladen: Auftrag: offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\ProgramData\AXSafe\ClamAV\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\last-update.json; dauerhaft geladen im ClamAV-Worker (3628192 Signaturen, Laden 9891 ms, Worker-Start Nr. 1) / eingeschränktes Token (geprüft im Worker): keine Privilegien, Integritätsstufe Niedrig, nur Arbeitsordner beschreibbar; Job Object (1 Prozess, Speicher- und Zeitgrenze). Netzwerk: ausgehende Firewall-Sperrregel der Einrichtung, nicht durch das Token; Probe: 4 von 5 Aktionen verweigert; erlaubt: TCP-Verbindung 127.0.0.1:53872 (Loopback-TCP sperrt das Token nicht; ausgehende Verbindungen sperrt die Firewall-Regel)
+[16:09:54] OK   worker_ohne_netz: Firewall-Sperrregel für C:\Program Files\AXSafe\service\axsafe-clamav-worker.exe: AXSafe: ClamAV-Worker (Dienst) ohne Netzwerk
+[16:09:54] ClamAV-Dauer je Datei im ersten Auftrag (ms): 15, 4
+[16:09:58] OK   parallel_eigene_ergebnisse: A: no_detection 15 Dateien; B: detection 16 Dateien, ClamAV-Fund nur in eicar-b.com
+[16:09:58] OK   datenbank_einmal_geladen: Worker-Start Nr.: erster Auftrag 1, parallel A 1, B 1
+[16:09:58] ClamAV-Dauer je Datei, Auftrag A (ms): 198, 14, 14, 14, 14, 14, 14, 15, 14, 14, 14, 14, 15, 14, 14
+[16:10:01] OK   abbruch: Bericht: cancelled=True, complete=False, outcome=incomplete, geprüft 0 von 200
+[16:10:05] OK   nach_abbruch_weiter: eicar.com nach Abbruch: clamav Malicious 4 ms
+[16:10:05] OK   dienstprotokoll: Protokoll: 2026-10-25T16:09:54.011Z Auftrag eb7f5403-3602-4b14-aaa8-4ff4f20a8011 für runnervmdaln5\runneradmin: Ergebnis Detection, vollständig=true, Objekte 2, Funde 1, Lücken 0 | Engines: yara-x 1.22.0 Ready inhalt=rules-sha256:6c65b01e1aa5ff32 isoliert=true; clamav ClamAV 1.5.4 Ready inhalt=main-63/daily-28164/bytecode-339 isoliert=true | Engine-Ergebnisse: {"clamav=Malicious": 1, "clamav=NoDetection": 1, "yara-x=Malicious": 1, "yara-x=NoDetection": 1} | Lückengründe: {}
+[16:10:05] 13 Prüfungen, 0 fehlgeschlagen
+
+## Einrichtung (setup-clamav.ps1), Auszug
+[15:59:41] OK   firewall_regel_clamav_worker: Regel 'AXSafe: ClamAV-Worker ohne Netzwerk': ausgehend gesperrt für D:\a\AXSafe\AXSafe\target\release\axsafe-clamav-worker.exe
+[15:59:54] OK   e_axsafe: axsafe engines (dauerhaft): clamav=ready official_signatures main-63/daily-28164/bytecode-339 – offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\ProgramData\AXSafe\ClamAV\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\last-update.json; dauerhaft geladen im ClamAV-Worker (3628192 Signaturen, Laden 9871 ms, Worker-Start Nr. 1) 
+[15:59:54] OK   e_axsafe_abschottung: ClamAV-Worker-Isolation: sandboxed_worker / eingeschränktes Token (geprüft im Worker): keine Privilegien, Integritätsstufe Niedrig, nur Arbeitsordner beschreibbar; Job Object (1 Prozess, Speicher- und Zeitgrenze). Netzwerk: ausgehende Firewall-Sperrregel der Einrichtung, nicht durch das Token; Probe: 6 von 7 Aktionen verweigert; erlaubt: TCP-Verbindung 127.0.0.1:53491 (Loopback-TCP sperrt das Token nicht; ausgehende Verbindungen sperrt die Firewall-Regel)
+[16:00:08] OK   e_axsafe_clamscan: axsafe engines (clamscan je Objekt): clamav=ready main-63/daily-28164/bytecode-339 / Eingeschränktes Token (Token vor dem Start geprüft): keine Privilegien, Integritätsstufe Niedrig, kein Zugriff auf Dateien, die nur der Benutzer lesen darf; schreiben nur im eigenen Arbeitsordner; Job Object (Zeit, Speicher, Prozessbaum). Netzwerk über diese Abschottung NICHT gesperrt (ausgehende Firewall-Sperrregel durch die Einrichtung). AppContainer nicht möglich: ClamAV 1.5 kann dort seinen Zertifikatsordner nicht auflösen
+[16:00:10] OK   netzsperre_wirksam: Ziel database.clamav.net:443 – ohne Regel: verbunden mit 104.18.203.90:443 | mit gleich gebauter Regel: An attempt was made to access a socket in a way forbidden by its access permissions. (os error 10013)
+[16:00:10] Fertig: 30 Prüfungen, 0 fehlgeschlagen. Bericht: D:\a\AXSafe\AXSafe\clamav-nachweis\clamav-setup-20261025-155814.txt
+[16:01:05] OK   firewall_regel_clamav_worker: Regel 'AXSafe: ClamAV-Worker ohne Netzwerk': ausgehend gesperrt für D:\a\AXSafe\AXSafe\target\release\axsafe-clamav-worker.exe
+[16:01:19] OK   e_axsafe: axsafe engines (dauerhaft): clamav=ready official_signatures main-63/daily-28164/bytecode-339 – offizielle ClamAV-Signaturen: main 63 (3287027 Signaturen, 16 Dec 2025 23-18 +0000); daily 28164 (355788 Signaturen, 25 Oct 2026 06-24 +0000); bytecode 339 (80 Signaturen, 11 Sep 2025 08-29 -0400); Pfad C:\ProgramData\AXSafe\ClamAV\database. Aktualisierung über FreshClam (geplanter Auftrag), Stand siehe state\last-update.json; dauerhaft geladen im ClamAV-Worker (3628192 Signaturen, Laden 10269 ms, Worker-Start Nr. 1) 
+[16:01:19] OK   e_axsafe_abschottung: ClamAV-Worker-Isolation: sandboxed_worker / eingeschränktes Token (geprüft im Worker): keine Privilegien, Integritätsstufe Niedrig, nur Arbeitsordner beschreibbar; Job Object (1 Prozess, Speicher- und Zeitgrenze). Netzwerk: ausgehende Firewall-Sperrregel der Einrichtung, nicht durch das Token; Probe: 6 von 7 Aktionen verweigert; erlaubt: TCP-Verbindung 127.0.0.1:53534 (Loopback-TCP sperrt das Token nicht; ausgehende Verbindungen sperrt die Firewall-Regel)
+[16:01:32] OK   e_axsafe_clamscan: axsafe engines (clamscan je Objekt): clamav=ready main-63/daily-28164/bytecode-339 / Eingeschränktes Token (Token vor dem Start geprüft): keine Privilegien, Integritätsstufe Niedrig, kein Zugriff auf Dateien, die nur der Benutzer lesen darf; schreiben nur im eigenen Arbeitsordner; Job Object (Zeit, Speicher, Prozessbaum). Netzwerk über diese Abschottung NICHT gesperrt (ausgehende Firewall-Sperrregel durch die Einrichtung). AppContainer nicht möglich: ClamAV 1.5 kann dort seinen Zertifikatsordner nicht auflösen
+[16:01:35] OK   netzsperre_wirksam: Ziel database.clamav.net:443 – ohne Regel: verbunden mit 104.18.203.90:443 | mit gleich gebauter Regel: An attempt was made to access a socket in a way forbidden by its access permissions. (os error 10013)
+[16:01:35] Fertig: 27 Prüfungen, 0 fehlgeschlagen. Bericht: D:\a\AXSafe\AXSafe\clamav-nachweis\clamav-setup-20261025-160011.txt
+
+## Worker-Tests mit echter libclamav unter Windows
+test broken_database_is_unavailable_never_clean ... ok
+test crash_is_a_gap_and_worker_restarts ... ok
+test loads_once_and_scans_many_objects ... ok
+test missing_library_is_unavailable_never_clean ... ok
+test object_size_limit_is_a_gap ... ok
+test parallel_jobs_get_their_own_results ... ok
+test repeated_failures_disable_the_engine ... ok
+test signature_update_becomes_active_only_after_successful_load ... ok
+test idle_worker_is_stopped_and_restarted_on_demand ... ok
+test hanging_engine_times_out_and_is_replaced ... ok
+test full_queue_is_a_visible_gap ... ok
+test worker_with_mismatching_official_db_version_is_rejected ... ok
+test repeated_crashes_disable_engine_instead_of_looping ... ok
