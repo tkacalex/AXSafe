@@ -4,7 +4,7 @@
 //!   ([`JobSpec::access`], Windows-Impersonation).
 //! * Typerkennung und YARA-X laufen im abgeschotteten Worker; der Dienst
 //!   parst keine Dateiinhalte.
-//! * ClamAV läuft – wenn beauftragt – im AppContainer (siehe
+//! * ClamAV läuft – wenn beauftragt – mit eingeschränktem Token (siehe
 //!   axsafe-engine-clamav); scheitert die Abschottung, ist ClamAV nicht
 //!   verfügbar (Lücke), nie unbeschränkt.
 

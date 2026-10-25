@@ -373,9 +373,93 @@ fn worker_gets_only_explicit_environment() {
 /// welcher Schritt scheitert (Öffnen oder Endpfad-Abfrage) – Ausgabe im Log.
 /// Er prüft nur, dass die Messung im AppContainer lief.
 #[cfg(windows)]
+fn run_diag(args: &[String], sandbox: &axsafe_proc::Sandbox) -> axsafe_proc::RunOutcome {
+    use axsafe_proc::{run_sandboxed, Limits};
+    let mut c = std::process::Command::new(helper());
+    c.args(args);
+    c.env_clear();
+    for (k, v) in axsafe_proc::minimal_env() {
+        c.env(k, v);
+    }
+    run_sandboxed(
+        c,
+        None,
+        &Limits {
+            timeout: Duration::from_secs(30),
+            ..Limits::default()
+        },
+        sandbox,
+    )
+    .expect("Start mit Rechtebeschränkung")
+}
+
+/// Eingeschränktes Token (Sandbox::Restricted, für ClamAV): Eine Datei im
+/// Benutzerprofil darf nicht lesbar sein, Anlegen im Benutzer-Temp nicht
+/// möglich; der Pfad des ClamAV-Zertifikatsordners muss auflösbar sein.
+/// Netzwerk wird gemessen und ausgegeben (diese Abschottung sperrt es nicht).
+#[cfg(windows)]
+#[test]
+fn restricted_token_denies_user_files_and_writes() {
+    use axsafe_proc::Sandbox;
+    let dir = tempfile::tempdir().expect("Temp");
+    let secret = dir.path().join("nur-fuer-den-benutzer.txt");
+    std::fs::write(&secret, b"nicht lesbar fuer die Engine").unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let out = run_diag(
+        &[
+            "diag-zugriff".into(),
+            secret.display().to_string(),
+            dir.path().display().to_string(),
+            port,
+        ],
+        &Sandbox::Restricted,
+    );
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    println!(
+        "--- eingeschränktes Token ---\n{text}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        text.contains("lesen") && text.contains("verweigert"),
+        "{text} {out:?}"
+    );
+    assert!(
+        text.lines()
+            .any(|l| l.starts_with("lesen ") && l.ends_with("verweigert")),
+        "Benutzerdatei lesbar: {text}"
+    );
+    assert!(
+        text.lines()
+            .any(|l| l.starts_with("anlegen ") && l.ends_with("verweigert")),
+        "Schreiben im Benutzer-Temp möglich: {text}"
+    );
+    assert!(!dir.path().join("axsafe-zugriffsprobe.tmp").exists());
+}
+
+#[cfg(windows)]
 #[test]
 fn appcontainer_path_resolution_is_measured() {
     use axsafe_proc::{run_sandboxed, Limits, Sandbox};
+    let pf0 = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
+    let r = run_diag(
+        &["diag-pfad".into(), format!(r"{pf0}\ClamAV\certs")],
+        &Sandbox::Restricted,
+    );
+    let rtext = String::from_utf8_lossy(&r.stdout).to_string();
+    println!(
+        "--- Messung mit eingeschränktem Token ---\n{rtext}\n{}",
+        String::from_utf8_lossy(&r.stderr)
+    );
+    // ClamAV braucht genau diese Auflösung; mit eingeschränktem Token muss sie gelingen.
+    if std::path::Path::new(&format!(r"{pf0}\ClamAV\certs")).is_dir() {
+        assert!(
+            rtext
+                .lines()
+                .any(|l| l.starts_with("canonicalize ") && l.contains(": Ok(")),
+            "Zertifikatsordner mit eingeschränktem Token nicht auflösbar: {rtext}"
+        );
+    }
     let mut c = std::process::Command::new(helper());
     c.arg("diag-pfad");
     let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());

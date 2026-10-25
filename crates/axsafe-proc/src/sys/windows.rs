@@ -184,6 +184,10 @@ impl Contained {
         match sandbox {
             Sandbox::None => Self::spawn(cmd, limits),
             Sandbox::AppContainer { profile } => spawn_appcontainer(cmd, limits, profile),
+            Sandbox::Restricted => {
+                let token = restricted_low_token()?;
+                spawn_isolated(cmd, limits, Isolation::Restricted(token))
+            }
         }
     }
 
@@ -446,6 +450,10 @@ fn grant_read_execute(path: &OsStr, sid: &Sid) -> io::Result<()> {
 /// Fügt der DACL von `path` einen Erlaubt-Eintrag für die AppContainer-SID
 /// hinzu (vorhandene Einträge bleiben).
 fn grant_access(path: &OsStr, sid: &Sid, mask: u32, inherit: u32) -> io::Result<()> {
+    grant_access_psid(path, sid.0, mask, inherit)
+}
+
+fn grant_access_psid(path: &OsStr, sid: PSID, mask: u32, inherit: u32) -> io::Result<()> {
     let p = wide(path);
     // SAFETY: dokumentierte Sicherheits-APIs; alle Zeiger lokal und gültig,
     // zurückgegebene Puffer werden mit LocalFree freigegeben.
@@ -474,7 +482,7 @@ fn grant_access(path: &OsStr, sid: &Sid, mask: u32, inherit: u32) -> io::Result<
                 MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
                 TrusteeForm: TRUSTEE_IS_SID,
                 TrusteeType: TRUSTEE_IS_WELL_KNOWN_GROUP,
-                ptstrName: sid.0 as *mut u16,
+                ptstrName: sid as *mut u16,
             },
         };
         let mut new: *mut ACL = std::ptr::null_mut();
@@ -628,10 +636,188 @@ fn pipe(child_end_is_read: bool) -> io::Result<(HANDLE, HANDLE)> {
     }
 }
 
+/// Art der Rechtebeschränkung eines selbst gestarteten Prozesses.
+enum Isolation {
+    AppContainer(Sid),
+    /// Eingeschränktes Primärtoken (wird nach dem Start geschlossen).
+    Restricted(Handle),
+}
+
 fn spawn_appcontainer(cmd: &Command, limits: &Limits, profile: &str) -> io::Result<Contained> {
-    let program = cmd.get_program().to_os_string();
     let sid = appcontainer_sid(profile)?;
-    let grant = grant_read_execute(&program, &sid);
+    spawn_isolated(cmd, limits, Isolation::AppContainer(sid))
+}
+
+/// Well-known SID als eigener Puffer.
+fn well_known_sid(kind: i32) -> io::Result<Vec<u8>> {
+    use windows_sys::Win32::Security::CreateWellKnownSid;
+    let mut buf = vec![0u8; 68];
+    let mut len = buf.len() as u32;
+    // SAFETY: Puffer groß genug für jede SID (SECURITY_MAX_SID_SIZE = 68).
+    if unsafe {
+        CreateWellKnownSid(
+            kind,
+            std::ptr::null_mut(),
+            buf.as_mut_ptr() as PSID,
+            &mut len,
+        )
+    } == 0
+    {
+        return Err(last_err("CreateWellKnownSid"));
+    }
+    buf.truncate(len as usize);
+    Ok(buf)
+}
+
+/// Eingeschränktes Primärtoken: keine Privilegien (außer SeChangeNotify),
+/// Einschränkungs-SIDs RESTRICTED, Jeder, Benutzer, Anmelde-SID;
+/// Integritätsstufe Niedrig.
+fn restricted_low_token() -> io::Result<Handle> {
+    use windows_sys::Win32::Security::{
+        CreateRestrictedToken, GetLengthSid, GetTokenInformation, SetTokenInformation, TokenGroups,
+        TokenIntegrityLevel, WinBuiltinUsersSid, WinLowLabelSid, WinRestrictedCodeSid, WinWorldSid,
+        DISABLE_MAX_PRIVILEGE, SID_AND_ATTRIBUTES, TOKEN_ADJUST_DEFAULT, TOKEN_ASSIGN_PRIMARY,
+        TOKEN_DUPLICATE, TOKEN_GROUPS, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+    // winnt.h; in windows-sys unter SystemServices (Feature nicht aktiviert).
+    const SE_GROUP_INTEGRITY: u32 = 0x0000_0020;
+    const SE_GROUP_LOGON_ID: u32 = 0xC000_0000;
+    // SAFETY: dokumentierte Token-APIs; alle Puffer leben bis nach den Aufrufen.
+    unsafe {
+        let mut own: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(
+            GetCurrentProcess(),
+            TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT,
+            &mut own,
+        ) == 0
+        {
+            return Err(last_err("OpenProcessToken"));
+        }
+        let own = Handle(own);
+        let restricted = well_known_sid(WinRestrictedCodeSid)?;
+        let world = well_known_sid(WinWorldSid)?;
+        let users = well_known_sid(WinBuiltinUsersSid)?;
+        let mut sids = vec![
+            SID_AND_ATTRIBUTES {
+                Sid: restricted.as_ptr() as PSID,
+                Attributes: 0,
+            },
+            SID_AND_ATTRIBUTES {
+                Sid: world.as_ptr() as PSID,
+                Attributes: 0,
+            },
+            SID_AND_ATTRIBUTES {
+                Sid: users.as_ptr() as PSID,
+                Attributes: 0,
+            },
+        ];
+        // Anmelde-SID (Fensterstation/Desktop), falls vorhanden.
+        let mut len = 0u32;
+        GetTokenInformation(own.0, TokenGroups, std::ptr::null_mut(), 0, &mut len);
+        let mut gbuf = vec![0u64; (len as usize).div_ceil(8).max(1)];
+        if GetTokenInformation(own.0, TokenGroups, gbuf.as_mut_ptr() as _, len, &mut len) != 0 {
+            let groups = &*(gbuf.as_ptr() as *const TOKEN_GROUPS);
+            let list =
+                std::slice::from_raw_parts(groups.Groups.as_ptr(), groups.GroupCount as usize);
+            if let Some(g) = list
+                .iter()
+                .find(|g| g.Attributes & SE_GROUP_LOGON_ID == SE_GROUP_LOGON_ID)
+            {
+                sids.push(SID_AND_ATTRIBUTES {
+                    Sid: g.Sid,
+                    Attributes: 0,
+                });
+            }
+        }
+        let mut tok: HANDLE = std::ptr::null_mut();
+        if CreateRestrictedToken(
+            own.0,
+            DISABLE_MAX_PRIVILEGE,
+            0,
+            std::ptr::null(),
+            0,
+            std::ptr::null(),
+            sids.len() as u32,
+            sids.as_ptr(),
+            &mut tok,
+        ) == 0
+        {
+            return Err(last_err("CreateRestrictedToken"));
+        }
+        let tok = Handle(tok);
+        let low = well_known_sid(WinLowLabelSid)?;
+        let tml = TOKEN_MANDATORY_LABEL {
+            Label: SID_AND_ATTRIBUTES {
+                Sid: low.as_ptr() as PSID,
+                Attributes: SE_GROUP_INTEGRITY,
+            },
+        };
+        if SetTokenInformation(
+            tok.0,
+            TokenIntegrityLevel,
+            &tml as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<TOKEN_MANDATORY_LABEL>() as u32
+                + GetLengthSid(low.as_ptr() as PSID),
+        ) == 0
+        {
+            return Err(last_err("SetTokenInformation(TokenIntegrityLevel)"));
+        }
+        Ok(tok)
+    }
+}
+
+/// Prüft vor dem Fortsetzen: eingeschränktes Token mit Integritätsstufe Niedrig.
+fn verify_restricted_token(process: HANDLE) -> io::Result<()> {
+    use windows_sys::Win32::Security::{
+        GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, IsTokenRestricted,
+        TokenIntegrityLevel, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::System::Threading::OpenProcessToken;
+    // SAFETY: gültiges Prozess-Handle; Puffer lokal.
+    unsafe {
+        let mut tok: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(process, TOKEN_QUERY, &mut tok) == 0 {
+            return Err(last_err("OpenProcessToken"));
+        }
+        let _g = Handle(tok);
+        if IsTokenRestricted(tok) == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "gestarteter Prozess hat KEIN eingeschränktes Token",
+            ));
+        }
+        let mut buf = vec![0u64; 16];
+        let mut len = 0u32;
+        if GetTokenInformation(
+            tok,
+            TokenIntegrityLevel,
+            buf.as_mut_ptr() as _,
+            (buf.len() * 8) as u32,
+            &mut len,
+        ) == 0
+        {
+            return Err(last_err("GetTokenInformation(TokenIntegrityLevel)"));
+        }
+        let tml = &*(buf.as_ptr() as *const TOKEN_MANDATORY_LABEL);
+        let n = *GetSidSubAuthorityCount(tml.Label.Sid);
+        let rid = *GetSidSubAuthority(tml.Label.Sid, u32::from(n) - 1);
+        if rid > 0x1000 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("Integritätsstufe 0x{rid:X} statt Niedrig (0x1000)"),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn spawn_isolated(cmd: &Command, limits: &Limits, iso: Isolation) -> io::Result<Contained> {
+    let program = cmd.get_program().to_os_string();
+    let grant = match &iso {
+        Isolation::AppContainer(sid) => grant_read_execute(&program, sid),
+        Isolation::Restricted(_) => Ok(()),
+    };
 
     let mut cmdline: Vec<u16> = Vec::new();
     quote_arg(&program, &mut cmdline);
@@ -707,23 +893,25 @@ fn spawn_appcontainer(cmd: &Command, limits: &Limits, profile: &str) -> io::Resu
                 }
             }
             let _list_guard = List(list);
-            let caps = SECURITY_CAPABILITIES {
-                AppContainerSid: sid.0,
-                Capabilities: std::ptr::null_mut(),
-                CapabilityCount: 0,
-                Reserved: 0,
-            };
-            if UpdateProcThreadAttribute(
-                list,
-                0,
-                PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
-                &caps as *const _ as *const core::ffi::c_void,
-                std::mem::size_of::<SECURITY_CAPABILITIES>(),
-                std::ptr::null_mut(),
-                std::ptr::null(),
-            ) == 0
-            {
-                return Err(last_err("UpdateProcThreadAttribute(SECURITY_CAPABILITIES)"));
+            if let Isolation::AppContainer(sid) = &iso {
+                let caps = SECURITY_CAPABILITIES {
+                    AppContainerSid: sid.0,
+                    Capabilities: std::ptr::null_mut(),
+                    CapabilityCount: 0,
+                    Reserved: 0,
+                };
+                if UpdateProcThreadAttribute(
+                    list,
+                    0,
+                    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
+                    &caps as *const _ as *const core::ffi::c_void,
+                    std::mem::size_of::<SECURITY_CAPABILITIES>(),
+                    std::ptr::null_mut(),
+                    std::ptr::null(),
+                ) == 0
+                {
+                    return Err(last_err("UpdateProcThreadAttribute(SECURITY_CAPABILITIES)"));
+                }
             }
             // Nur genau die drei Pipe-Enden vererben.
             let inherit = [in_child, out_child, err_child];
@@ -751,27 +939,50 @@ fn spawn_appcontainer(cmd: &Command, limits: &Limits, profile: &str) -> io::Resu
             let mut last = io::Error::other("CreateProcessW nicht aufgerufen");
             // Kurzer Wiederholversuch, falls das AppContainer-Profil gerade
             // erst sichtbar wird (ERROR_FILE_NOT_FOUND/PATH_NOT_FOUND).
+            let flags = EXTENDED_STARTUPINFO_PRESENT
+                | CREATE_SUSPENDED
+                | DETACHED_PROCESS
+                | CREATE_UNICODE_ENVIRONMENT;
             for attempt in 0..5 {
-                if CreateProcessW(
-                    app.as_ptr(),
-                    cmdline.as_mut_ptr(),
-                    std::ptr::null(),
-                    std::ptr::null(),
-                    1,
-                    EXTENDED_STARTUPINFO_PRESENT
-                        | CREATE_SUSPENDED
-                        | DETACHED_PROCESS
-                        | CREATE_UNICODE_ENVIRONMENT,
-                    env_block.as_ptr() as *const core::ffi::c_void,
-                    cwd.as_ptr(),
-                    &si.StartupInfo,
-                    &mut pi,
-                ) != 0
-                {
+                let ok = match &iso {
+                    Isolation::AppContainer(_) => CreateProcessW(
+                        app.as_ptr(),
+                        cmdline.as_mut_ptr(),
+                        std::ptr::null(),
+                        std::ptr::null(),
+                        1,
+                        flags,
+                        env_block.as_ptr() as *const core::ffi::c_void,
+                        cwd.as_ptr(),
+                        &si.StartupInfo,
+                        &mut pi,
+                    ),
+                    // Eingeschränkte Version des eigenen Tokens: dafür ist
+                    // kein SeAssignPrimaryTokenPrivilege nötig.
+                    Isolation::Restricted(tok) => {
+                        windows_sys::Win32::System::Threading::CreateProcessAsUserW(
+                            tok.0,
+                            app.as_ptr(),
+                            cmdline.as_mut_ptr(),
+                            std::ptr::null(),
+                            std::ptr::null(),
+                            1,
+                            flags,
+                            env_block.as_ptr() as *const core::ffi::c_void,
+                            cwd.as_ptr(),
+                            &si.StartupInfo,
+                            &mut pi,
+                        )
+                    }
+                };
+                if ok != 0 {
                     created = true;
                     break;
                 }
-                last = last_err("CreateProcessW (AppContainer)");
+                last = last_err(match &iso {
+                    Isolation::AppContainer(_) => "CreateProcessW (AppContainer)",
+                    Isolation::Restricted(_) => "CreateProcessAsUserW (eingeschränktes Token)",
+                });
                 if !matches!(last.raw_os_error(), Some(2) | Some(3)) || attempt == 4 {
                     break;
                 }
@@ -796,7 +1007,11 @@ fn spawn_appcontainer(cmd: &Command, limits: &Limits, profile: &str) -> io::Resu
                 return Err(e);
             }
             // Token VOR dem ersten Befehl des Prozesses prüfen.
-            if let Err(e) = verify_appcontainer_token(pi.hProcess) {
+            let verified = match &iso {
+                Isolation::AppContainer(_) => verify_appcontainer_token(pi.hProcess),
+                Isolation::Restricted(_) => verify_restricted_token(pi.hProcess),
+            };
+            if let Err(e) = verified {
                 TerminateJobObject(job, 1);
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
@@ -863,4 +1078,82 @@ fn resume_process_threads(pid: u32) -> io::Result<usize> {
         }
         Ok(resumed)
     }
+}
+
+/// Arbeitsordner für einen Prozess mit [`Sandbox::Restricted`]: Der Ordner
+/// wird angelegt, bekommt Ändern-Rechte für die SID RESTRICTED (nur dieser
+/// Ordner, vererbt an seinen Inhalt) und die Integritätsstufe Niedrig. Alle
+/// anderen Orte bleiben für den eingeschränkten Prozess schreibgeschützt.
+pub fn restricted_work_dir(dir: &std::path::Path) -> io::Result<()> {
+    use windows_sys::Win32::Security::Authorization::SetNamedSecurityInfoW as SetSec;
+    use windows_sys::Win32::Security::{
+        AddMandatoryAce, InitializeAcl, WinLowLabelSid, WinRestrictedCodeSid, ACL_REVISION,
+        CONTAINER_INHERIT_ACE, LABEL_SECURITY_INFORMATION, OBJECT_INHERIT_ACE,
+    };
+    use windows_sys::Win32::Storage::FileSystem::{DELETE, FILE_GENERIC_WRITE};
+    const SYSTEM_MANDATORY_LABEL_NO_WRITE_UP: u32 = 0x1;
+    std::fs::create_dir_all(dir)?;
+    let restricted = well_known_sid(WinRestrictedCodeSid)?;
+    grant_access_psid(
+        dir.as_os_str(),
+        restricted.as_ptr() as PSID,
+        FILE_GENERIC_READ | FILE_GENERIC_EXECUTE | FILE_GENERIC_WRITE | DELETE,
+        CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE,
+    )
+    .map_err(|e| io::Error::new(e.kind(), format!("Rechte für RESTRICTED: {e}")))?;
+    let low = well_known_sid(WinLowLabelSid)?;
+    let mut acl = vec![0u64; 32];
+    let p = wide(dir.as_os_str());
+    // SAFETY: ACL-Puffer (256 Bytes) reicht für einen Label-Eintrag.
+    unsafe {
+        let acl_ptr = acl.as_mut_ptr() as *mut ACL;
+        if InitializeAcl(acl_ptr, (acl.len() * 8) as u32, ACL_REVISION) == 0 {
+            return Err(last_err("InitializeAcl"));
+        }
+        if AddMandatoryAce(
+            acl_ptr,
+            ACL_REVISION,
+            CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE,
+            SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+            low.as_ptr() as PSID,
+        ) == 0
+        {
+            return Err(last_err("AddMandatoryAce"));
+        }
+        let rc = SetSec(
+            p.as_ptr(),
+            SE_FILE_OBJECT,
+            LABEL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            acl_ptr,
+        );
+        if rc != 0 {
+            return Err(io::Error::new(
+                io::Error::from_raw_os_error(rc as i32).kind(),
+                format!(
+                    "Integritätsstufe Niedrig setzen: {}",
+                    io::Error::from_raw_os_error(rc as i32)
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Gibt Prozessen mit [`Sandbox::Restricted`] Lesezugriff auf einen Ordner
+/// samt Inhalt (Eintrag für die SID RESTRICTED). Gelingt nur, wenn der
+/// Aufrufer die Rechte des Ordners ändern darf.
+pub fn restricted_grant_read(dir: &std::path::Path) -> io::Result<()> {
+    use windows_sys::Win32::Security::{
+        WinRestrictedCodeSid, CONTAINER_INHERIT_ACE, OBJECT_INHERIT_ACE,
+    };
+    let restricted = well_known_sid(WinRestrictedCodeSid)?;
+    grant_access_psid(
+        dir.as_os_str(),
+        restricted.as_ptr() as PSID,
+        FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+        CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE,
+    )
 }

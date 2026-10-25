@@ -13,8 +13,9 @@
 //!   nie aus Nachrichtenfeldern.
 //! * **Dateizugriff** per Impersonation; scheitert sie, wird nicht mit
 //!   Dienstrechten gelesen, sondern eine Lücke gemeldet.
-//! * **Typerkennung und YARA-X** im abgeschotteten Worker, **ClamAV** im
-//!   AppContainer – der Dienst selbst parst keine Dateiinhalte.
+//! * **Typerkennung und YARA-X** im abgeschotteten Worker (AppContainer),
+//!   **ClamAV** mit eingeschränktem Token (Integrität Niedrig) – der Dienst
+//!   selbst parst keine Dateiinhalte.
 //! * **Grenzen:** Nachrichten, Leerlauf, langsame Übertragung, Anfragerate,
 //!   Wiederholungen, parallele und wartende Aufträge.
 

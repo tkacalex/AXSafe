@@ -62,7 +62,7 @@ struct EngineArgs {
     /// Eigene ClamAV-Datenbank (Datei oder Ordner); Standard: ClamAV-Standard
     #[arg(long)]
     clamav_db: Option<PathBuf>,
-    /// ClamAV AUSDRÜCKLICH ohne AppContainer starten (nur zur Fehlersuche;
+    /// ClamAV AUSDRÜCKLICH ohne Rechtebeschränkung starten (nur zur Fehlersuche;
     /// wird in der Isolationsangabe sichtbar ausgewiesen)
     #[arg(long)]
     clamav_ohne_abschottung: bool,

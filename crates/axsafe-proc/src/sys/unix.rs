@@ -60,9 +60,9 @@ impl Contained {
     ) -> io::Result<Self> {
         match sandbox {
             Sandbox::None => Self::spawn(cmd, limits),
-            Sandbox::AppContainer { .. } => Err(io::Error::new(
+            Sandbox::AppContainer { .. } | Sandbox::Restricted => Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "AppContainer gibt es nur unter Windows",
+                "AppContainer und eingeschränkte Tokens gibt es nur unter Windows",
             )),
         }
     }

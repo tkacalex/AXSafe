@@ -40,10 +40,7 @@ param(
     [string]$Version = '1.5.4',
     [string]$MsiSha256 = 'a025fa23a4b9d64fce448d5a211afcf30dc26ba6528186e6223d1b945f9d95d6',
     [string]$TalosFingerprint = '5BADCA2665EF59DCF8A23D8B707F0DB480836771',
-    [switch]$SkipFileEicar,
-    # AppContainer, in dem AXSafe clamscan startet; bekommt NUR Leserecht auf
-    # die Signaturdatenbank.
-    [string]$ClamAvAppContainer = 'AXSafe.ClamAV.v1'
+    [switch]$SkipFileEicar
 )
 
 Set-StrictMode -Version 2.0
@@ -228,31 +225,34 @@ try {
     }
     Check 'datenordner_acl' ($weak.Count -eq 0) $(if ($weak) { 'Schreibrechte für Benutzer: ' + ($weak -join '; ') } else { "${DataRoot}: nur SYSTEM/Administratoren schreiben, Benutzer lesen" })
 
-    # Leserecht für den AppContainer von AXSafe (nur Datenbankordner).
-    Add-Type -Namespace AXSafeSetup -Name Ac -MemberDefinition @'
-[DllImport("userenv.dll", CharSet = CharSet.Unicode)]
-public static extern int DeriveAppContainerSidFromAppContainerName(string name, out IntPtr sid);
-[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-public static extern bool ConvertSidToStringSid(IntPtr sid, out string str);
-[DllImport("advapi32.dll")]
-public static extern IntPtr FreeSid(IntPtr sid);
-'@ -ErrorAction SilentlyContinue
-    $acPtr = [IntPtr]::Zero
-    $hr = [AXSafeSetup.Ac]::DeriveAppContainerSidFromAppContainerName($ClamAvAppContainer, [ref]$acPtr)
-    if ($hr -ne 0) { throw ("AppContainer-SID nicht ableitbar (HRESULT 0x{0:X8})" -f $hr) }
-    $acSid = $null
-    [void][AXSafeSetup.Ac]::ConvertSidToStringSid($acPtr, [ref]$acSid)
-    [void][AXSafeSetup.Ac]::FreeSid($acPtr)
-    & icacls.exe $DbDir /grant "*${acSid}:(OI)(CI)RX" | Out-Null
-    $hasAc = ((& icacls.exe $DbDir) -join ' ') -match [regex]::Escape($acSid)
-    Check 'appcontainer_leserecht' $hasAc "AppContainer $ClamAvAppContainer ($acSid): Lesen/Ausführen auf $DbDir"
-    # ClamAV 1.5 prüft Datenbanksignaturen mit Zertifikaten aus <Programm>\certs
-    # und löst den Pfad dafür auf. Im AppContainer gemessen: "Access is denied".
-    # Gezielt nur Lesen für diese AppContainer-SID auf den Programmordner.
-    Log ("ACL vorher " + $InstallDir + ': ' + ((& icacls.exe $InstallDir) -join ' | '))
-    & icacls.exe $InstallDir /grant "*${acSid}:(OI)(CI)RX" | Out-Null
-    $hasAcProg = ((& icacls.exe (Join-Path $InstallDir 'certs')) -join ' ') -match [regex]::Escape($acSid)
-    Check 'appcontainer_leserecht_programm' $hasAcProg "AppContainer ${ClamAvAppContainer}: Lesen/Ausführen auf $InstallDir (inkl. certs)"
+    # AXSafe startet clamscan mit eingeschränktem Token (Integrität Niedrig,
+    # Einschränkungs-SIDs RESTRICTED/Jeder/Benutzer). Ein AppContainer ist für
+    # ClamAV 1.5 nicht möglich (Zertifikatsordner nicht auflösbar, in CI
+    # gemessen). Lesen genügt über "Benutzer: Lesen" auf Programm- und
+    # Datenbankordner – keine zusätzlichen Rechte.
+    # Frühere Einrichtungen gaben einem AppContainer Leserecht; das wird
+    # nicht mehr gebraucht und entfernt.
+    $acSid = 'S-1-15-2-437281945-175377220-1217961313-1461987920-2239197068-1208018344-3536562919'
+    foreach ($d in $DbDir, $InstallDir) {
+        if (((& icacls.exe $d) -join ' ') -match [regex]::Escape($acSid)) {
+            & icacls.exe $d /remove:g "*$acSid" | Out-Null
+            Log "Nicht mehr benötigtes AppContainer-Leserecht entfernt: $d"
+        }
+    }
+    $usersRead = { param($dir) @((Get-Acl $dir).Access | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-32-545' -and (($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::ReadAndExecute) -eq [Security.AccessControl.FileSystemRights]::ReadAndExecute) }).Count -gt 0 }
+    Check 'eingeschraenkt_lesbar' ((& $usersRead $DbDir) -and (& $usersRead (Join-Path $InstallDir 'certs'))) "Benutzer (und damit das eingeschränkte Token) lesen $DbDir und $InstallDir\certs"
+
+    # Netzwerk: Das eingeschränkte Token sperrt kein Netzwerk. Ausgehende
+    # Verbindungen von clamscan.exe sperrt eine eigene Firewall-Regel
+    # (freshclam.exe ist ein anderes Programm und bleibt erlaubt).
+    $fwName = 'AXSafe: clamscan ohne Netzwerk'
+    Get-NetFirewallRule -DisplayName $fwName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    New-NetFirewallRule -DisplayName $fwName -Direction Outbound -Action Block -Program $clamscan -Profile Any -Description 'AXSafe: clamscan prüft nur übergebene Daten und braucht kein Netzwerk.' | Out-Null
+    $fw = Get-NetFirewallRule -DisplayName $fwName -ErrorAction SilentlyContinue
+    $fwApp = if ($fw) { ($fw | Get-NetFirewallApplicationFilter).Program } else { '' }
+    $fwOn = (Get-NetFirewallProfile | Where-Object { -not $_.Enabled }).Count -eq 0
+    Check 'firewall_clamscan' ($fw -and $fw.Enabled -eq 'True' -and $fw.Action -eq 'Block' -and $fwApp -eq $clamscan) "Ausgehend gesperrt: $fwApp (Regel '$fwName'; Firewall-Profile alle aktiv: $fwOn)"
+    if (-not $fwOn) { Log 'WARNUNG: Mindestens ein Firewall-Profil ist ausgeschaltet – dort wirkt die Sperrregel nicht.' }
 
     # --- 5. FreshClam-Konfiguration ----------------------------------------
     if (Test-Path $ConfFile) {

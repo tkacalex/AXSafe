@@ -61,10 +61,51 @@ fn diag_paths(paths: impl Iterator<Item = String>) -> i32 {
     0
 }
 
+/// Messmodus: Was darf der Prozess? Liest eine Datei, legt eine Datei in
+/// einem Ordner an, verbindet zu einem lokalen Port. Gibt je Versuch
+/// „erlaubt“ oder „verweigert“ aus.
+fn diag_access(file: &str, dir: &str, port: &str) -> i32 {
+    let read = std::fs::read(file).map(|b| b.len());
+    println!(
+        "lesen {file}: {}",
+        if read.is_ok() {
+            "erlaubt"
+        } else {
+            "verweigert"
+        }
+    );
+    let target = std::path::Path::new(dir).join("axsafe-zugriffsprobe.tmp");
+    let write = std::fs::write(&target, b"x");
+    if write.is_ok() {
+        let _ = std::fs::remove_file(&target);
+    }
+    println!(
+        "anlegen {dir}: {}",
+        if write.is_ok() {
+            "erlaubt"
+        } else {
+            "verweigert"
+        }
+    );
+    let tcp = std::net::TcpStream::connect_timeout(
+        &format!("127.0.0.1:{port}").parse().expect("Port"),
+        std::time::Duration::from_secs(2),
+    );
+    println!(
+        "tcp 127.0.0.1:{port}: {}",
+        if tcp.is_ok() { "erlaubt" } else { "verweigert" }
+    );
+    0
+}
+
 fn main() {
     #[cfg(windows)]
     if std::env::args().nth(1).as_deref() == Some("diag-pfad") {
         std::process::exit(diag_paths(std::env::args().skip(2)));
+    }
+    if std::env::args().nth(1).as_deref() == Some("diag-zugriff") {
+        let a: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(diag_access(&a[0], &a[1], &a[2]));
     }
     let mut a = std::env::args().skip(1);
     let fault = match a.next().as_deref() {

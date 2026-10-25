@@ -32,7 +32,9 @@ mod sys;
 
 pub use session::{Session, SessionError};
 #[cfg(windows)]
-pub use sys::{appcontainer_folder, appcontainer_grant};
+pub use sys::{
+    appcontainer_folder, appcontainer_grant, restricted_grant_read, restricted_work_dir,
+};
 
 /// Minimale Umgebung für abgeschottete Kindprozesse: unter Windows nur
 /// Systempfade, die der Start eines AppContainer-Prozesses benötigt (ohne
@@ -73,6 +75,17 @@ pub enum Sandbox {
     /// Dateien. Der Profilname bestimmt die AppContainer-SID. Die Umgebung
     /// besteht NUR aus den am `Command` ausdrücklich gesetzten Variablen.
     AppContainer { profile: String },
+    /// Windows: eingeschränktes Token für fremde Programme, die im
+    /// AppContainer nicht laufen (ClamAV 1.5: Pfadauflösung des
+    /// Zertifikatsordners scheitert dort). Keine Privilegien außer
+    /// SeChangeNotify, Integritätsstufe **Niedrig** (kein Schreiben in
+    /// normale Benutzer- oder Systemorte), Einschränkungs-SIDs nur
+    /// RESTRICTED, Jeder, Benutzer und die Anmelde-SID – damit scheitert jeder
+    /// Zugriff, den nur die Benutzer-SID erlaubt (z. B. Benutzerprofil).
+    /// **Netzwerk wird dadurch NICHT gesperrt**; die Einrichtung setzt dafür
+    /// eine ausgehende Firewall-Sperrregel für das Programm.
+    /// Die Umgebung besteht NUR aus den am `Command` gesetzten Variablen.
+    Restricted,
 }
 
 /// Grenzen für einen Kindprozess.

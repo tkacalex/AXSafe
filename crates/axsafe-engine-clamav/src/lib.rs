@@ -64,14 +64,19 @@ pub struct ClamAvConfig {
     pub max_memory_bytes: u64,
     /// Höchstmenge der Ausgabe je Kanal.
     pub max_output_bytes: usize,
-    /// Rechtebeschränkung für clamscan. Windows-Standard: AppContainer
-    /// [`CLAMAV_APPCONTAINER`] ohne Fähigkeiten. `Sandbox::None` nur nach
-    /// ausdrücklicher Entscheidung (`--clamav-ohne-abschottung`), sichtbar in
-    /// der Isolationsangabe.
+    /// Rechtebeschränkung für clamscan. Windows-Standard:
+    /// [`Sandbox::Restricted`] (eingeschränktes Token, Integrität Niedrig).
+    /// AppContainer ist für ClamAV 1.5 nicht möglich: Im AppContainer
+    /// verweigert Windows `GetFinalPathNameByHandleW` mit DOS-/GUID-Namen
+    /// (gemessen in CI, Test `appcontainer_path_resolution_is_measured`),
+    /// ClamAV braucht das für seinen Zertifikatsordner. `Sandbox::None` nur
+    /// nach ausdrücklicher Entscheidung (`--clamav-ohne-abschottung`),
+    /// sichtbar in der Isolationsangabe.
     pub sandbox: Sandbox,
 }
 
-/// AppContainer-Profil für clamscan.
+/// AppContainer-Profil für clamscan (nur noch für Messungen; siehe
+/// [`ClamAvConfig::sandbox`]).
 pub const CLAMAV_APPCONTAINER: &str = "AXSafe.ClamAV.v1";
 
 /// Feste Windows-Pfade der von `scripts/windows/setup-clamav.ps1`
@@ -110,9 +115,7 @@ impl Default for ClamAvConfig {
             max_memory_bytes: 4 * 1024 * 1024 * 1024,
             max_output_bytes: 1024 * 1024,
             sandbox: if cfg!(windows) {
-                Sandbox::AppContainer {
-                    profile: CLAMAV_APPCONTAINER.into(),
-                }
+                Sandbox::Restricted
             } else {
                 Sandbox::None
             },
@@ -351,6 +354,25 @@ impl ClamAvEngine {
     /// Datenbank unter ProgramData gibt setup-clamav.ps1 frei.
     #[cfg(windows)]
     fn prepare_sandbox(&mut self) -> std::io::Result<()> {
+        if let Sandbox::Restricted = &self.cfg.sandbox {
+            // Eigener Arbeitsordner (Integritätsstufe Niedrig, nur dort
+            // schreibbar); Datenbank lesbar für RESTRICTED, falls der Ordner
+            // uns gehört (der Standardordner ist für Benutzer bereits lesbar).
+            let base = std::env::var_os("LOCALAPPDATA")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir);
+            let tmp = base.join("AXSafe").join("ClamAV-Arbeitsordner");
+            axsafe_proc::restricted_work_dir(&tmp)?;
+            self.tempdir = Some(tmp);
+            if let Some(db) = &self.cfg.database {
+                let dir = if db.is_dir() {
+                    db.clone()
+                } else {
+                    db.parent().map(|p| p.to_path_buf()).unwrap_or_default()
+                };
+                let _ = axsafe_proc::restricted_grant_read(&dir);
+            }
+        }
         if let Sandbox::AppContainer { profile } = &self.cfg.sandbox {
             let tmp = axsafe_proc::appcontainer_folder(profile)?.join("Temp");
             std::fs::create_dir_all(&tmp)?;
@@ -391,6 +413,23 @@ impl ClamAvEngine {
                 enforced: false,
                 detail: format!("AppContainer {profile} vorgesehen, Start nicht gelungen"),
             },
+            (Sandbox::Restricted, EngineHealth::Ready) => Isolation {
+                kind: IsolationKind::SandboxedWorker,
+                enforced: true,
+                detail: "Eingeschränktes Token (Token vor dem Start geprüft): keine Privilegien, \
+                         Integritätsstufe Niedrig, kein Zugriff auf Dateien, die nur der \
+                         Benutzer lesen darf; schreiben nur im eigenen Arbeitsordner; Job Object \
+                         (Zeit, Speicher, Prozessbaum). Netzwerk über diese Abschottung NICHT \
+                         gesperrt (ausgehende Firewall-Sperrregel durch die Einrichtung). \
+                         AppContainer nicht möglich: ClamAV 1.5 kann dort seinen \
+                         Zertifikatsordner nicht auflösen"
+                    .into(),
+            },
+            (Sandbox::Restricted, _) => Isolation {
+                kind: IsolationKind::SandboxedWorker,
+                enforced: false,
+                detail: "eingeschränktes Token vorgesehen, Start nicht gelungen".into(),
+            },
             (Sandbox::None, _) if cfg!(windows) => Isolation {
                 kind: IsolationKind::ChildProcess,
                 enforced: false,
@@ -409,7 +448,10 @@ impl ClamAvEngine {
     }
 
     fn sandboxed(&self) -> bool {
-        matches!(self.cfg.sandbox, Sandbox::AppContainer { .. })
+        matches!(
+            self.cfg.sandbox,
+            Sandbox::AppContainer { .. } | Sandbox::Restricted
+        )
     }
 
     fn base_command(&self) -> Command {
