@@ -86,12 +86,21 @@ impl JobRunner for ServiceRunner {
             process_id: std::process::id(),
             client: Some(job.owner.display.clone()),
             client_session: Some(job.owner.session_id),
+            process: own_process(),
+            client_process: job.client_process.clone(),
         });
         if let Some(log) = &self.log {
             log.line(&job_summary(&rep));
         }
         Ok(rep)
     }
+}
+
+/// Eigener Prozess (PID + Startzeit).
+pub fn own_process() -> Option<axsafe_core::report::ProcessIdentity> {
+    axsafe_proc::current_process()
+        .ok()
+        .map(|p| axsafe_core::report::ProcessIdentity::new(p.pid, p.start_unix_ns, p.image))
 }
 
 /// Konto des Dienstprozesses (USERNAME/USERDOMAIN der Prozessumgebung; beim
@@ -145,10 +154,19 @@ pub fn job_summary(rep: &ScanReport) -> String {
         .as_ref()
         .and_then(|x| x.client.clone())
         .unwrap_or_default();
+    let proc_of = |f: fn(&ExecutedBy) -> Option<&axsafe_core::report::ProcessIdentity>| {
+        rep.executed_by
+            .as_ref()
+            .and_then(f)
+            .map(|p| p.key())
+            .unwrap_or_else(|| "unbekannt".into())
+    };
     format!(
-        "Auftrag {} für {}: Ergebnis {:?}, vollständig={}, Objekte {}, Funde {}, Lücken {} | Engines: {} | Engine-Ergebnisse: {:?} | Lückengründe: {:?}",
+        "Auftrag {} für {} (Client-Prozess {}, Dienstprozess {}): Ergebnis {:?}, vollständig={}, Objekte {}, Funde {}, Lücken {} | Engines: {} | Engine-Ergebnisse: {:?} | Lückengründe: {:?}",
         rep.job_id,
         client,
+        proc_of(|x| x.client_process.as_ref()),
+        proc_of(|x| x.process.as_ref()),
         rep.outcome,
         rep.complete,
         rep.summary.objects_total,

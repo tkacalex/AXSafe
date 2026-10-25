@@ -40,6 +40,10 @@ try {
     $rep = $r.Json.result.report
     $rep | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $EvidenceDir 'dienst-clamav-bericht.json') -Encoding UTF8
     Check 'ausgefuehrt_vom_dienst' ($rep.executed_by.kind -eq 'dienst' -and $rep.executed_by.name -eq 'AXSafeService' -and $rep.executed_by.account -match 'LOCAL SERVICE') "executed_by: $($rep.executed_by | ConvertTo-Json -Compress)"
+    # AXS-016: Dienst- und Clientprozess mit PID UND Startzeit; der Dienstprozess ist der laufende AXSafeService.
+    $svcPid = (Get-CimInstance Win32_Service -Filter "Name='AXSafeService'").ProcessId
+    $sp = $rep.executed_by.process; $cp = $rep.executed_by.client_process
+    Check 'prozessidentitaet' ($sp -and $sp.pid -eq $svcPid -and $sp.started_utc -match 'Z$' -and $cp -and $cp.pid -gt 0 -and $cp.started_utc -match 'Z$' -and $cp.image -match 'axsafe\.exe$') "Dienst $($sp.pid)@$($sp.started_utc) (laufend: $svcPid), Client $($cp.pid)@$($cp.started_utc) $($cp.image)"
     $sc = $rep.scope.engines | Where-Object { $_.name -eq 'clamav' }
     Check 'auftrag_clamav_offiziell' ($sc -and $sc.health.state -eq 'ready' -and $sc.content_kind -eq 'official_signatures') "Auftrag: clamav $($sc.health.state) $($sc.content_kind) $($sc.content_version)"
     $brief = $rep.files | Where-Object { $_.path -like '*brief.txt' }

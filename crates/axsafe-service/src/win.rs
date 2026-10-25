@@ -31,8 +31,9 @@ use windows_sys::Win32::Storage::FileSystem::{
     ReadFile, WriteFile, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, PIPE_ACCESS_DUPLEX,
 };
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, ImpersonateNamedPipeClient,
-    PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
+    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeClientProcessId,
+    ImpersonateNamedPipeClient, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
+    PIPE_WAIT,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, GetCurrentThread, OpenThreadToken, ResetEvent, SetThreadToken,
@@ -470,6 +471,18 @@ pub fn run_server(
     Ok(())
 }
 
+/// PID des Pipe-Clients laut Windows plus dessen Startzeit (AXS-016).
+fn client_process(pipe: HANDLE) -> Option<axsafe_core::report::ProcessIdentity> {
+    let mut pid = 0u32;
+    // SAFETY: gültiges Pipe-Handle, Ausgabe in lokale Variable.
+    if unsafe { GetNamedPipeClientProcessId(pipe, &mut pid) } == 0 || pid == 0 {
+        return None;
+    }
+    axsafe_proc::process_start(pid)
+        .ok()
+        .map(|p| axsafe_core::report::ProcessIdentity::new(p.pid, p.start_unix_ns, p.image))
+}
+
 fn handle_client(pipe: OwnedHandle, ev: OwnedHandle, ctx: &ServiceCtx, log: &Log) -> ConnEnd {
     let ph = pipe.0;
     let mut conn = PipeConn {
@@ -483,6 +496,7 @@ fn handle_client(pipe: OwnedHandle, ev: OwnedHandle, ctx: &ServiceCtx, log: &Log
             let auth = ConnAuth {
                 identity,
                 access: Arc::new(access),
+                client_process: client_process(ph),
             };
             let end = serve(&mut conn, &auth, ctx);
             if !matches!(end, ConnEnd::ClientClosed | ConnEnd::Idle) {

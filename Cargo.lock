@@ -237,6 +237,7 @@ dependencies = [
  "axsafe-core",
  "axsafe-engine-clamav",
  "axsafe-engine-yarax",
+ "axsafe-proc",
  "axsafe-worker",
  "chrono",
  "serde",

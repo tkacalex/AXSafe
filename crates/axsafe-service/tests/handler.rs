@@ -62,6 +62,7 @@ fn connect(
         let auth = ConnAuth {
             identity: id,
             access: Arc::new(ProcessAccess),
+            client_process: None,
         };
         serve(&mut b, &auth, &ctx)
     });

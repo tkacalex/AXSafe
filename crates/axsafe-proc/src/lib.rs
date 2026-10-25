@@ -27,9 +27,11 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+mod identity;
 mod session;
 mod sys;
 
+pub use identity::{current_process, process_start, ProcessStart};
 pub use session::{Session, SessionError};
 #[cfg(unix)]
 pub use sys::children_peak_rss;

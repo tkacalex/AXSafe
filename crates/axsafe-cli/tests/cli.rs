@@ -488,3 +488,56 @@ fn engines_json_reports_health_content_and_capabilities() {
     assert_eq!(v[0]["content_kind"], "test_only");
     assert_eq!(v[0]["inspects_contents_of"].as_array().unwrap().len(), 0);
 }
+
+// ---------------------------------------------------------------------------
+// AXS-016 / T-016: Befund nachvollziehbar vom Ereignis bis zur Aktion
+// ---------------------------------------------------------------------------
+
+/// Ein Fund trägt Auftrags-ID, UTC-Zeit samt Zeitzone, ausführenden Prozess
+/// (PID UND Startzeit), Dateiidentität, Regel, Engine- und Regelversion und
+/// die ausgeführte Aktion.
+#[test]
+fn detection_is_traceable_from_event_to_action() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("daten");
+    std::fs::create_dir(&data).unwrap();
+    std::fs::write(data.join("test.txt"), eicar()).unwrap();
+    let json = dir.path().join("r.json");
+    let o = scan(
+        &[
+            "--no-clamav",
+            "--job-id",
+            "6f1d2a3b-0000-4000-8000-000000000016",
+            "--json",
+            json.to_str().unwrap(),
+        ],
+        &[&data],
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", stdout(&o));
+    let rep = report(&json);
+    assert_eq!(rep["job_id"], "6f1d2a3b-0000-4000-8000-000000000016");
+    assert!(rep["started_utc"].as_str().unwrap().ends_with('Z'));
+    let off = rep["utc_offset"].as_str().unwrap();
+    assert!(off.starts_with('+') || off.starts_with('-'), "{off}");
+    let by = &rep["executed_by"];
+    assert_eq!(by["kind"], "cli");
+    let p = &by["process"];
+    assert!(p["pid"].as_u64().unwrap() > 0, "{by}");
+    assert!(p["started_utc"].as_str().unwrap().ends_with('Z'), "{by}");
+    let f = file_entry(&rep, "test.txt");
+    assert!(f["identity"].is_object(), "Dateiidentität fehlt: {f}");
+    assert!(f["sha256"].as_str().unwrap().len() == 64);
+    assert!(f["scanned_utc"].as_str().unwrap().ends_with('Z'));
+    let e = f["engines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| !e["detections"].as_array().unwrap().is_empty())
+        .expect("Engine mit Fund");
+    assert!(!e["engine_version"].as_str().unwrap().is_empty());
+    assert!(e["content_version"].as_str().unwrap().starts_with("rules-sha256:"));
+    assert_eq!(e["detections"][0]["rule_id"], "AXS-TEST-0001");
+    assert_eq!(e["detections"][0]["name"], "AXSafe.Test.EICAR");
+    // Aktion: diese Vorversion meldet nur.
+    assert!(f["action"].is_string() || f["action"].is_object(), "{f}");
+}

@@ -61,6 +61,8 @@ pub struct JobSpec {
     pub owner: Identity,
     /// Dateizugriff mit den Rechten des Auftraggebers.
     pub access: Arc<dyn axsafe_core::scan::FileAccess>,
+    /// Prozess des Auftraggebers (PID + Startzeit), nur Nachweis.
+    pub client_process: Option<axsafe_core::report::ProcessIdentity>,
 }
 
 /// Führt einen Auftrag aus (Dienst: echte Engines mit Impersonation).
@@ -398,6 +400,7 @@ mod tests {
             use_clamav: false,
             owner: owner.clone(),
             access: Arc::new(axsafe_core::scan::ProcessAccess),
+            client_process: None,
         }
     }
 

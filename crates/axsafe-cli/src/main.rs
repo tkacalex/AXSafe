@@ -889,7 +889,23 @@ fn main() -> ExitCode {
             }
             println!("Ergebnisse:");
             let cancel = AtomicBool::new(false);
-            let rep = scanner.scan_job(job_id, &paths, &cancel, &mut Live { verbose });
+            let mut rep = scanner.scan_job(job_id, &paths, &cancel, &mut Live { verbose });
+            // Herkunft (AXS-016): dieser CLI-Prozess mit PID UND Startzeit.
+            let me = axsafe_proc::current_process().ok();
+            rep.executed_by = Some(axsafe_core::report::ExecutedBy {
+                kind: "cli".into(),
+                name: "axsafe".into(),
+                account: std::env::var("USERNAME")
+                    .or_else(|_| std::env::var("USER"))
+                    .unwrap_or_default(),
+                process_id: std::process::id(),
+                client: None,
+                client_session: None,
+                process: me.map(|p| {
+                    axsafe_core::report::ProcessIdentity::new(p.pid, p.start_unix_ns, p.image)
+                }),
+                client_process: None,
+            });
             print_summary(&rep);
             if let Some(t) = target {
                 let shown = t.path().display().to_string();

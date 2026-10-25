@@ -249,6 +249,7 @@ impl Scanner {
             policy_version: crate::POLICY_VERSION.into(),
             started_utc,
             finished_utc: now_utc(),
+            utc_offset: chrono::Local::now().format("%:z").to_string(),
             duration_ms: started.elapsed().as_millis() as u64,
             scope: ScanScope {
                 roots: roots.iter().map(|p| p.display().to_string()).collect(),

@@ -260,6 +260,10 @@ pub struct ScanReport {
     pub policy_version: String,
     pub started_utc: String,
     pub finished_utc: String,
+    /// Zeitzone des prüfenden Rechners beim Start (z. B. `+01:00`), damit die
+    /// UTC-Zeiten lokal angezeigt werden können (AXS-016).
+    #[serde(default)]
+    pub utc_offset: String,
     pub duration_ms: u64,
     pub scope: ScanScope,
     pub outcome: JobOutcome,
@@ -296,6 +300,45 @@ pub struct ExecutedBy {
     pub client: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_session: Option<u32>,
+    /// Ausführender Prozess: PID **mit Startzeit** (AXS-016; eine PID allein
+    /// kann nach Prozessende neu vergeben werden).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process: Option<ProcessIdentity>,
+    /// Prozess des Auftraggebers (Dienst: Pipe-Client laut Windows).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_process: Option<ProcessIdentity>,
+}
+
+/// Ein bestimmter Prozess: PID plus Startzeit (UTC, Mikrosekunden) und
+/// Programmpfad. Zwei Einträge bezeichnen nur dann denselben Prozess, wenn
+/// PID **und** Startzeit gleich sind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessIdentity {
+    pub pid: u32,
+    pub started_utc: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+}
+
+impl ProcessIdentity {
+    /// Aus Startzeit in Nanosekunden seit 1970.
+    pub fn new(pid: u32, start_unix_ns: i128, image: Option<String>) -> Self {
+        let secs = (start_unix_ns.div_euclid(1_000_000_000)) as i64;
+        let nanos = (start_unix_ns.rem_euclid(1_000_000_000)) as u32;
+        let started_utc = chrono::DateTime::from_timestamp(secs, nanos)
+            .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Micros, true))
+            .unwrap_or_else(|| "unbekannt".into());
+        ProcessIdentity {
+            pid,
+            started_utc,
+            image,
+        }
+    }
+
+    /// Eindeutiger Schlüssel (PID und Startzeit), z. B. für Protokollzeilen.
+    pub fn key(&self) -> String {
+        format!("{}@{}", self.pid, self.started_utc)
+    }
 }
 
 /// Höchste Fundbewertung über viele Werte.

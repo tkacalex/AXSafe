@@ -124,6 +124,9 @@ impl ServiceCtx {
 pub struct ConnAuth {
     pub identity: Identity,
     pub access: Arc<dyn FileAccess>,
+    /// Prozess des Clients (PID + Startzeit) – nur Nachweis, nie Grundlage
+    /// für Rechteentscheidungen.
+    pub client_process: Option<axsafe_core::report::ProcessIdentity>,
 }
 
 /// Warum eine Verbindung endete (Protokoll/Tests).
@@ -279,6 +282,7 @@ fn dispatch(req: &Request, auth: &ConnAuth, ctx: &ServiceCtx) -> Response {
                 use_clamav: *use_clamav,
                 owner: me.clone(),
                 access: Arc::clone(&auth.access),
+                client_process: auth.client_process.clone(),
             };
             match ctx.jobs.submit(spec) {
                 Ok(id) => Response::ok(req.seq, serde_json::json!({ "job_id": id })),
