@@ -80,6 +80,12 @@ jobs:
           grep -q "outcome=nothing_scanned" repro-befunde.txt
       - name: Dokumentation synchron (Requirements, Quellen, Fortschritt)
         run: python3 scripts/gen_docs.py --check
+      - name: Fähigkeitsmatrix synchron mit der CLI (AXS-023)
+        run: |
+          D=$(mktemp -d)
+          python3 -c "import hashlib,sys; e=b'AXSafe-Faehigkeiten'; open(sys.argv[1]+'/t.hdb','w').write(hashlib.md5(e).hexdigest()+':%d:AXSafe.Test.Matrix\\n' % len(e))" "$D"
+          target/debug/axsafe faehigkeiten --rules rules --clamav-db "$D" --json > faehigkeiten.json
+          python3 scripts/gen_capability_matrix.py faehigkeiten.json --check
       - uses: actions/upload-artifact@v4
         if: always()
         with:

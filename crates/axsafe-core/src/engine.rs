@@ -37,6 +37,9 @@ pub struct Detection {
     pub confidence: Confidence,
     /// Regel- oder Signatur-ID, sofern vorhanden.
     pub rule_id: Option<String>,
+    /// Version der Regel (AXS-022), sofern die Engine sie kennt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_version: Option<String>,
     /// Kurze, nachvollziehbare Belege (keine vollständigen Inhalte).
     pub evidence: Vec<String>,
     /// `true` für ungefährliche Funktions-Testsignaturen (z. B. EICAR).

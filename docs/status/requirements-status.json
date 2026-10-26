@@ -124,10 +124,10 @@
       "rest": "Regelsignatur (P04), produktiver Regelbestand"
     },
     "AXS-023": {
-      "status": "teilweise",
-      "where": "crates/axsafe-core/src/filetype.rs, docs/CAPABILITY-MATRIX.md",
-      "evidence": "Typ nach Inhalt; Umbenennen ändert nichts",
-      "rest": "Skriptsprachen, MSI vs. Office"
+      "status": "erfuellt",
+      "where": "crates/axsafe-core/src/filetype.rs, crates/axsafe-cli (axsafe faehigkeiten), docs/CAPABILITY-MATRIX.md",
+      "evidence": "Typ nach Inhalt: PE32/PE64/DLL/.NET, ELF, ZIP, OOXML, OLE mit Untertyp (MSI, Word, Excel, PowerPoint, sonstige), PDF, RTF, LNK, 7z, RAR, GZIP, BZIP2, XZ, TAR, CAB, WIM, ISO, UDF, VHD, VHDX, VMDK, Skripte (PowerShell, Batch, VBScript, JavaScript, HTA, Python, Shell); Umbenennen ändert nichts; Mutationstest ohne Panic/Hänger; 'erkannt' und 'Inhalt geprüft' getrennt in axsafe faehigkeiten, Fähigkeitsmatrix daraus erzeugt und in der CI auf Gleichstand geprüft",
+      "rest": "–"
     },
     "AXS-024": {
       "status": "teilweise",
@@ -244,7 +244,13 @@
     "T-023": [
       "filetype::tests::renaming_does_not_change_type",
       "filetype_uses_content_not_extension",
-      "filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic"
+      "filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic",
+      "filetype::tests::script_languages_by_content",
+      "filetype::tests::ole_subtypes_msi_vs_office",
+      "filetype::tests::disk_and_archive_containers",
+      "filetype::tests::mutated_inputs_never_panic_or_hang",
+      "filetype::tests::catalog_covers_every_kind",
+      "CI: gen_capability_matrix.py --check"
     ],
     "T-024": [
       "harmless_archives_normal_encrypted_nested",

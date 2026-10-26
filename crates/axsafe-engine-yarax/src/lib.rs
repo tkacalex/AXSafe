@@ -381,6 +381,7 @@ impl Engine for YaraXEngine {
                                 .push(format!("Bedingung der Regel {} erfüllt", rule.identifier()));
                         }
                         dets.push(Detection {
+                            rule_version: None,
                             name: meta_str(&rule, "name")
                                 .unwrap_or_else(|| rule.identifier().to_string()),
                             verdict: parse_verdict(&get("verdict")).unwrap_or(Verdict::Suspicious),

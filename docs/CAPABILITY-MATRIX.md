@@ -8,29 +8,60 @@ Typerkennung erfolgt nach Inhalt (`axsafe filetype`), nie nach Endung.
 
 **Rohbytes ≠ Inhaltsprüfung (Befund 3).** YARA-X prüft nur die Bytes der Datei, wie sie auf der Platte liegen; Inhalte von Containern werden nicht entpackt. Ein Container gilt nur dann als vollständig geprüft, wenn eine **bereite** Engine das Format **nachweislich** inhaltlich prüft und dabei weder Fehler noch Zeitüberschreitung hatte. Sonst trägt das Objekt die Lücke `content_not_inspected` (Zustand `Unsupported`). `Encrypted` wird nur gemeldet, wenn die Engine es zuverlässig feststellt (ClamAV `Heuristics.Encrypted.*`). AXSafe entpackt selbst nichts.
 
-| Format | Typerkennung | YARA-X | ClamAV-Inhaltsprüfung | Beleg | Ohne fähige Engine |
-| --- | --- | --- | --- | --- | --- |
-| PE32 / PE64 (EXE, DLL, SYS), .NET | ✅ inkl. Architektur, DLL, CLR | ✅ Rohbytes | ✅ (kein Container) | `positive_benign_and_test_only_content` | vollständig mit YARA-X |
-| Skripte (PowerShell, JS, VBS, Batch) | 🟡 nur „Text“/„Script“ (Shebang) | ✅ Rohbytes | ✅ (kein Container) | – | AMSI fehlt (P07) |
-| ZIP | ✅ | 🟡 nur Rohbytes | ✅ belegt | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
-| ZIP mit Passwort | ✅ | 🟡 nur Rohbytes | ✅ → Lücke `encrypted` | `harmless_archives_normal_encrypted_nested` | Lücke `content_not_inspected` |
-| Verschachtelte Archive | – | – | ✅ bis zur Grenze; darüber Lücke `engine_limit_exceeded` | `recursion_limit_is_reported_as_gap` | Lücke |
-| Office OOXML (docx/xlsx/pptx) | ✅ | 🟡 nur Rohbytes | ✅ belegt | `content_formats_are_backed_by_real_clamav` | Lücke |
-| Office 97–2003 / MSI (OLE CFB) | 🟡 nicht unterschieden | 🟡 nur Rohbytes | ✅ belegt | `content_formats_are_backed_by_real_clamav` | Lücke |
-| 7z | ✅ | 🟡 nur Rohbytes | ✅ belegt | `content_formats_are_backed_by_real_clamav` | Lücke |
-| GZIP | ✅ | 🟡 nur Rohbytes | ✅ belegt | `content_formats_are_backed_by_real_clamav` | Lücke |
-| CAB | ✅ | 🟡 nur Rohbytes | ✅ belegt | `content_formats_are_backed_by_real_clamav` | Lücke |
-| PDF | ✅ | 🟡 nur Rohbytes | ✅ belegt (Stream-Inhalte) | `content_formats_are_backed_by_real_clamav` | Lücke |
-| RAR | ✅ | 🟡 nur Rohbytes | ⛔ nicht belegt (abhängig von unrar in der Installation) | – | immer Lücke |
-| RTF | ✅ | 🟡 nur Rohbytes | ⛔ nicht belegt | – | immer Lücke |
-| ISO 9660 | ✅ | 🟡 nur Rohbytes | ⛔ nicht belegt | – | immer Lücke |
-| VHDX | ✅ | 🟡 nur Rohbytes | ⛔ nicht belegt | – | immer Lücke |
-| LNK | ✅ | ✅ Rohbytes | ✅ (kein Container) | – | vollständig mit YARA-X |
-| Dateien > 256 MB (Standard) | – | – | – | `size_limit_is_reported_not_clean` | Lücke `size_limit`, nie sauber |
-| Links, Junctions, Reparsepunkte | – | – | – | `symlink_is_not_followed` | Lücke `link_not_followed` |
-| Alternate Data Streams | ⛔ | ⛔ | ⛔ | – | Lücke (AXS-018) |
+Die folgende Tabelle wird aus der laufenden CLI erzeugt (`axsafe faehigkeiten --json`, CI prüft den Gleichstand). **Erkannt** heißt: Der Typ wird nach Inhalt bestimmt (Testbeleg). **Inhalt geprüft** heißt: Eine bereite Engine prüft den Inhalt dieses Formats nachweislich. Bei Containern ohne solche Engine entsteht immer die Lücke `content_not_inspected`.
 
-Belegt = Test mit echtem ClamAV 1.5.4 unter Linux; unter Windows und LTSC noch nicht ausgeführt (B-03).
+<!-- FORMATE:START (automatisch erzeugt von scripts/gen_capability_matrix.py) -->
+| Format | erkannt (Beleg) | Container | Inhalt geprüft durch | Inhaltsbeleg | ohne fähige Engine |
+| --- | --- | --- | --- | --- | --- |
+| PE32/PE64 (EXE) | ✅ `filetype::tests::pe_variants` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| PE DLL | ✅ `filetype::tests::pe_variants` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| .NET-Assembly | ✅ `filetype::tests::pe_variants` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| PE beschädigt | ✅ `filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| ELF | ✅ `filetype::tests::common_signatures` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| ZIP | ✅ `filetype::tests::common_signatures` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| Office OOXML | ✅ `filetype::tests::common_signatures` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| MSI | ✅ `filetype::tests::ole_subtypes_msi_vs_office` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| Word 97–2003 | ✅ `filetype::tests::ole_subtypes_msi_vs_office` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| Excel 97–2003 | ✅ `filetype::tests::ole_subtypes_msi_vs_office` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| PowerPoint 97–2003 | ✅ `filetype::tests::ole_subtypes_msi_vs_office` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| OLE sonstige (MSP, MST, MSG …) | ✅ `filetype::tests::ole_subtypes_msi_vs_office` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| PDF | ✅ `filetype::tests::common_signatures` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| RTF | ✅ `filetype::tests::common_signatures` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| LNK | ✅ `filetype::tests::common_signatures` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| 7z | ✅ `filetype::tests::common_signatures` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| RAR | ✅ `filetype::tests::common_signatures` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| GZIP | ✅ `filetype::tests::common_signatures` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| BZIP2 | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| XZ | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| TAR | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| CAB | ✅ `filetype::tests::common_signatures` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
+| WIM | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| ISO 9660 | ✅ `filetype::tests::common_signatures` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| UDF | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| VHD | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| VHDX | ✅ `filetype::tests::common_signatures` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| VMDK | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| PowerShell | ✅ `filetype::tests::script_languages_by_content` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| Batch | ✅ `filetype::tests::script_languages_by_content` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| VBScript | ✅ `filetype::tests::script_languages_by_content` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| JavaScript/JScript | ✅ `filetype::tests::script_languages_by_content` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| HTA | ✅ `filetype::tests::script_languages_by_content` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| Python | ✅ `filetype::tests::script_languages_by_content` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| Shell | ✅ `filetype::tests::common_signatures` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+| Text | ✅ `filetype::tests::common_signatures` | nein | yara-x, clamav | Dateibytes = Inhalt | – |
+<!-- FORMATE:END -->
+
+Weitere Fälle:
+
+| Fall | Verhalten | Beleg |
+| --- | --- | --- |
+| Datei größer als das Limit (Standard 256 MB) | Lücke `size_limit`, nie sauber | `size_limit_is_reported_not_clean` |
+| Links, Junctions, Reparsepunkte | nicht verfolgt, Lücke `link_not_followed` | `symlink_is_not_followed`, `junction_is_not_followed` (Windows) |
+| Alternate Data Streams | jeder Strom einzeln als `Datei:Strom` geprüft | `alternate_data_streams_are_scanned_separately` (Windows) |
+| Verschlüsselte Archive | Lücke `encrypted` (nur wenn die Engine es sicher feststellt) | `harmless_archives_normal_encrypted_nested` |
+| Verschachtelung über die Grenze | Lücke `engine_limit_exceeded` | `recursion_limit_is_reported_as_gap` |
+
+Belege: Linux-CI und Windows-CI mit echtem ClamAV 1.5.4; Rust-Testsuite zusätzlich auf dem Zielrechner LTSC (ohne die EICAR-auf-Platte-Tests).
 
 ## Regelbestand (Befund 7)
 

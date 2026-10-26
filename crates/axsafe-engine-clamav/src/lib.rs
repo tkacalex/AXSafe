@@ -799,6 +799,7 @@ impl ClamAvEngine {
                 verdicts.push(verdict);
                 if verdict.is_detection() {
                     out.detections.push(Detection {
+                        rule_version: None,
                         evidence: vec![format!("ClamAV-Signatur {name}")],
                         test_signature: is_test_signature(&name),
                         rule_id: Some(name.clone()),

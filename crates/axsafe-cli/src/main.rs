@@ -159,6 +159,15 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Fähigkeitsmatrix (AXS-023): welche Formate erkannt werden und welche
+    /// Engines ihren INHALT tatsächlich prüfen – getrennt ausgewiesen
+    Faehigkeiten {
+        #[command(flatten)]
+        engines: EngineArgs,
+        /// Maschinenlesbar als JSON ausgeben
+        #[arg(long)]
+        json: bool,
+    },
     /// Richtlinie und Ausnahmen anzeigen bzw. eine Datei prüfen (AXS-017)
     Richtlinie {
         /// Zu prüfende Datei (Standard: die geltende Richtlinie)
@@ -847,6 +856,67 @@ fn main() -> ExitCode {
                 axsafe_core::health::Overall::NichtBetriebsbereit => ExitCode::from(2),
                 axsafe_core::health::Overall::Unbekannt => ExitCode::from(3),
             }
+        }
+        Cmd::Faehigkeiten { engines, json } => {
+            let built = build_engines(&engines, None);
+            let infos: Vec<EngineInfo> = built.iter().map(|e| e.info()).collect();
+            let rows: Vec<serde_json::Value> = axsafe_core::filetype::catalog()
+                .into_iter()
+                .map(|k| {
+                    let ready = infos.iter().filter(|i| i.health == EngineHealth::Ready);
+                    let (inspected, note) = match k.content_format {
+                        Some(cf) => {
+                            let by: Vec<String> = ready
+                                .filter(|i| i.inspects_contents_of.contains(&cf))
+                                .map(|i| i.name.clone())
+                                .collect();
+                            let note = if by.is_empty() {
+                                "Inhalt NICHT geprüft – Lücke content_not_inspected".to_string()
+                            } else {
+                                format!("Inhalt geprüft durch {}", by.join(", "))
+                            };
+                            (by, note)
+                        }
+                        None => {
+                            let by: Vec<String> = ready.map(|i| i.name.clone()).collect();
+                            let note = format!(
+                                "kein Container: Dateibytes sind der Inhalt ({})",
+                                if by.is_empty() {
+                                    "keine Engine bereit".into()
+                                } else {
+                                    by.join(", ")
+                                }
+                            );
+                            (by, note)
+                        }
+                    };
+                    serde_json::json!({
+                        "format": k.format,
+                        "erkannt": true,
+                        "erkennung_beleg": k.detection_test,
+                        "container": k.content_format.is_some(),
+                        "inhalt_geprueft_durch": inspected,
+                        "hinweis": note,
+                    })
+                })
+                .collect();
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&rows).unwrap_or_default()
+                );
+            } else {
+                println!("{:<32} {:<9} Inhaltsprüfung", "Format", "erkannt");
+                for r in &rows {
+                    println!(
+                        "{:<32} {:<9} {}",
+                        r["format"].as_str().unwrap_or(""),
+                        "ja",
+                        r["hinweis"].as_str().unwrap_or("")
+                    );
+                }
+            }
+            ExitCode::from(0)
         }
         Cmd::Richtlinie { datei } => {
             let path = datei.unwrap_or_else(axsafe_core::policy::default_policy_path);

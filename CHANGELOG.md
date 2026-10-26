@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Neu – Phase P03, Etappe 1: Typerkennung und Fähigkeitsmatrix
+- Typerkennung nach Inhalt erweitert: Skriptsprachen (PowerShell, Batch, VBScript, JavaScript, HTA, Python, Shell), OLE-Untertypen (MSI, Word, Excel, PowerPoint 97–2003), Datenträgerabbilder (UDF, VHD, VMDK, WIM) und weitere Archive (TAR, BZIP2, XZ).
+- `axsafe faehigkeiten` zeigt je Format getrennt, ob es **erkannt** wird und welche bereite Engine seinen **Inhalt** tatsächlich prüft; die Fähigkeitsmatrix wird daraus erzeugt und in der CI auf Gleichstand geprüft.
+
 ### Neu – Phase P02 abgeschlossen (Grundsystem)
 - **Prozess-Mitigationen** für alle abgeschotteten Worker (AXS-013), beim Start gesetzt und vor dem Fortsetzen geprüft; fehlt eine, startet der Worker nicht.
 - **Betriebszustand** (AXS-019): `axsafe zustand` und der Dienststatus melden Scanner, Echtzeitsensor, Richtlinie, Definitionen (Alter der ClamAV-Signaturen), Primärschutz und Dienst getrennt. Keine oder ungültige Antwort = „Unbekannt“, nie grün. Die Oberfläche zeigt diesen Zustand (Tooltip mit allen Bestandteilen).

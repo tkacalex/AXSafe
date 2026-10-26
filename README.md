@@ -188,8 +188,8 @@ docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 <!-- STATUS:START (automatisch erzeugt von scripts/gen_docs.py) -->
 | Status | Anzahl |
 | --- | ---: |
-| ✅ erfüllt | 5 |
-| 🟢 teilweise belegt | 12 |
+| ✅ erfüllt | 6 |
+| 🟢 teilweise belegt | 11 |
 | 🔵 begonnen | 9 |
 | 📝 Entwurf | 5 |
 | ⛔ blockiert | 1 |

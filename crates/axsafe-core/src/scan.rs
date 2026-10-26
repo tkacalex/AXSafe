@@ -914,6 +914,7 @@ mod tests {
                 },
                 detections: if hit {
                     vec![Detection {
+                        rule_version: None,
                         name: "Test.Prefix".into(),
                         verdict: Verdict::Malicious,
                         severity: Severity::High,
