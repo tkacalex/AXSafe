@@ -20,7 +20,6 @@ use axsafe_core::engine::{
     ContentKind, Engine, EngineHealth, EngineInfo, EngineOutcome, Gap, GapReason, Isolation,
     IsolationKind, ScanInput,
 };
-use axsafe_core::filetype::FileKind;
 use axsafe_core::verdict::Verdict;
 use axsafe_engine_yarax::{describe_content, RuleSource, YARAX_VERSION};
 pub use axsafe_proc::Sandbox;
@@ -701,7 +700,10 @@ impl Engine for WorkerEngine {
     fn scan_and_classify(
         &self,
         input: &ScanInput<'_>,
-    ) -> (EngineOutcome, Option<Result<FileKind, String>>) {
+    ) -> (
+        EngineOutcome,
+        Option<Result<axsafe_core::engine::Classification, String>>,
+    ) {
         let mut k = None;
         let o = self.run_scan(input, &mut k);
         let k = k.unwrap_or_else(|| {
@@ -718,7 +720,7 @@ impl WorkerEngine {
     fn run_scan(
         &self,
         input: &ScanInput<'_>,
-        kind_out: &mut Option<Result<FileKind, String>>,
+        kind_out: &mut Option<Result<axsafe_core::engine::Classification, String>>,
     ) -> EngineOutcome {
         let start = Instant::now();
         let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
@@ -780,9 +782,13 @@ impl WorkerEngine {
                 Ok(ScanReply {
                     outcome: mut o,
                     file_kind,
+                    features,
                 }) if o.engine == "yara-x" => {
                     o.duration_ms = start.elapsed().as_millis() as u64;
-                    *kind_out = Some(Ok(file_kind));
+                    *kind_out = Some(Ok(axsafe_core::engine::Classification {
+                        kind: file_kind,
+                        features,
+                    }));
                     o
                 }
                 Ok(ScanReply { outcome: o, .. }) => {

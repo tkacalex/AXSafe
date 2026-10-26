@@ -22,12 +22,15 @@
 #![cfg_attr(windows, deny(unsafe_code))]
 
 pub mod engine;
+pub mod features;
 pub mod filetype;
 pub mod health;
+pub mod heuristics;
 pub mod identity;
 pub mod policy;
 pub mod report;
 pub mod scan;
+pub mod trust;
 pub mod verdict;
 
 /// Version des Berichtsschemas. Wird bei inkompatiblen Änderungen erhöht.

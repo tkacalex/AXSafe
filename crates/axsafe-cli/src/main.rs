@@ -529,6 +529,37 @@ impl Progress for Live {
                     "                  - Fund: {}{} via {}",
                     d.name, test, e.engine
                 );
+                for ev in &d.evidence {
+                    println!("                      Beleg: {ev}");
+                }
+            }
+            if self.verbose {
+                if let Some(n) = e.note.as_ref().filter(|_| e.engine == "axsafe-heuristik") {
+                    println!("                  - {n}");
+                }
+            }
+        }
+        if self.verbose {
+            if let Some(a) = &r.authenticode {
+                println!(
+                    "                  - Signatur: {}{} – {}",
+                    a.status,
+                    a.signer
+                        .as_ref()
+                        .map(|s| format!(" ({s})"))
+                        .unwrap_or_default(),
+                    a.detail
+                );
+            }
+            if let Some(o) = &r.origin {
+                println!(
+                    "                  - Herkunft: {}{}",
+                    o.zone,
+                    o.host
+                        .as_ref()
+                        .map(|h| format!(" ({h})"))
+                        .unwrap_or_default()
+                );
             }
         }
         for g in &r.gaps {

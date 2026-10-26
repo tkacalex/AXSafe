@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Neu – Phase P03, Etappe 2: Statische Merkmale und Heuristik mit Belegen
+- Berichte enthalten zusätzlich SHA-1 und MD5 (nur zum Abgleich), die **PE-Struktur** (Sektionen mit Entropie und Rechten, Importe, Overlay, Einsprungpunkt) – im Dienst im abgeschotteten Worker bestimmt –, die **Herkunft** laut Mark of the Web (nur Zone und Rechnername, keine Adressparameter) und den **Authenticode-Status** (Windows, ohne Netzabfrage).
+- Drei **Heuristiken** melden „Verdächtig“ nur bei eindeutigen Täuschungsmustern und nennen ihre Belege: Richtungssteuerzeichen im Dateinamen, doppelte Endung (z. B. `.pdf.exe`), Programm mit Dokument-Endung. Hohe Entropie, fehlende Signatur, Packer oder Internet-Herkunft sind **nie** ein Fund, nur ein Hinweis. Gutartige Gegenfälle sind getestet.
+- CLI zeigt Belege; mit `-v` auch Signatur, Herkunft und Hinweise. Die Oberfläche zeigt Belege, Signatur und Herkunft in den Details.
+
 ### Neu – Phase P03, Etappe 1: Typerkennung und Fähigkeitsmatrix
 - Typerkennung nach Inhalt erweitert: Skriptsprachen (PowerShell, Batch, VBScript, JavaScript, HTA, Python, Shell), OLE-Untertypen (MSI, Word, Excel, PowerPoint 97–2003), Datenträgerabbilder (UDF, VHD, VMDK, WIM) und weitere Archive (TAR, BZIP2, XZ).
 - `axsafe faehigkeiten` zeigt je Format getrennt, ob es **erkannt** wird und welche bereite Engine seinen **Inhalt** tatsächlich prüft; die Fähigkeitsmatrix wird daraus erzeugt und in der CI auf Gleichstand geprüft.

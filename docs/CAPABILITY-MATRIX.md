@@ -63,6 +63,20 @@ Weitere Fälle:
 
 Belege: Linux-CI und Windows-CI mit echtem ClamAV 1.5.4; Rust-Testsuite zusätzlich auf dem Zielrechner LTSC (ohne die EICAR-auf-Platte-Tests).
 
+## Statische Merkmale und Heuristik (AXS-025)
+
+| Merkmal | Wo bestimmt | Wirkung |
+| --- | --- | --- |
+| SHA-256 | Host | Identität im Bericht |
+| SHA-1, MD5 | Host | nur Abgleich mit externen Listen, nie Identitätsnachweis |
+| PE-Struktur (Sektionen, Entropie, Rechte, Importe, Overlay, Einsprungpunkt) | abgeschotteter Worker (Dienst/CLI mit Worker), sonst im Prozess | nur Hinweise |
+| Mark of the Web (`Zone.Identifier`) | Host, unter dem Zugriffswächter | Zone + Rechnername im Bericht; Hinweis bei Internet-Herkunft |
+| Authenticode (eingebettet) | Host, `WinVerifyTrust` auf dem geöffneten Handle, ohne Netz | Status + Unterzeichner im Bericht; Hinweis wenn nicht gültig. Katalogsignaturen nicht geprüft, Widerruf offline nicht erkennbar. Gültige Signatur ≠ harmlos |
+| AXS-HEUR-0001 Richtungssteuerzeichen im Namen + ausführbarer Inhalt | Host | Fund „Verdächtig“ mit Belegen |
+| AXS-HEUR-0002 Dokument-Endung vor Programm-Endung + ausführbarer Inhalt | Host | Fund „Verdächtig“ mit Belegen |
+| AXS-HEUR-0003 Dokument-/Medien-Endung, Inhalt Windows-Programm | Host | Fund „Verdächtig“ mit Belegen |
+| Hohe Entropie, fehlende Signatur, Packer-Abschnitte, keine Importe, Overlay | – | **nie ein Fund**, nur Hinweis |
+
 ## Regelbestand (Befund 7)
 
 `axsafe engines` und die Oberfläche zeigen **Bereitschaft**, **Regelbestand** und **Containerfähigkeit** getrennt:

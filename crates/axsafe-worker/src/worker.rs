@@ -164,6 +164,7 @@ pub fn worker_main_with(fault: Fault, marker: Option<std::path::PathBuf>) -> i32
                     &mut out,
                     T_RESULT,
                     &ScanReply {
+                        features: Some(axsafe_core::features::analyze(data, &file_kind)),
                         outcome: o,
                         file_kind,
                     },

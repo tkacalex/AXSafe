@@ -222,6 +222,14 @@ impl Isolation {
 }
 
 /// Vertrag für Engineadapter.
+/// Ergebnis der Klassifizierung im abgeschotteten Worker: Typ und statische
+/// Merkmale (AXS-023/025). Der aufrufende Prozess parst keine Inhalte selbst.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Classification {
+    pub kind: crate::filetype::FileKind,
+    pub features: Option<crate::features::StaticFeatures>,
+}
+
 pub trait Engine: Send + Sync {
     /// Stabile Kurzbezeichnung, z. B. `yara-x` oder `clamav`.
     fn name(&self) -> &str;
@@ -243,10 +251,7 @@ pub trait Engine: Send + Sync {
     fn scan_and_classify(
         &self,
         input: &ScanInput<'_>,
-    ) -> (
-        EngineOutcome,
-        Option<Result<crate::filetype::FileKind, String>>,
-    ) {
+    ) -> (EngineOutcome, Option<Result<Classification, String>>) {
         (self.scan(input), None)
     }
 }
@@ -269,10 +274,7 @@ impl<T: Engine + ?Sized> Engine for std::sync::Arc<T> {
     fn scan_and_classify(
         &self,
         input: &ScanInput<'_>,
-    ) -> (
-        EngineOutcome,
-        Option<Result<crate::filetype::FileKind, String>>,
-    ) {
+    ) -> (EngineOutcome, Option<Result<Classification, String>>) {
         (**self).scan_and_classify(input)
     }
 }

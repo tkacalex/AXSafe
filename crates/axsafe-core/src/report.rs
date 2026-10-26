@@ -131,6 +131,21 @@ pub struct FileResult {
     pub size: Option<u64>,
     pub sha256: Option<String>,
     pub file_kind: Option<FileKind>,
+    /// Statische Merkmale (AXS-025), im abgeschotteten Worker bestimmt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub static_features: Option<crate::features::StaticFeatures>,
+    /// Weitere Hashes nur zum Abgleich mit externen Listen (SHA-1/MD5 sind
+    /// kryptografisch gebrochen und nie Identitätsnachweis).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha1: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub md5: Option<String>,
+    /// Herkunft laut Mark of the Web (nur Zone und Rechnername).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<crate::heuristics::Origin>,
+    /// Authenticode (Windows, ohne Netzabfrage); nur für PE-Dateien.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authenticode: Option<crate::heuristics::Authenticode>,
     pub identity: Option<FileIdentity>,
     pub engines: Vec<EngineOutcome>,
     pub notes: Vec<String>,
@@ -392,6 +407,11 @@ mod tests {
             size: Some(1),
             sha256: Some("00".into()),
             file_kind: None,
+            static_features: None,
+            sha1: None,
+            md5: None,
+            origin: None,
+            authenticode: None,
             identity: None,
             engines: vec![],
             notes: vec![],

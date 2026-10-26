@@ -24,7 +24,7 @@ Stand: 26.10.2026, vor Beginn der Umsetzung. Quelle der Anforderungen: `docs/spe
 | Etappe | Inhalt | Abnahme in dieser Etappe |
 | --- | --- | --- |
 | **E1** | Typerkennung erweitern (Skripte, MSI/Office, VHD/VMDK/UDF), Fähigkeitsmatrix trennt „erkannt“ und „inhaltlich geprüft“; Mutationstests der Parser | T-023 vollständig; T-028 Teil |
-| **E2** | Statische Merkmale im Worker, Authenticode und MotW mit Benutzerrechten, Heuristik mit Belegen | T-025 |
+| **E2** | Statische Merkmale im Worker, Authenticode und MotW mit Benutzerrechten, Heuristik mit Belegen | T-025 (umgesetzt; Windows-Belege über CI) |
 | **E3** | Scanarten, Fortschritt, Fortsetzen | T-026 (ohne Quarantäne-Teil → P05) |
 | **E4** | Sicherer Cache im Dienst | T-027 |
 | **E5** | Container-Härtetests mit echter Engine | T-024 |

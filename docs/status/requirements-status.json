@@ -200,6 +200,12 @@
       "where": "crates/axsafe-service (jobs.rs, log.rs), scripts/windows/install-service.ps1",
       "evidence": "Dienstdaten nur SYSTEM/Administratoren/Dienst (Standardbenutzer: Lesen verweigert, Windows-E2E); Richtlinie nur Administratoren; Protokoll mit Rotation, Längengrenze, geschwärzten Geheimnis-Werten; Berichte mit Aufbewahrungsgrenze; beschädigter Bericht kontrolliert gemeldet, Dienst arbeitet weiter",
       "rest": "Schlüssel und Quarantänemetadaten entstehen erst in P04/P05"
+    },
+    "AXS-025": {
+      "status": "teilweise",
+      "where": "crates/axsafe-core/src/features.rs, heuristics.rs, trust.rs, scan.rs; Worker-Protokoll (Merkmale im abgeschotteten Worker)",
+      "evidence": "SHA-256 sowie SHA-1/MD5 (nur Abgleich); PE-Struktur (Sektionen mit Entropie und Rechten, Importe begrenzt, Overlay, Einsprungpunkt, Sicherheitsverzeichnis) im abgeschotteten Worker, Abschneide- und Bitfehlertest ohne Panic; Mark of the Web aus Zone.Identifier (Zone und Rechnername, keine Adressparameter oder Zugangsdaten); Authenticode über WinVerifyTrust auf dem geöffneten Handle ohne Netz und ohne Oberfläche (gültig/unsigniert/manipuliert/…); Heuristiken AXS-HEUR-0001..0003 (Richtungssteuerzeichen, doppelte Endung, Programm mit Dokumentendung) nur mit Belegen; gutartige Gegenfälle (Versionsnummern im Namen, .tar.gz, Unicode-Namen, unsigniert, gepackt, hohe Entropie, Internet-Herkunft) ergeben nachweislich keinen Fund, nur Hinweise",
+      "rest": "Windows-Belege (signierte Systemdatei gültig, manipulierte Kopie erkannt, MotW-Datenstrom) erst nach grüner Windows-CI; Katalogsignaturen von Windows-Systemdateien werden nicht geprüft (als 'unsigniert – Katalogsignatur nicht geprüft' ausgewiesen); Widerruf ohne Netz nicht erkennbar; .NET-Metadaten und Skriptsignaturen nicht ausgewertet"
     }
   },
   "tests": {
@@ -311,6 +317,13 @@
       "log::tests::log_rotates_at_size_limit",
       "damaged_report_is_reported_and_service_continues",
       "service_e2e.ps1 nicht_admin_dienstdaten (Windows)"
+    ],
+    "T-025": [
+      "features::tests::{entropy_bounds, pe_sections_imports_and_overlay, every_truncation_and_bitflip_is_safe, non_pe_has_only_entropy}",
+      "heuristics::tests::{deception_patterns_are_found_with_evidence, benign_counterexamples_give_no_detection, weak_signals_are_hints_never_detections, zone_identifier_parsing_is_bounded_and_strips_secrets}",
+      "trust::tests::{status_mapping_is_honest, authenticode_on_real_files (Windows), origin_from_zone_identifier_stream (Windows)}",
+      "scan::tests::heuristics_and_static_features_in_report",
+      "ClientTests.Heuristic_finding_shows_evidence_in_details (UI-Client gegen echte CLI)"
     ]
   }
 }

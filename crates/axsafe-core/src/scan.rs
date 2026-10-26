@@ -508,6 +508,11 @@ impl Scanner {
             size: None,
             sha256: None,
             file_kind: None,
+            static_features: None,
+            sha1: None,
+            md5: None,
+            origin: None,
+            authenticode: None,
             identity: None,
             engines: Vec::new(),
             notes: Vec::new(),
@@ -576,6 +581,12 @@ impl Scanner {
         {
             return fail(result, io_gap(&e, "Lesen fehlgeschlagen"));
         }
+        // Herkunft und Authenticode noch unter dem Wächter: Datenstrom bzw.
+        // derselbe Handle, nichts wird ausgeführt, kein Netzzugriff.
+        let origin = crate::trust::read_origin(path);
+        let authenticode = data
+            .starts_with(b"MZ")
+            .then(|| crate::trust::authenticode(&file, path));
         // Ab hier keine Dateizugriffe mehr über Pfade: Rechte zurückgeben,
         // bevor Engines laufen.
         drop(guard);
@@ -584,6 +595,7 @@ impl Scanner {
 
         // Dateityp: im eigenen Prozess oder (Dienst) im abgeschotteten Worker.
         let mut pre: Option<(usize, EngineOutcome)> = None;
+        let mut features = None;
         let kind = if self.classify_in_engine {
             let classifier = self
                 .engines
@@ -602,7 +614,10 @@ impl Scanner {
                     let (outcome, kind) = self.engines[idx].scan_and_classify(&input);
                     pre = Some((idx, outcome));
                     match kind {
-                        Some(Ok(k)) => k,
+                        Some(Ok(c)) => {
+                            features = c.features;
+                            c.kind
+                        }
                         Some(Err(e)) => {
                             result.gaps.push(Gap::new(
                                 Verdict::Error,
@@ -635,10 +650,18 @@ impl Scanner {
                 }
             }
         } else {
-            filetype::detect(&data)
+            let k = filetype::detect(&data);
+            features = Some(crate::features::analyze(&data, &k));
+            k
         };
         result.sha256 = Some(sha.clone());
+        {
+            use md5::Digest as _;
+            result.sha1 = Some(hex::encode(sha1::Sha1::digest(&data)));
+            result.md5 = Some(hex::encode(md5::Md5::digest(&data)));
+        }
         result.file_kind = Some(kind.clone());
+        result.static_features = features;
 
         let input = ScanInput {
             data: &data,
@@ -743,6 +766,26 @@ impl Scanner {
                  Ein Fund bezieht sich auf den gelesenen Stand.",
             ));
         }
+        // Heuristiken: Funde nur bei eindeutigen Täuschungsmustern, sonst
+        // Hinweise. Belege stehen im Fund.
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let (hdets, hints) = crate::heuristics::evaluate(
+            &name,
+            &kind,
+            result.static_features.as_ref(),
+            origin.as_ref(),
+            authenticode.as_ref(),
+        );
+        detections.extend(hdets.iter().map(|d| d.verdict));
+        result
+            .engines
+            .push(crate::heuristics::outcome(hdets, &hints));
+        result.origin = origin;
+        result.authenticode = authenticode;
+
         result.detection = highest_detection(detections);
         result.status = ObjectStatus::from_parts(result.detection, &result.gaps);
         FileOutcome::Result(Box::new(result))
@@ -760,6 +803,11 @@ fn gap_result(path: &Path, object_type: ObjectType, gap: Gap) -> FileResult {
         size: None,
         sha256: None,
         file_kind: None,
+        static_features: None,
+        sha1: None,
+        md5: None,
+        origin: None,
+        authenticode: None,
         identity: None,
         engines: Vec::new(),
         notes: Vec::new(),
@@ -939,6 +987,37 @@ mod tests {
 
     fn run(s: &Scanner, p: &Path) -> ScanReport {
         s.scan_paths(&[p.to_path_buf()], &AtomicBool::new(false), &mut NoProgress)
+    }
+
+    /// AXS-025: Heuristik-Fund mit Belegen im Bericht; gutartiges Programm
+    /// mit gleicher Struktur bleibt ohne Fund, Merkmale stehen im Bericht.
+    #[test]
+    fn heuristics_and_static_features_in_report() {
+        let dir = tempfile::tempdir().unwrap();
+        let pe = crate::features::tests::tiny_pe(0x90, 0);
+        fs::write(dir.path().join("Rechnung.pdf.exe"), &pe).unwrap();
+        fs::write(dir.path().join("werkzeug.exe"), &pe).unwrap();
+        let rep = run(&scanner(vec![Box::new(TestEngine::prefix())]), dir.path());
+        let by = |n: &str| rep.files.iter().find(|f| f.path.ends_with(n)).unwrap();
+        let bad = by("Rechnung.pdf.exe");
+        assert_eq!(bad.detection, Verdict::Suspicious, "{bad:?}");
+        let h = bad
+            .engines
+            .iter()
+            .find(|e| e.engine == crate::heuristics::HEURISTICS_ENGINE)
+            .unwrap();
+        assert_eq!(h.detections[0].rule_id.as_deref(), Some("AXS-HEUR-0002"));
+        assert!(!h.detections[0].evidence.is_empty());
+        let good = by("werkzeug.exe");
+        assert_eq!(good.detection, Verdict::NoDetection, "{good:?}");
+        let pe_f = good.static_features.as_ref().unwrap().pe.as_ref().unwrap();
+        assert!(!pe_f.sections.is_empty());
+        assert_eq!(good.sha1.as_ref().map(|h| h.len()), Some(40));
+        assert_eq!(good.md5.as_ref().map(|h| h.len()), Some(32));
+        #[cfg(not(windows))]
+        assert!(good.authenticode.as_ref().unwrap().status == "nicht_pruefbar");
+        #[cfg(windows)]
+        assert_eq!(good.authenticode.as_ref().unwrap().status, "unsigniert");
     }
 
     #[test]
@@ -1395,8 +1474,17 @@ mod tests {
         fn scan_and_classify(
             &self,
             input: &ScanInput<'_>,
-        ) -> (EngineOutcome, Option<Result<FileKind, String>>) {
-            (self.scan(input), Some(self.kind.clone()))
+        ) -> (
+            EngineOutcome,
+            Option<Result<crate::engine::Classification, String>>,
+        ) {
+            (
+                self.scan(input),
+                Some(self.kind.clone().map(|kind| crate::engine::Classification {
+                    kind,
+                    features: None,
+                })),
+            )
         }
     }
 
@@ -1419,7 +1507,12 @@ mod tests {
                 .any(|g| g.reason == GapReason::ContentNotInspected),
             "{f:?}"
         );
-        assert_eq!(f.engines.len(), 1, "Engine darf nur einmal prüfen");
+        let real: Vec<_> = f
+            .engines
+            .iter()
+            .filter(|e| e.engine != crate::heuristics::HEURISTICS_ENGINE)
+            .collect();
+        assert_eq!(real.len(), 1, "Engine darf nur einmal prüfen");
     }
 
     #[test]

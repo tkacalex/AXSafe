@@ -25,6 +25,7 @@ description = "AXSafe – mehrschichtiger Endpoint-Schutz für Windows (Vorversi
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 sha2 = "=0.10.9"
+sha1 = "=0.10.6"
 md-5 = "=0.10.6"
 hex = "=0.4.3"
 thiserror = "=2.0.21"
@@ -40,7 +41,7 @@ cfb = "=0.15.0"
 cab = "=0.6.0"
 sevenz-rust2 = { version = "=0.24.1", default-features = false, features = ["compress", "util"] }
 libc = "=0.2.191"
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_Security_Isolation", "Win32_Security_Authorization", "Win32_System_Pipes", "Win32_System_IO", "Win32_System_Services", "Win32_System_Com", "Win32_System_LibraryLoader"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_Security_Isolation", "Win32_Security_Authorization", "Win32_System_Pipes", "Win32_System_IO", "Win32_System_Services", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_Security_WinTrust", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip"] }
 
 [profile.release]
 lto = "thin"

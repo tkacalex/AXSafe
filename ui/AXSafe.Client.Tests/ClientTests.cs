@@ -87,6 +87,23 @@ public sealed class ClientTests : IDisposable
     }
 
     [Fact]
+    public async Task Heuristic_finding_shows_evidence_in_details()
+    {
+        // Nur ein harmloser MZ-Kopf (kein lauffähiges Programm) unter einem
+        // Doppelendungsnamen; der gutartige Gegenfall heißt normal.
+        var mz = new byte[128];
+        mz[0] = (byte)'M'; mz[1] = (byte)'Z';
+        var dir = Folder("h", ("Rechnung.pdf.exe", mz), ("werkzeug.exe", mz));
+        var r = await Client().ScanAsync(new[] { dir }, useClamav: false, CancellationToken.None);
+        Assert.True(r.Success, r.Error);
+        var bad = r.Report!.Files.Single(f => f.Path.EndsWith("Rechnung.pdf.exe"));
+        Assert.Contains("DoppelteEndung", bad.Details);
+        Assert.Contains("Beleg:", bad.Details);
+        var good = r.Report.Files.Single(f => f.Path.EndsWith("werkzeug.exe"));
+        Assert.DoesNotContain("Fund:", good.Details);
+    }
+
+    [Fact]
     public async Task Two_parallel_jobs_get_distinct_ids_and_own_reports()
     {
         var a = Folder("p1", ("x.txt", "eins"u8.ToArray()));

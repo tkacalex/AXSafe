@@ -53,6 +53,9 @@ pub struct Ready {
 pub struct ScanReply {
     pub outcome: axsafe_core::engine::EngineOutcome,
     pub file_kind: axsafe_core::filetype::FileKind,
+    /// Statische Merkmale (AXS-025), im Worker bestimmt.
+    #[serde(default)]
+    pub features: Option<axsafe_core::features::StaticFeatures>,
 }
 
 #[cfg(test)]

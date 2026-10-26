@@ -120,6 +120,8 @@ public sealed class FileResult
     [JsonPropertyName("status")] public string Status { get; set; } = "incomplete";
     [JsonPropertyName("size")] public long? Size { get; set; }
     [JsonPropertyName("engines")] public List<EngineOutcome> Engines { get; set; } = new();
+    [JsonPropertyName("origin")] public Origin? Origin { get; set; }
+    [JsonPropertyName("authenticode")] public Authenticode? Authenticode { get; set; }
 
     /// <summary>Status als Text, nie nur als Farbe (AXS-090).</summary>
     [JsonIgnore] public string StatusLabel => Texts.ObjectStatus(Status);
@@ -132,7 +134,15 @@ public sealed class FileResult
             var parts = new List<string>();
             foreach (var e in Engines)
                 foreach (var d in e.Detections)
+                {
                     parts.Add($"Fund: {d.Name}{(d.TestSignature ? " (Testsignatur)" : "")} · {e.Engine}");
+                    foreach (var ev in d.Evidence)
+                        parts.Add($"  Beleg: {ev}");
+                }
+            if (Authenticode is { } a)
+                parts.Add($"Signatur: {a.Status}{(a.Signer is null ? "" : $" ({a.Signer})")} – {a.Detail}");
+            if (Origin is { } o)
+                parts.Add($"Herkunft: {o.Zone}{(o.Host is null ? "" : $" ({o.Host})")}");
             foreach (var g in Gaps)
                 parts.Add($"Lücke: {Texts.GapReason(g.Reason)} ({g.Source}) – {g.Detail}");
             return string.Join("\n", parts);
@@ -151,6 +161,22 @@ public sealed class Detection
 {
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("test_signature")] public bool TestSignature { get; set; }
+    [JsonPropertyName("evidence")] public List<string> Evidence { get; set; } = new();
+}
+
+/// <summary>Herkunft laut Mark of the Web (nur Zone und Rechnername).</summary>
+public sealed class Origin
+{
+    [JsonPropertyName("zone")] public string Zone { get; set; } = "";
+    [JsonPropertyName("host")] public string? Host { get; set; }
+}
+
+/// <summary>Authenticode-Ergebnis; „gueltig“ ist kein Unbedenklichkeitsnachweis.</summary>
+public sealed class Authenticode
+{
+    [JsonPropertyName("status")] public string Status { get; set; } = "";
+    [JsonPropertyName("signer")] public string? Signer { get; set; }
+    [JsonPropertyName("detail")] public string Detail { get; set; } = "";
 }
 
 /// <summary>Deutsche Anzeigetexte zu Zuständen aus dem Bericht.</summary>
