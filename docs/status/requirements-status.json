@@ -72,8 +72,8 @@
     "AXS-011": {
       "status": "teilweise",
       "where": "crates/*/src, crates/axsafe-cli/tests",
-      "evidence": "Jeder Scanpfad hat Positiv-, Gutartig- und Ausfalltest; Tests mit Vorbedingung #[ignore = Grund], Linux-CI führt alle aus und duldet keine Auslassung; getrennte Zählung; Linux-CI 98 Rust + 16 C# bestanden, 0 ausgelassen; Windows Server 90 + 16 bestanden, 6 begründet ausgelassen",
-      "rest": "Windows-Integrationstests auf Windows 10 LTSC (B-02, B-10)"
+      "evidence": "Jeder Scanpfad hat Positiv-, Gutartig- und Ausfalltest; Tests mit Vorbedingung #[ignore = Grund], Linux-CI führt alle aus und duldet keine Auslassung; getrennte Zählung; Linux-CI 98 Rust + 16 C# bestanden, 0 ausgelassen; Windows Server 90 + 16 bestanden, 6 begründet ausgelassen; Rust-Testsuite auf dem Zielrechner Windows 10 LTSC 19044 (Benutzer ohne Erhöhung, Defender an): 146 bestanden / 0 fehlgeschlagen / 8 mit Grund ausgelassen (EICAR auf Platte, Adminrechte) – docs/evidence/2026-10-26-ltsc-zielrechner-testsuite.txt",
+      "rest": "C#-Clienttests und UI-Automation auf LTSC (B-10); die 8 ausgelassenen EICAR-/Admin-Tests laufen nur in der CI"
     },
     "AXS-012": {
       "status": "teilweise",
@@ -84,8 +84,8 @@
     "AXS-013": {
       "status": "erfuellt",
       "where": "crates/axsafe-worker, crates/axsafe-proc, crates/axsafe-service, crates/axsafe-engine-clamav, docs/adr/ADR-0006-worker-isolation.md",
-      "evidence": "YARA-X und Typerkennung im Scanworker (Windows AppContainer ohne Fähigkeiten + Job Object, Linux Landlock), Abschottungsprobe nach jedem (Neu-)Start; ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, geprüft vor dem Start) plus Firewall-Sperrregel; AppContainer für ClamAV 1.5 gemessen unmöglich; Dienst als LocalService mit nur SeImpersonate/SeChangeNotify; UI asInvoker; Prozess-Mitigationen für alle isolierten Worker (keine Erweiterungspunkte, strikte Handles, keine Fremdschriften, keine DLLs von Netz/Integrität Niedrig, ASLR, Heap-Abbruch; AppContainer-Worker nur Microsoft-signierte DLLs) – beim Start gesetzt und vor dem Fortsetzen geprüft (fail closed), Windows-CI",
-      "rest": "LTSC-Lauf der automatischen Tests (B-02)"
+      "evidence": "YARA-X und Typerkennung im Scanworker (Windows AppContainer ohne Fähigkeiten + Job Object, Linux Landlock), Abschottungsprobe nach jedem (Neu-)Start; ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, geprüft vor dem Start) plus Firewall-Sperrregel; AppContainer für ClamAV 1.5 gemessen unmöglich; Dienst als LocalService mit nur SeImpersonate/SeChangeNotify; UI asInvoker; Prozess-Mitigationen für alle isolierten Worker (keine Erweiterungspunkte, strikte Handles, keine Fremdschriften, keine DLLs von Netz/Integrität Niedrig, ASLR, Heap-Abbruch; AppContainer-Worker nur Microsoft-signierte DLLs) – beim Start gesetzt und vor dem Fortsetzen geprüft (fail closed), Windows-CI; Rust-Testsuite auf dem Zielrechner Windows 10 LTSC 19044 (Benutzer ohne Erhöhung, Defender an): 146 bestanden / 0 fehlgeschlagen / 8 mit Grund ausgelassen (EICAR auf Platte, Adminrechte) – docs/evidence/2026-10-26-ltsc-zielrechner-testsuite.txt",
+      "rest": "–"
     },
     "AXS-015": {
       "status": "teilweise",
@@ -186,8 +186,8 @@
     "AXS-014": {
       "status": "erfuellt",
       "where": "crates/axsafe-service, scripts/windows/install-service.ps1, scripts/ci/service_e2e.ps1, ui/AXSafe.Client/ServiceClient.cs",
-      "evidence": "Named Pipe \\\\.\\pipe\\AXSafe.v1 mit DACL (keine Netzwerkanmeldung, interaktive Benutzer ohne Instanzanlage), PIPE_REJECT_REMOTE_CLIENTS; Identität aus dem Token, Eigentum = SID + Anmeldesitzung; 64-KiB-Grenze, Zeitgrenzen, Sequenz/Nonce, Ratenbegrenzung; nur fünf Befehle; Dateizugriff unter Impersonation. Unit-/Integrationstests (Linux) und Windows-Systemtest mit zweitem lokalen Benutzer",
-      "rest": "LTSC-Lauf der automatischen Tests (B-02); Rollen für Richtlinien laufen über Dateirechte (AXS-017)"
+      "evidence": "Named Pipe \\\\.\\pipe\\AXSafe.v1 mit DACL (keine Netzwerkanmeldung, interaktive Benutzer ohne Instanzanlage), PIPE_REJECT_REMOTE_CLIENTS; Identität aus dem Token, Eigentum = SID + Anmeldesitzung; 64-KiB-Grenze, Zeitgrenzen, Sequenz/Nonce, Ratenbegrenzung; nur fünf Befehle; Dateizugriff unter Impersonation. Unit-/Integrationstests (Linux) und Windows-Systemtest mit zweitem lokalen Benutzer; Rust-Testsuite auf dem Zielrechner Windows 10 LTSC 19044 (Benutzer ohne Erhöhung, Defender an): 146 bestanden / 0 fehlgeschlagen / 8 mit Grund ausgelassen (EICAR auf Platte, Adminrechte) – docs/evidence/2026-10-26-ltsc-zielrechner-testsuite.txt",
+      "rest": "Rollen für Richtlinien laufen über Dateirechte (AXS-017)"
     },
     "AXS-017": {
       "status": "erfuellt",
