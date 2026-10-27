@@ -73,7 +73,7 @@ jobs:
           out.write_text(json.dumps(d, indent=2))
           print("SBOM:", out, len(d.get("components", [])), "Komponenten")
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-sbom
           path: AXSafe-*-cli-sbom.cdx.json
@@ -106,7 +106,7 @@ jobs:
           python scripts/check_release_inventory.py "AXSafe-$env:VERSION-windows-x64-vorversion.zip" --allow-test-rules --require-notices
           if ($LASTEXITCODE -ne 0) { throw "Inventarprüfung des ZIP fehlgeschlagen" }
           Copy-Item dist/AXSafe/THIRD-PARTY-NOTICES.txt "AXSafe-$env:VERSION-THIRD-PARTY-NOTICES.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: |
