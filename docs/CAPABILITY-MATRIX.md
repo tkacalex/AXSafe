@@ -100,6 +100,7 @@ Aus einem EICAR-Fund wird **keine** Erkennungsleistung abgeleitet.
 | Schnell-, Voll-, Wechseldatenträgerscan | ✅ CLI + UI + Dienst; Bericht nennt, was nicht abgedeckt ist | AXS-026 |
 | Fortschritt, Fortsetzen nach Abbruch | ✅ CLI + UI (nur inhaltsgleiche Ergebnisse bei gleichem Engine-/Regelstand übernommen); Dienstaufträge: kein Fortsetzen | AXS-026 |
 | Kontextmenü, Zeitplan | ✅ Skripte (Benutzerrechte, keine Erhöhung) | AXS-026 |
+| Ergebnis-Cache | ✅ nur Dienst; an Inhalt (SHA-256) und Engine-/Regel-/Richtlinienstand gebunden | AXS-027 |
 | Echtzeitschutz | ⛔ | AXS-053 ff. |
 | Quarantäne | ⛔ (nur Meldung) | AXS-035 ff. |
 | AMSI / Skriptschutz | ⛔ | AXS-047 ff. |

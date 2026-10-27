@@ -39,6 +39,9 @@ pub struct ServiceRunner {
     /// Richtliniendatei (AXS-017); nur angewandt, wenn nur Administratoren
     /// sie ändern können.
     pub policy_path: PathBuf,
+    /// Ergebnis-Cache (AXS-027) im Dienstordner, für Benutzer nicht
+    /// beschreibbar; an Inhalt und Versionsschlüssel gebunden.
+    pub cache: Option<Arc<axsafe_core::cache::ScanCache>>,
 }
 
 impl ServiceRunner {
@@ -101,6 +104,10 @@ impl JobRunner for ServiceRunner {
             .classify_in_engine(true)
             .with_policy(Arc::new(policy))
             .with_kind(job.kind, job.trigger, Vec::new());
+        let scanner = match &self.cache {
+            Some(c) => scanner.with_cache(Arc::clone(c)),
+            None => scanner,
+        };
         let mut progress: &crate::jobs::JobProgress = &job.progress;
         let mut rep = scanner.scan_job(job.job_id.clone(), &job.paths, cancel, &mut progress);
         rep.executed_by = Some(ExecutedBy {
@@ -115,6 +122,13 @@ impl JobRunner for ServiceRunner {
         });
         if let Some(log) = &self.log {
             log.line(&job_summary(&rep));
+        }
+        if let Some(c) = &self.cache {
+            if let Err(e) = c.save() {
+                if let Some(log) = &self.log {
+                    log.line(&format!("Cache nicht gespeichert: {e}"));
+                }
+            }
         }
         Ok(rep)
     }
@@ -186,7 +200,7 @@ pub fn job_summary(rep: &ScanReport) -> String {
             .unwrap_or_else(|| "unbekannt".into())
     };
     format!(
-        "Auftrag {} für {} (Client-Prozess {}, Dienstprozess {}, Richtlinie {}, ausgenommen {}): Ergebnis {:?}, vollständig={}, Objekte {}, Funde {}, Lücken {} | Engines: {} | Engine-Ergebnisse: {:?} | Lückengründe: {:?}",
+        "Auftrag {} für {} (Client-Prozess {}, Dienstprozess {}, Richtlinie {}, ausgenommen {}): Ergebnis {:?}, vollständig={}, Objekte {}, Funde {}, Lücken {} | Engines: {} | Engine-Ergebnisse: {:?} | Lückengründe: {:?} | Cache-Treffer {}",
         rep.job_id,
         client,
         proc_of(|x| x.client_process.as_ref()),
@@ -200,6 +214,7 @@ pub fn job_summary(rep: &ScanReport) -> String {
         rep.summary.incomplete,
         engines.join("; "),
         per_engine,
-        reasons
+        reasons,
+        rep.scope.cache.as_ref().map(|c| c.hits).unwrap_or(0)
     )
 }

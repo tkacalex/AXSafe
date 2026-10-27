@@ -53,6 +53,7 @@ pub struct Scanner {
     classify_in_engine: bool,
     policy: Option<std::sync::Arc<crate::policy::Policy>>,
     resume: Option<std::sync::Arc<crate::resume::Resume>>,
+    cache: Option<std::sync::Arc<crate::cache::ScanCache>>,
     kind: crate::scanjob::ScanKind,
     trigger: crate::scanjob::Trigger,
     missing_targets: Vec<String>,
@@ -141,6 +142,14 @@ fn outcome_gap(o: &EngineOutcome, unavailable: bool) -> Gap {
     )
 }
 
+/// Je Auftrag feste Angaben: Engines und Versionsschlüssel.
+struct JobCtx {
+    infos: Vec<EngineInfo>,
+    version_key: String,
+    cache_hits: std::sync::atomic::AtomicU64,
+    cache_misses: std::sync::atomic::AtomicU64,
+}
+
 enum FileOutcome {
     Result(Box<FileResult>),
     Excluded(ExcludedObject),
@@ -156,6 +165,7 @@ impl Scanner {
             classify_in_engine: false,
             policy: None,
             resume: None,
+            cache: None,
             kind: crate::scanjob::ScanKind::Custom,
             trigger: crate::scanjob::Trigger::Manual,
             missing_targets: Vec::new(),
@@ -180,6 +190,12 @@ impl Scanner {
     /// Ergebnisse mit gleichem Versionsschlüssel werden übernommen).
     pub fn with_resume(mut self, r: std::sync::Arc<crate::resume::Resume>) -> Self {
         self.resume = Some(r);
+        self
+    }
+
+    /// Ergebnis-Cache (AXS-027): an Inhalt und Versionsschlüssel gebunden.
+    pub fn with_cache(mut self, c: std::sync::Arc<crate::cache::ScanCache>) -> Self {
+        self.cache = Some(c);
         self
     }
 
@@ -277,13 +293,19 @@ impl Scanner {
             }
         }
 
+        let ctx = JobCtx {
+            infos,
+            version_key,
+            cache_hits: Default::default(),
+            cache_misses: Default::default(),
+        };
         let mut files = Vec::new();
         let mut excluded = Vec::new();
         for root in roots {
             if cancel.load(Ordering::SeqCst) {
                 break;
             }
-            self.visit(root, 0, cancel, &infos, &mut files, &mut excluded, progress);
+            self.visit(root, 0, cancel, &ctx, &mut files, &mut excluded, progress);
         }
         let by_policy = excluded
             .iter()
@@ -323,7 +345,7 @@ impl Scanner {
             duration_ms: started.elapsed().as_millis() as u64,
             scope: ScanScope {
                 roots: roots.iter().map(|p| p.display().to_string()).collect(),
-                engines: infos,
+                engines: ctx.infos,
                 limits: self.limits.clone(),
                 follows_links: false,
                 excluded,
@@ -331,8 +353,15 @@ impl Scanner {
                 trigger: self.trigger,
                 kind_note: self.kind.coverage_note().into(),
                 missing_targets: self.missing_targets.clone(),
-                version_key: version_key.clone(),
+                version_key: ctx.version_key,
                 resume: self.resume.as_ref().map(|r| r.info()),
+                cache: self.cache.as_ref().map(|c| {
+                    // Treffer und Fehlversuche genau dieses Auftrags.
+                    let mut i = c.info();
+                    i.hits = ctx.cache_hits.load(Ordering::Relaxed);
+                    i.misses = ctx.cache_misses.load(Ordering::Relaxed);
+                    i
+                }),
             },
             outcome,
             detection: highest_detection(files.iter().map(|f| f.detection)),
@@ -357,7 +386,7 @@ impl Scanner {
         path: &Path,
         depth: usize,
         cancel: &AtomicBool,
-        infos: &[EngineInfo],
+        ctx: &JobCtx,
         out: &mut Vec<FileResult>,
         excluded: &mut Vec<ExcludedObject>,
         progress: &mut dyn Progress,
@@ -452,7 +481,7 @@ impl Scanner {
             drop(guard);
             children.sort();
             for child in children {
-                self.visit(&child, depth + 1, cancel, infos, out, excluded, progress);
+                self.visit(&child, depth + 1, cancel, ctx, out, excluded, progress);
             }
             return;
         }
@@ -474,7 +503,7 @@ impl Scanner {
         // (AXS-018). Mehr als MAX_STREAMS: Lücke statt stilles Auslassen.
         let streams = fs::File::open(path).and_then(|f| crate::identity::alternate_streams(&f));
         drop(guard);
-        let main_excluded = match self.scan_file_inner(path, infos) {
+        let main_excluded = match self.scan_file_inner(path, ctx) {
             FileOutcome::Result(r) => {
                 self.push(out, progress, *r);
                 false
@@ -510,7 +539,7 @@ impl Scanner {
                         self.push(out, progress, r);
                         break;
                     }
-                    match self.scan_file_inner(&sp, infos) {
+                    match self.scan_file_inner(&sp, ctx) {
                         FileOutcome::Result(r) => self.push(out, progress, *r),
                         FileOutcome::Excluded(x) => excluded.push(x),
                     }
@@ -529,7 +558,14 @@ impl Scanner {
 
     /// Prüft genau eine reguläre Datei (ohne Ausschlussliste der Auftragsebene).
     pub fn scan_file(&self, path: &Path) -> FileResult {
-        match self.scan_file_inner(path, &self.engine_infos()) {
+        let infos = self.engine_infos();
+        let ctx = JobCtx {
+            version_key: crate::resume::version_key(&infos, &self.policy_version(), &self.limits),
+            infos,
+            cache_hits: Default::default(),
+            cache_misses: Default::default(),
+        };
+        match self.scan_file_inner(path, &ctx) {
             FileOutcome::Result(r) => *r,
             FileOutcome::Excluded(x) => gap_result(
                 path,
@@ -544,7 +580,8 @@ impl Scanner {
         }
     }
 
-    fn scan_file_inner(&self, path: &Path, infos: &[EngineInfo]) -> FileOutcome {
+    fn scan_file_inner(&self, path: &Path, ctx: &JobCtx) -> FileOutcome {
+        let infos = &ctx.infos[..];
         let mut result = FileResult {
             path: path.display().to_string(),
             object_type: ObjectType::File,
@@ -664,10 +701,28 @@ impl Scanner {
             return FileOutcome::Result(Box::new(r));
         }
 
+        // Cache (AXS-027): nur derselbe Inhalt unter demselben
+        // Versionsschlüssel; sonst normale Prüfung.
+        let cached = self
+            .cache
+            .as_ref()
+            .and_then(|c| c.get(&ctx.version_key, &sha));
+        if self.cache.is_some() {
+            let counter = if cached.is_some() {
+                &ctx.cache_hits
+            } else {
+                &ctx.cache_misses
+            };
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
+
         // Dateityp: im eigenen Prozess oder (Dienst) im abgeschotteten Worker.
         let mut pre: Option<(usize, EngineOutcome)> = None;
         let mut features = None;
-        let kind = if self.classify_in_engine {
+        let kind = if let Some(c) = &cached {
+            features = c.features.clone();
+            c.kind.clone()
+        } else if self.classify_in_engine {
             let classifier = self
                 .engines
                 .iter()
@@ -743,7 +798,31 @@ impl Scanner {
         let content_fmt = filetype::content_format(&kind);
         let mut content_inspected = false;
         let mut detections = Vec::new();
-        for (idx, (engine, info)) in self.engines.iter().zip(infos).enumerate() {
+        let from_cache = cached.is_some();
+        if let Some(c) = cached {
+            // Nur vollständige Ergebnisse liegen im Cache (Inhalt wurde damals
+            // geprüft); Engines laufen nicht erneut.
+            for o in c.engines {
+                detections.extend(o.detections.iter().map(|d| d.verdict));
+                if o.verdict.is_detection() {
+                    detections.push(o.verdict);
+                }
+                result.engines.push(o);
+            }
+            content_inspected = true;
+            result.notes.push(
+                "Engine-Ergebnis aus dem Cache: gleicher Inhalt (SHA-256) bei gleichem Engine-, \
+                 Regel- und Richtlinienstand; Heuristik, Herkunft und Signatur neu bestimmt"
+                    .into(),
+            );
+        }
+        for (idx, (engine, info)) in self
+            .engines
+            .iter()
+            .zip(infos)
+            .enumerate()
+            .filter(|_| !from_cache)
+        {
             let (outcome, unavailable) = match &info.health {
                 EngineHealth::Ready => match pre.take() {
                     Some((p, o)) if p == idx => (o, false),
@@ -818,6 +897,18 @@ impl Scanner {
         // Identität nach dem Lesen und der Prüfung erneut vergleichen.
         if self.changed_after_read(&file, path, &before, data.len()) {
             result.gaps.push(changed_gap());
+        }
+        // Nur vollständige, frisch geprüfte Ergebnisse in den Cache.
+        if let (Some(c), false, true) = (&self.cache, from_cache, result.gaps.is_empty()) {
+            c.put(
+                &ctx.version_key,
+                &sha,
+                crate::cache::CachedScan {
+                    kind: kind.clone(),
+                    features: result.static_features.clone(),
+                    engines: result.engines.clone(),
+                },
+            );
         }
         // Heuristiken: Funde nur bei eindeutigen Täuschungsmustern, sonst
         // Hinweise. Belege stehen im Fund.
@@ -1276,6 +1367,167 @@ mod tests {
                 .is_none());
         }
         assert!(calls.load(Ordering::SeqCst) >= 3);
+    }
+
+    #[test]
+    fn stale_or_future_checkpoint_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let (s, _) = counting("1");
+        for when in [
+            chrono::Utc::now() - chrono::Duration::days(8),
+            chrono::Utc::now() + chrono::Duration::days(1),
+        ] {
+            let mut h = header(&s, &[]);
+            h.created_utc = when.to_rfc3339();
+            let p = dir.path().join(format!("{}.jsonl", uuid::Uuid::new_v4()));
+            fs::write(&p, format!("{}\n", serde_json::to_string(&h).unwrap())).unwrap();
+            assert!(crate::resume::Resume::load(&p, &s.version_key()).is_err());
+        }
+    }
+
+    fn cached(s: Scanner, c: &std::sync::Arc<crate::cache::ScanCache>) -> Scanner {
+        s.with_cache(c.clone())
+    }
+
+    /// AXS-027: Treffer sparen nur Engine-Zeit; gelesen und gehasht wird
+    /// immer, Heuristik hängt am aktuellen Namen.
+    #[test]
+    fn cache_hit_skips_engines_but_heuristics_use_current_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let pe = crate::features::tests::tiny_pe(0x90, 0);
+        fs::write(dir.path().join("werkzeug.exe"), &pe).unwrap();
+        fs::write(dir.path().join("brief.txt"), "hallo").unwrap();
+        let c = std::sync::Arc::new(crate::cache::ScanCache::in_memory(100));
+        let (s1, calls1) = counting("1");
+        let r1 = run(&cached(s1, &c), dir.path());
+        assert_eq!(calls1.load(Ordering::SeqCst), 2);
+        assert_eq!(r1.scope.cache.as_ref().unwrap().hits, 0);
+
+        // Gleicher Inhalt unter täuschendem Namen.
+        fs::rename(
+            dir.path().join("werkzeug.exe"),
+            dir.path().join("Rechnung.pdf.exe"),
+        )
+        .unwrap();
+        let (s2, calls2) = counting("1");
+        let r2 = run(&cached(s2, &c), dir.path());
+        assert_eq!(
+            calls2.load(Ordering::SeqCst),
+            0,
+            "Engines nicht erneut aufgerufen"
+        );
+        assert_eq!(r2.scope.cache.as_ref().unwrap().hits, 2);
+        let f = r2
+            .files
+            .iter()
+            .find(|f| f.path.ends_with("Rechnung.pdf.exe"))
+            .unwrap();
+        assert!(f.notes.iter().any(|n| n.contains("Cache")));
+        assert_eq!(
+            f.detection,
+            Verdict::Suspicious,
+            "Heuristik muss den neuen Namen sehen: {f:?}"
+        );
+        assert!(f.sha256.is_some() && f.size == Some(pe.len() as u64));
+    }
+
+    /// Neuer Regel-/Signaturstand: keine alte Freigabe.
+    #[test]
+    fn cache_ignores_entries_from_older_engine_content() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "BAD erst nach Update erkannt").unwrap();
+        let c = std::sync::Arc::new(crate::cache::ScanCache::in_memory(100));
+        let (s1, _) = counting("alt");
+        run(&cached(s1, &c), dir.path());
+        let (s2, calls) = counting("neu");
+        let r = run(&cached(s2, &c), dir.path());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(r.scope.cache.as_ref().unwrap().hits, 0);
+    }
+
+    /// Inhalt geändert, Größe und Änderungszeit wiederhergestellt (wie nach
+    /// erneutem Einbinden oder gefälschtem Zeitstempel): Cache greift nicht.
+    #[test]
+    fn cache_is_bound_to_content_not_timestamps() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.bin");
+        fs::write(&p, "GUT-inhalt").unwrap();
+        let mtime = fs::metadata(&p).unwrap().modified().unwrap();
+        let c = std::sync::Arc::new(crate::cache::ScanCache::in_memory(100));
+        let (s1, _) = counting("1");
+        let r1 = run(&cached(s1, &c), &p);
+        assert_eq!(r1.files[0].detection, Verdict::NoDetection);
+        fs::write(&p, "BAD-inhalt").unwrap();
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&p)
+            .unwrap()
+            .set_modified(mtime)
+            .unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().modified().unwrap(), mtime);
+        let (s2, calls) = counting("1");
+        let r2 = run(&cached(s2, &c), &p);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(r2.files[0].detection, Verdict::Malicious);
+    }
+
+    /// Unvollständige Ergebnisse (Lücken) werden nie zwischengespeichert.
+    #[test]
+    fn incomplete_results_are_never_cached() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "x").unwrap();
+        let c = std::sync::Arc::new(crate::cache::ScanCache::in_memory(100));
+        let s =
+            scanner(vec![Box::new(TestEngine::failing(Verdict::Timeout))]).with_cache(c.clone());
+        let r = run(&s, dir.path());
+        assert_eq!(r.files[0].status, ObjectStatus::Incomplete);
+        assert_eq!(c.info().entries, 0);
+    }
+
+    /// T-027: andere Richtlinie ⇒ neue Bewertung statt Cache-Treffer.
+    #[test]
+    fn cache_misses_after_policy_change() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "x").unwrap();
+        let c = std::sync::Arc::new(crate::cache::ScanCache::in_memory(100));
+        let mut p1 = crate::policy::Policy::default_policy("test");
+        p1.version = "1".into();
+        let mut p2 = p1.clone();
+        p2.version = "2".into();
+        let (s1, _) = counting("1");
+        run(
+            &cached(s1, &c).with_policy(std::sync::Arc::new(p1)),
+            dir.path(),
+        );
+        let (s2, calls) = counting("1");
+        let r = run(
+            &cached(s2, &c).with_policy(std::sync::Arc::new(p2)),
+            dir.path(),
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(r.scope.cache.as_ref().unwrap().hits, 0);
+    }
+
+    #[test]
+    fn version_key_covers_policy_and_limits() {
+        let infos = TestEngine::prefix().info();
+        let l = ScanLimits::default();
+        let a = crate::resume::version_key(std::slice::from_ref(&infos), "p1", &l);
+        assert_ne!(
+            a,
+            crate::resume::version_key(std::slice::from_ref(&infos), "p2", &l)
+        );
+        let l2 = ScanLimits {
+            max_file_size: l.max_file_size + 1,
+            ..l.clone()
+        };
+        assert_ne!(
+            a,
+            crate::resume::version_key(std::slice::from_ref(&infos), "p1", &l2)
+        );
+        let mut i2 = infos.clone();
+        i2.content_version = "neu".into();
+        assert_ne!(a, crate::resume::version_key(&[i2], "p1", &l));
     }
 
     #[test]

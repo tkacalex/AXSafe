@@ -29,6 +29,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub const CHECKPOINT_SCHEMA: &str = "axsafe.fortsetzung/1";
 pub const MAX_CHECKPOINT_BYTES: u64 = 512 * 1024 * 1024;
 pub const MAX_LINE_BYTES: usize = 1024 * 1024;
+/// Höchstalter einer Fortsetzungsdatei.
+pub const MAX_AGE_DAYS: i64 = 7;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckpointHeader {
@@ -149,6 +151,16 @@ impl Resume {
             .map_err(|e| format!("Kopfzeile ungültig: {e}"))?;
         if header.schema != CHECKPOINT_SCHEMA {
             return Err(format!("unbekanntes Schema {:?}", header.schema));
+        }
+        // Alte Fortsetzungsdateien nicht verwenden: je länger eine Datei
+        // liegt, desto eher wurde sie verändert oder ist der Stand überholt.
+        let created = chrono::DateTime::parse_from_rfc3339(&header.created_utc)
+            .map_err(|e| format!("Erstellzeit ungültig: {e}"))?;
+        let age = chrono::Utc::now().signed_duration_since(created);
+        if age > chrono::Duration::days(MAX_AGE_DAYS) || age < chrono::Duration::minutes(-5) {
+            return Err(format!(
+                "Fortsetzungsdatei ist älter als {MAX_AGE_DAYS} Tage oder liegt in der Zukunft – bitte neu prüfen"
+            ));
         }
         let mut entries = HashMap::new();
         let mut ignored = 0u64;

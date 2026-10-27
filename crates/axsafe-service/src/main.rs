@@ -82,6 +82,13 @@ mod service {
             clamav_worker: Some(exe_dir.join("axsafe-clamav-worker.exe")).filter(|p| p.is_file()),
             shared_clamav: Arc::new(Mutex::new(None)),
             policy_path: axsafe_core::policy::default_policy_path(),
+            cache: {
+                let _ = std::fs::create_dir_all(data.join("cache"));
+                Some(Arc::new(axsafe_core::cache::ScanCache::persistent(
+                    data.join("cache").join("ergebnisse.jsonl"),
+                    axsafe_core::cache::DEFAULT_MAX_ENTRIES,
+                )))
+            },
         };
         log.line(match &runner.clamav_worker {
             Some(_) => "ClamAV: dauerhaft geladene Engine (axsafe-clamav-worker)",

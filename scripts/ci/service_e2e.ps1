@@ -65,6 +65,24 @@ try {
     Check 'typ_im_worker' ($null -ne $rep.files[0].file_kind) "Dateitypen aus dem Worker: $kinds"
     $ownJob = $rep.job_id
 
+    # --- Ergebnis-Cache (AXS-027) ------------------------------------------
+    New-Item -ItemType Directory -Force -Path "$root\cache" | Out-Null
+    Set-Content "$root\cache\a.txt" 'erster harmloser Inhalt' -Encoding ASCII
+    Set-Content "$root\cache\b.txt" 'zweiter harmloser Inhalt' -Encoding ASCII
+    $c1 = (Dienst @('scan', "$root\cache", '--warten')).Json.result.report
+    $c2 = (Dienst @('scan', "$root\cache", '--warten')).Json.result.report
+    Check 'cache_treffer' ($c1.scope.cache.hits -eq 0 -and $c2.scope.cache.hits -eq 2 -and $c2.outcome -eq 'no_detection') "1. Lauf Treffer $($c1.scope.cache.hits), 2. Lauf Treffer $($c2.scope.cache.hits), Ergebnis $($c2.outcome)"
+    # Inhalt ändern, Größe und Änderungszeit wiederherstellen: kein Treffer.
+    $mt = (Get-Item "$root\cache\a.txt").LastWriteTimeUtc
+    Set-Content "$root\cache\a.txt" 'ERSTER harmloser Inhalt' -Encoding ASCII
+    (Get-Item "$root\cache\a.txt").LastWriteTimeUtc = $mt
+    $c3 = (Dienst @('scan', "$root\cache", '--warten')).Json.result.report
+    $fa = $c3.files | Where-Object { $_.path -like '*a.txt' }
+    Check 'cache_inhaltsgebunden' ($c3.scope.cache.hits -eq 1 -and -not (@($fa.notes) -match 'Cache')) "nach Inhaltsänderung mit alter Zeit: Treffer $($c3.scope.cache.hits); a.txt neu geprüft: $(-not (@($fa.notes) -match 'Cache'))"
+    $cacheDir = "$env:ProgramData\AXSafe\Service\cache"
+    $cacheAcl = (Get-Acl $cacheDir).Access | Where-Object { $_.IdentityReference -match 'Users|Benutzer|Everyone|Jeder|Authenticated' }
+    Check 'cache_benutzer_kein_zugriff' ((Test-Path "$cacheDir\ergebnisse.jsonl") -and -not $cacheAcl) "Cache-Datei vorhanden: $(Test-Path "$cacheDir\ergebnisse.jsonl"); Einträge für Benutzergruppen: $(@($cacheAcl).Count)"
+
     # --- Abbruch -------------------------------------------------------------
     1..40 | ForEach-Object { Set-Content "$root\offen\f$_.txt" ("x" * 1000) -Encoding ASCII }
     $st = Dienst @('scan', "$root\offen")
@@ -170,8 +188,10 @@ Set-Content '$out\dienstdaten_lesen.txt' `$d -Encoding UTF8
     Check 'absturz_wiederanlauf' ($svc.State -eq 'Running' -and $svc.ProcessId -ne $pid0 -and $s2.Code -eq 0) "alter Prozess $pid0, neuer $($svc.ProcessId), Status-Exit $($s2.Code)"
     $old = Dienst @('bericht', $ownJob)
     Check 'bericht_nach_neustart' ($old.Code -eq 0 -and $old.Json.result.report.job_id -eq $ownJob) "Bericht $ownJob nach Neustart lesbar"
+    $c4 = (Dienst @('scan', "$root\cache", '--warten')).Json.result.report
+    Check 'cache_nach_neustart' ($c4.scope.cache.hits -eq 2) "Treffer nach Dienstneustart: $($c4.scope.cache.hits) (Cache-Datei im Dienstordner)"
     # Neu angelegte Testdateien (Richtlinientest) zählen nicht als Nutzdaten.
-    $hashAfter = Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -notlike 'f*.txt' -and $_.FullName -notlike "$root\ausnahme\*" } | ForEach-Object { "$($_.FullName)=$((Get-FileHash $_.FullName).Hash)" }
+    $hashAfter = Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -notlike 'f*.txt' -and $_.FullName -notlike "$root\ausnahme\*" -and $_.FullName -notlike "$root\cache\*" } | ForEach-Object { "$($_.FullName)=$((Get-FileHash $_.FullName).Hash)" }
     $before = $hashBefore | Where-Object { $_ -notmatch '\\f\d+\.txt=' }
     Check 'nutzdateien_unveraendert' ((Compare-Object $before $hashAfter).Count -eq 0) "$(@($before).Count) Dateien, Hashes vor/nach Scans und Absturz verglichen"
 

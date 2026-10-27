@@ -88,6 +88,9 @@ pub struct ScanScope {
     /// Gesetzt, wenn dieser Auftrag einen früheren fortsetzt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume: Option<crate::resume::ResumeInfo>,
+    /// Gesetzt, wenn ein Ergebnis-Cache verwendet wurde (AXS-027).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache: Option<crate::cache::CacheInfo>,
 }
 
 /// Art des Objekts im Dateisystem.

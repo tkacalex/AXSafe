@@ -81,6 +81,7 @@ Viele Sicherheitsprogramme zeigen große grüne Schilde, egal was im Hintergrund
 | **Ehrlicher Betriebszustand** (`axsafe zustand`): Scanner, Sensor, Richtlinie, Definitionen, Primärschutz und Dienst einzeln – nie grün ohne Beleg | |
 | **Richtlinie mit Ausnahmen** nur durch Administratoren, eng begrenzt und befristet; Ausgenommenes erscheint im Bericht | |
 | **Scanarten**: Schnell-, Voll-, Wechseldatenträger- und eigener Scan, Kontextmenü und Zeitplan; Fortschritt, Abbruch und **Fortsetzen** (nur unveränderte Dateien werden übernommen) | |
+| **Sicherer Cache im Dienst**: Wiederholte Prüfungen sparen Engine-Zeit nur bei gleichem Inhalt und gleichem Signatur-/Regelstand – nie anhand von Zeitstempeln | |
 | **Statische Merkmale**: PE-Struktur, Signatur (Authenticode), Herkunft (Mark of the Web); Heuristik meldet nur Täuschungsmuster wie `Rechnung.pdf.exe` – **mit Belegen**, nie wegen Entropie oder fehlender Signatur allein | |
 | Deutsche Oberfläche im dunklen Design, kein Konto nötig | Selbstschutz und Windows-Sicherheitscenter (P11) |
 
@@ -191,11 +192,11 @@ docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 | Status | Anzahl |
 | --- | ---: |
 | ✅ erfüllt | 6 |
-| 🟢 teilweise belegt | 13 |
+| 🟢 teilweise belegt | 14 |
 | 🔵 begonnen | 8 |
 | 📝 Entwurf | 5 |
 | ⛔ blockiert | 1 |
-| ⚪ geplant | 67 |
+| ⚪ geplant | 66 |
 <!-- STATUS:END -->
 
 **Ehrlich gezählt:** „erfüllt“ heißt, die Abnahme ist vollständig mit echten Belegen bestanden. Das ist bisher bei **keiner** der 100 Anforderungen der Fall – auch wenn viele Teile schon funktionieren und getestet sind. Was fehlt und warum, steht im [Blockerregister](docs/BLOCKERS.md).

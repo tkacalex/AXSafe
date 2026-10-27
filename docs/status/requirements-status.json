@@ -206,6 +206,12 @@
       "where": "crates/axsafe-core/src/features.rs, heuristics.rs, trust.rs, scan.rs; Worker-Protokoll (Merkmale im abgeschotteten Worker)",
       "evidence": "SHA-256 sowie SHA-1/MD5 (nur Abgleich); PE-Struktur (Sektionen mit Entropie und Rechten, Importe begrenzt, Overlay, Einsprungpunkt, Sicherheitsverzeichnis) im abgeschotteten Worker, Abschneide- und Bitfehlertest ohne Panic; Mark of the Web aus Zone.Identifier (Zone und Rechnername, keine Adressparameter oder Zugangsdaten); Authenticode über WinVerifyTrust auf dem geöffneten Handle ohne Netz und ohne Oberfläche (gültig/unsigniert/manipuliert/…); Heuristiken AXS-HEUR-0001..0003 (Richtungssteuerzeichen, doppelte Endung, Programm mit Dokumentendung) nur mit Belegen; gutartige Gegenfälle (Versionsnummern im Namen, .tar.gz, Unicode-Namen, unsigniert, gepackt, hohe Entropie, Internet-Herkunft) ergeben nachweislich keinen Fund, nur Hinweise",
       "rest": "Windows-Belege (signierte Systemdatei gültig, manipulierte Kopie erkannt, MotW-Datenstrom) erst nach grüner Windows-CI; Katalogsignaturen von Windows-Systemdateien werden nicht geprüft (als 'unsigniert – Katalogsignatur nicht geprüft' ausgewiesen); Widerruf ohne Netz nicht erkennbar; .NET-Metadaten und Skriptsignaturen nicht ausgewertet"
+    },
+    "AXS-027": {
+      "status": "teilweise",
+      "where": "crates/axsafe-core/src/cache.rs, scan.rs; Dienst: %ProgramData%\\AXSafe\\Service\\cache\\ergebnisse.jsonl",
+      "evidence": "Schlüssel = Versionsschlüssel (Programm, Engines mit Regel-/Signaturstand, Heuristik, Richtlinie, Grenzen) + SHA-256 der gerade gelesenen Bytes; Dateien werden immer gelesen; Zeitstempel/Datei-ID/Volume sind kein Beleg (Test: Inhalt geändert, Größe und Zeit wiederhergestellt ⇒ neue Bewertung); neuer Regelstand und andere Richtlinie ⇒ kein Treffer; nur vollständige Ergebnisse gespeichert; Heuristik, Herkunft und Signatur je Scan neu; begrenzt, atomar gespeichert, beschädigte Zeilen verworfen; Cache nur im Dienstordner (Benutzer ohne Zugriff), CLI ohne dauerhaften Cache",
+      "rest": "Dienst-Systemtest (Treffer, Inhaltsbindung, Persistenz nach Neustart, ACL) erst nach grüner Windows-CI; gezieltes Invalidieren einzelner Einträge durch neue Threat Intelligence entfällt, weil jeder neue Regel-/Signaturstand den Schlüssel ändert (kein Modell vorhanden)"
     }
   },
   "tests": {
@@ -330,6 +336,11 @@
       "trust::tests::{status_mapping_is_honest, authenticode_on_real_files (Windows), origin_from_zone_identifier_stream (Windows)}",
       "scan::tests::heuristics_and_static_features_in_report",
       "ClientTests.Heuristic_finding_shows_evidence_in_details (UI-Client gegen echte CLI)"
+    ],
+    "T-027": [
+      "cache::tests::{other_version_key_never_matches, bounded_and_rejects_bad_keys, persists_atomically_and_survives_damage}",
+      "scan::tests::{cache_hit_skips_engines_but_heuristics_use_current_name, cache_ignores_entries_from_older_engine_content, cache_is_bound_to_content_not_timestamps, incomplete_results_are_never_cached, cache_misses_after_policy_change, version_key_covers_policy_and_limits}",
+      "service_e2e.ps1: cache_treffer, cache_inhaltsgebunden, cache_benutzer_kein_zugriff, cache_nach_neustart"
     ]
   }
 }

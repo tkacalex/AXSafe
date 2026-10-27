@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Neu – Phase P03, Etappe 4: Sicherer Ergebnis-Cache im Dienst
+- Wiederholte Prüfungen über den Dienst überspringen die Engines für Dateien, deren **Inhalt** (SHA-256) unter **demselben** Engine-, Regel-, Signatur-, Richtlinien- und Programmstand schon vollständig geprüft wurde. Dateien werden trotzdem immer gelesen; Heuristik, Herkunft und Signatur werden neu bestimmt.
+- Geänderter Inhalt (auch mit zurückgesetztem Zeitstempel), neue Signaturen, neue Regeln oder eine andere Richtlinie führen immer zu einer neuen Bewertung. Unvollständige Ergebnisse werden nie zwischengespeichert.
+- Der Cache liegt im Dienstordner, auf den Benutzer keinen Zugriff haben; Berichte nennen Treffer und markieren übernommene Ergebnisse.
+- Fortsetzungsdateien gelten höchstens 7 Tage.
+
 ### Neu – Phase P03, Etappe 3: Scanarten, Fortschritt, Abbruch und Fortsetzen
 - `axsafe scan --art schnell|voll|wechsel|benutzer`: Schnellprüfung (Downloads, Desktop, Temp, Autostart-Ordner), alle festen Laufwerke, angeschlossene Wechseldatenträger oder eigene Pfade. Der Bericht nennt Scanart, Auslöser und **was die Scanart nicht abdeckt**. `axsafe ziele --art …` zeigt die Ziele vorab.
 - **Fortschritt** in CLI, Oberfläche und Dienst (Objekte, Bytes; Prozent, sobald die Vorabzählung fertig ist).
