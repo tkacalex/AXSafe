@@ -16,3 +16,4 @@ content_formats_are_backed_by_real_libclamav|libclamav entpackt Container mit EI
 rar_content_follows_unrar_availability|legt ein RAR mit EICAR-Inhalt als Datei ab
 conformance_clamscan|clamscan legt die EICAR-Probe als temporäre Datei ab
 conformance_persistent_worker|libclamav kann die EICAR-Probe als temporäre Datei ablegen
+rar_capability_probe_is_recognised_where_unrar_works|clamscan legt die Probe als temporäre Datei ab; läuft in der Windows-CI

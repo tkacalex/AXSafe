@@ -179,3 +179,34 @@ fn rar_content_follows_unrar_availability() {
         assert_ne!(f.status, ObjectStatus::NoDetection);
     }
 }
+
+/// Die RAR-Laufzeitprobe (verschlüsselt markiertes RAR) muss von einem
+/// ClamAV mit unrar als „verschlüsselt“ erkannt werden – sonst wäre die Probe
+/// selbst wertlos. Unter Windows hat clamscan unrar (offizielles Paket).
+#[test]
+#[ignore = "benötigt clamscan (Linux-CI: Pflicht)"]
+fn rar_capability_probe_is_recognised_where_unrar_works() {
+    let dir = tempfile::tempdir().unwrap();
+    let e = engine(dir.path());
+    let claims = e
+        .info()
+        .inspects_contents_of
+        .contains(&axsafe_core::filetype::ContentFormat::Rar);
+    let probe = axsafe_engine_clamav::rar_capability_probe();
+    let kind = axsafe_core::filetype::detect(&probe);
+    let o = e.scan(&ScanInput {
+        data: &probe,
+        kind: &kind,
+        sha256: "",
+        timeout: Duration::from_secs(60),
+    });
+    let encrypted = o.gaps.iter().any(|g| g.state == Verdict::Encrypted);
+    if claims {
+        assert!(
+            encrypted,
+            "Probe nicht als verschlüsseltes RAR erkannt: {o:?}"
+        );
+    } else {
+        assert!(!o.verdict.is_detection(), "{o:?}");
+    }
+}

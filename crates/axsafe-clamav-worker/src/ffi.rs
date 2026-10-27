@@ -105,6 +105,21 @@ fn open(path: &str) -> Result<Handle, String> {
         LoadLibraryExW, LOAD_WITH_ALTERED_SEARCH_PATH,
     };
     let w: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    // ClamAV-Ordner (nur von Administratoren beschreibbar) als DLL-Suchordner,
+    // damit libclamav die RAR-Unterstützung (libclamunrar_iface.dll) auch in
+    // diesem Worker findet; entfernt zugleich den Arbeitsordner aus der Suche.
+    // Ob RAR danach wirklich geprüft wird, belegt die Laufzeitprobe der Engine.
+    if let Some(dir) = std::path::Path::new(path).parent() {
+        use windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW;
+        let d: Vec<u16> = dir
+            .as_os_str()
+            .to_string_lossy()
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        // SAFETY: nullterminierter Pfad.
+        unsafe { SetDllDirectoryW(d.as_ptr()) };
+    }
     // SAFETY: nullterminierter Pfad; LOAD_WITH_ALTERED_SEARCH_PATH lädt die
     // Abhängigkeiten aus dem Ordner der Bibliothek (ClamAV-Installation).
     let h = unsafe {
