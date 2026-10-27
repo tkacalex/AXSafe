@@ -18,6 +18,13 @@ path = "src/bin/axsafe-worker.rs"
 
 # Testdoppel des Workers mit eingebauten Fehlern (Absturz, Hänger,
 # Protokollbruch). NUR für Tests; die Inventarprüfung lehnt "testhelper" ab.
+# Testprogramm für den Nachweis „nie ausführen“ (AXS-028); nicht im Paket.
+[[bin]]
+name = "axsafe-marker-testhelper"
+path = "tests/helpers/marker_testhelper.rs"
+test = false
+doc = false
+
 [[bin]]
 name = "axsafe-worker-testhelper"
 path = "tests/helpers/worker_testhelper.rs"

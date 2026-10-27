@@ -252,12 +252,14 @@ fn cab(d: &[u8]) -> ContainerCheck {
     c
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+/// Harmlose Beispieldaten für Tests und Fuzz-Saat (zur Laufzeit erzeugt).
+#[doc(hidden)]
+pub mod samples {
+    #[allow(unused_imports)]
     use super::*;
 
     /// Minimales, gültiges ZIP (gespeichert, ohne Kompression).
-    pub(crate) fn zip_of(entries: &[(&str, &[u8], bool)]) -> Vec<u8> {
+    pub fn zip_of(entries: &[(&str, &[u8], bool)]) -> Vec<u8> {
         let mut out = Vec::new();
         let mut cd = Vec::new();
         for (name, data, enc) in entries {
@@ -299,6 +301,19 @@ pub(crate) mod tests {
         out.extend_from_slice(&0u16.to_le_bytes());
         out
     }
+}
+
+/// Saatdatei für den Fuzzer.
+#[doc(hidden)]
+pub fn zip_sample() -> Vec<u8> {
+    samples::zip_of(&[("a.txt", b"hallo", false), ("b/c.txt", b"welt", true)])
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+    pub(crate) use super::samples::zip_of;
 
     #[test]
     fn intact_zip_has_no_findings() {

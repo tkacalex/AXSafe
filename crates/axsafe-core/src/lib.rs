@@ -27,6 +27,7 @@ pub mod container;
 pub mod engine;
 pub mod features;
 pub mod filetype;
+pub mod fuzzing;
 pub mod health;
 pub mod heuristics;
 pub mod identity;

@@ -337,8 +337,10 @@ pub fn pe_features(d: &[u8]) -> PeFeatures {
     f
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+/// Harmlose Beispieldaten für Tests und Fuzz-Saat (zur Laufzeit erzeugt).
+#[doc(hidden)]
+pub mod samples {
+    #[allow(unused_imports)]
     use super::*;
 
     /// Baut eine kleine, gültige PE32+-Datei mit zwei Abschnitten und einem
@@ -390,6 +392,19 @@ pub(crate) mod tests {
         d.extend(std::iter::repeat_n(0x41u8, extra_overlay));
         d
     }
+}
+
+/// Saatdatei für den Fuzzer.
+#[doc(hidden)]
+pub fn pe_sample() -> Vec<u8> {
+    samples::tiny_pe(0x90, 64)
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+    pub(crate) use super::samples::tiny_pe;
 
     #[test]
     fn entropy_bounds() {

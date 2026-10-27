@@ -748,3 +748,116 @@ fn rules_command_lists_id_version_origin_and_test_flag() {
     assert_eq!(v["content_kind"], "test_only");
     assert!(!r["source"].as_str().unwrap().is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// AXS-028: Geprüfte Programme werden nie ausgeführt
+// ---------------------------------------------------------------------------
+
+/// Programme, Skripte und Verknüpfungsziele, die beim Ausführen sofort eine
+/// Markerdatei anlegen, werden mit allen Engines geprüft (Worker und im
+/// Prozess). Danach darf keine Markerdatei existieren.
+#[test]
+fn scanned_programs_and_scripts_are_never_executed() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("daten");
+    std::fs::create_dir(&data).unwrap();
+    let helper = PathBuf::from(env!("CARGO_BIN_EXE_axsafe-marker-testhelper"));
+    // Gegenprobe: Der Marker-Mechanismus funktioniert wirklich.
+    let ctrl = tempfile::tempdir().unwrap();
+    let ctrl_exe = ctrl
+        .path()
+        .join(format!("probe{}", std::env::consts::EXE_SUFFIX));
+    std::fs::copy(&helper, &ctrl_exe).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&ctrl_exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let st = Command::new(&ctrl_exe)
+        .current_dir(ctrl.path())
+        .status()
+        .unwrap();
+    assert!(st.success());
+    assert!(
+        ctrl.path().join("AUSGEFUEHRT-probe.txt").exists(),
+        "Gegenprobe fehlgeschlagen"
+    );
+    let exe = data.join(format!("programm{}", std::env::consts::EXE_SUFFIX));
+    std::fs::copy(&helper, &exe).unwrap();
+    let marker_dir = dir.path().display().to_string();
+    #[cfg(windows)]
+    {
+        for (n, body) in [
+            ("skript.cmd", format!("echo x > \"{marker_dir}\\AUSGEFUEHRT-cmd.txt\"\r\n")),
+            ("skript.bat", format!("echo x > \"{marker_dir}\\AUSGEFUEHRT-bat.txt\"\r\n")),
+            ("skript.ps1", format!("Set-Content '{marker_dir}\\AUSGEFUEHRT-ps1.txt' x\r\n")),
+            ("skript.vbs", format!("CreateObject(\"Scripting.FileSystemObject\").CreateTextFile(\"{marker_dir}\\AUSGEFUEHRT-vbs.txt\")\r\n")),
+            ("autorun.inf", "[autorun]\r\nopen=programm.exe\r\n".to_string()),
+        ] {
+            std::fs::write(data.join(n), body).unwrap();
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let sh = data.join("skript.sh");
+        std::fs::write(
+            &sh,
+            format!("#!/bin/sh\ntouch '{marker_dir}/AUSGEFUEHRT-sh.txt'\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    for mode in [
+        &["--no-clamav"][..],
+        &["--no-clamav", "--yara-in-process"][..],
+        &[][..],
+    ] {
+        let rep_path = dir.path().join(format!("bericht-{}.json", mode.len()));
+        let mut args = mode.to_vec();
+        let rp = rep_path.display().to_string();
+        args.extend(["--json", rp.as_str()]);
+        let o = Command::new(bin())
+            .current_dir(&data)
+            .arg("scan")
+            .arg("--rules")
+            .arg(rules())
+            .arg("--ohne-fortsetzung")
+            .args(&args)
+            .arg(&data)
+            .output()
+            .unwrap();
+        assert!(o.status.code().is_some(), "{}", stderr(&o));
+        let rep = report(&rep_path);
+        assert!(
+            rep["summary"]["objects_total"].as_u64().unwrap() >= 2,
+            "{rep}"
+        );
+        let markers: Vec<_> = walk(dir.path())
+            .into_iter()
+            .filter(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("AUSGEFUEHRT")
+            })
+            .collect();
+        assert!(markers.is_empty(), "ausgeführt ({mode:?}): {markers:?}");
+    }
+}
+
+fn walk(p: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![p.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap().flatten() {
+            let path = e.path();
+            if path.is_dir() {
+                stack.push(path.clone());
+            }
+            out.push(path);
+        }
+    }
+    out
+}

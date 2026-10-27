@@ -30,6 +30,6 @@ Stand: 26.10.2026, vor Beginn der Umsetzung. Quelle der Anforderungen: `docs/spe
 | **E5** | Container-Härtetests mit echter Engine | T-024 (umgesetzt; ISO belegt, RAR mit unrar) |
 | **E6** | Regel-Harness, Regelmanifest | T-022 (umgesetzt; Signierung → P04) |
 | **E7** | Engine-Vertrag und Vertragstests | T-021 (umgesetzt; ENGINE-CONTRACT.md) |
-| **E8** | Fuzzing-Ziele und CI-Lauf, „nie ausführen“-Nachweis, Temporärdateien | T-028 |
+| **E8** | Fuzzing-Ziele und CI-Lauf, „nie ausführen“-Nachweis, Temporärdateien | T-028 (umgesetzt; Fuzzing-Job) |
 
 Nach jeder Etappe: Tests (Linux, Windows-CI, bei Bedarf LTSC-Testpaket), Fähigkeitsmatrix, Anforderungsstatus, CHANGELOG.

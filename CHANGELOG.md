@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Neu – Phase P03, Etappe 8: Robuste Verarbeitung
+- **Fuzzing**: sechs libFuzzer-Ziele (Typerkennung und Merkmale, Worker-Rahmen und -Antworten, Richtlinie, Herkunftsangabe, Fortsetzungs- und Cache-Datei) laufen in einem eigenen CI-Job; dieselben Einstiegspunkte laufen als Mutationstest in jedem normalen Testlauf.
+- **Nachweis „nie ausführen“**: Ein Testprogramm und Skripte, die beim Start sofort eine Markerdatei anlegen würden, werden mit allen Prüfwegen gescannt – es entsteht kein Marker. Eine Gegenprobe zeigt, dass der Marker beim echten Ausführen entsteht.
+- Arbeitsordner von ClamAV, die nach einem Absturz liegen geblieben sind, werden beim nächsten Start entfernt (nur von nachweislich beendeten Prozessen).
+
 ### Neu – Phase P03, Etappe 7: Engine-Vertrag
 - [`docs/ENGINE-CONTRACT.md`](docs/ENGINE-CONTRACT.md) legt fest, was jede Engine liefern muss (Versionen, Bereitschaft, belegte Containerformate, Ergebnisregeln, isolierte Ausfälle).
 - Eine gemeinsame **Prüfreihe** (`axsafe_core::conformance`) prüft alle vier Adapter – YARA-X im Prozess und im abgeschotteten Worker, ClamAV per clamscan und dauerhaft geladen – im bereiten und im nicht bereiten Zustand. Sie erkennt nachweislich eine absichtlich fehlerhafte Engine.

@@ -313,6 +313,38 @@ jobs:
           path: dienst-nachweis/
           if-no-files-found: ignore
 
+  fuzzing:
+    name: Fuzzing · libFuzzer je Parser (AXS-028)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      FUZZ_NIGHTLY: nightly-2026-10-01
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nightly-Toolchain und cargo-fuzz (gepinnt)
+        run: |
+          rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal
+          cargo +"$FUZZ_NIGHTLY" install cargo-fuzz --locked --version 0.13.2
+      - name: Saatdaten (harmlos, zur Laufzeit erzeugt)
+        run: AXSAFE_FUZZ_SEEDS="$PWD/fuzz-seeds" cargo test --locked -p axsafe-core --lib write_fuzz_seeds -- --ignored
+      - name: Fuzz-Ziele je 120 s
+        run: |
+          set -o pipefail
+          cd fuzz
+          for t in typ_und_merkmale worker_rahmen worker_antwort richtlinie herkunft fortsetzung_und_cache; do
+            mkdir -p "corpus/$t" && cp ../fuzz-seeds/* "corpus/$t/"
+            cargo +"$FUZZ_NIGHTLY" fuzz run -O "$t" "corpus/$t" -- \
+              -max_total_time=120 -rss_limit_mb=2048 -timeout=10 -max_len=1048576 2>&1 | tee "../fuzz-$t.log" | grep -E "^Done|ERROR|SUMMARY" || true
+            grep -q "^Done" "../fuzz-$t.log" || { echo "Fuzz-Ziel $t ohne regulären Abschluss"; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzzing-nachweis
+          path: |
+            fuzz-*.log
+            fuzz/artifacts/
+
   supply-chain:
     name: Lieferkette · cargo-deny, Gitleaks, SBOM, Lizenzhinweise
     runs-on: ubuntu-24.04

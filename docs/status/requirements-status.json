@@ -142,10 +142,10 @@
       "rest": "Windows-Systemtest Kontextmenü/Zeitplan erst nach grüner CI; Fortsetzen von Dienstaufträgen nicht vorhanden (Dienst-Abbruch = neu starten); Abbruch/Neustart ohne Quarantäneverlust (Teil von T-026) erst mit Quarantäne in P05; kein automatischer Scan beim Anschließen eines Wechseldatenträgers"
     },
     "AXS-028": {
-      "status": "begonnen",
-      "where": "crates/axsafe-core",
-      "evidence": "Scanner liest nur; PE-Parser übersteht jede Kürzung; Worker-Protokoll prüft Rahmengrößen vor dem Allokieren; Typerkennung läuft im abgeschotteten Worker, Ausfall = Lücke",
-      "rest": "Fuzzing"
+      "status": "teilweise",
+      "where": "crates/axsafe-core (filetype, features, container, fuzzing), fuzz/ (cargo-fuzz), crates/axsafe-engine-clamav (Arbeitsordner), Test scanned_programs_and_scripts_are_never_executed",
+      "evidence": "Begrenzte Parser (Typerkennung, PE-Merkmale, Containerstruktur, Zone.Identifier, Richtlinie, Fortsetzungs-/Cache-Datei) mit Mutationstests im normalen Testlauf (auch LTSC) und sechs libFuzzer-Zielen im CI-Job Fuzzing (je 120 s, Saat zur Laufzeit erzeugt; lokal 30 s je Ziel ohne Absturz, 33 000–550 000 Läufe); Worker-Rahmen prüfen Länge vor Allokation; native Bibliothek libclamav und YARA-X laufen nur im abgeschotteten Worker mit Zeit- und Speichergrenze; Nachweis „nie ausführen“: Programm, Skripte (sh/cmd/bat/ps1/vbs) und autorun.inf, die beim Start eine Markerdatei anlegen, werden mit Worker, im Prozess und mit ClamAV geprüft – kein Marker entsteht (Gegenprobe belegt, dass der Marker beim Ausführen entsteht); Arbeitsordner abgestürzter Prozesse werden beim nächsten Start entfernt, nie fremde oder laufende",
+      "rest": "Windows-Nachweis und Fuzzing-CI-Lauf erst nach grüner CI; Fuzzing deckt die Engines selbst (YARA-X, libclamav) nicht ab – das liegt bei deren Projekten, AXSafe begrenzt sie über den Worker"
     },
     "AXS-085": {
       "status": "begonnen",
@@ -297,7 +297,13 @@
     ],
     "T-028": [
       "filetype::tests::truncated_or_hostile_pe_is_malformed_not_panic",
-      "scan::tests::fifo_does_not_block_and_is_gap"
+      "scan::tests::fifo_does_not_block_and_is_gap",
+      "fuzzing::tests::mutation_fuzzing_without_panic_or_hang",
+      "container::tests::mutated_containers_never_panic",
+      "features::tests::every_truncation_and_bitflip_is_safe",
+      "fuzz/: typ_und_merkmale, worker_rahmen, worker_antwort, richtlinie, herkunft, fortsetzung_und_cache (CI-Job Fuzzing)",
+      "cli: scanned_programs_and_scripts_are_never_executed",
+      "clamav: stale_work_dirs_of_dead_processes_are_removed"
     ],
     "T-013": [
       "real_worker_is_isolated_and_scans",

@@ -81,6 +81,7 @@ Viele Sicherheitsprogramme zeigen große grüne Schilde, egal was im Hintergrund
 | **Ehrlicher Betriebszustand** (`axsafe zustand`): Scanner, Sensor, Richtlinie, Definitionen, Primärschutz und Dienst einzeln – nie grün ohne Beleg | |
 | **Richtlinie mit Ausnahmen** nur durch Administratoren, eng begrenzt und befristet; Ausgenommenes erscheint im Bericht | |
 | **Scanarten**: Schnell-, Voll-, Wechseldatenträger- und eigener Scan, Kontextmenü und Zeitplan; Fortschritt, Abbruch und **Fortsetzen** (nur unveränderte Dateien werden übernommen) | |
+| **Robust**: begrenzte Parser, Fuzzing in der CI, Nachweis, dass geprüfte Programme und Skripte nie gestartet werden | |
 | **Engine-Vertrag**: alle Engines erfüllen dieselben, getesteten Regeln ([ENGINE-CONTRACT](docs/ENGINE-CONTRACT.md)); Ausfälle werden zur sichtbaren Prüflücke | |
 | **Sicherer Cache im Dienst**: Wiederholte Prüfungen sparen Engine-Zeit nur bei gleichem Inhalt und gleichem Signatur-/Regelstand – nie anhand von Zeitstempeln | |
 | **Statische Merkmale**: PE-Struktur, Signatur (Authenticode), Herkunft (Mark of the Web); Heuristik meldet nur Täuschungsmuster wie `Rechnung.pdf.exe` – **mit Belegen**, nie wegen Entropie oder fehlender Signatur allein | |
@@ -193,8 +194,8 @@ docs/                        Plan, Matrizen, ADRs, Blocker, Quellen
 | Status | Anzahl |
 | --- | ---: |
 | ✅ erfüllt | 6 |
-| 🟢 teilweise belegt | 14 |
-| 🔵 begonnen | 8 |
+| 🟢 teilweise belegt | 15 |
+| 🔵 begonnen | 7 |
 | 📝 Entwurf | 5 |
 | ⛔ blockiert | 1 |
 | ⚪ geplant | 66 |

@@ -1,0 +1,63 @@
+# Fuzzing (AXS-028) mit cargo-fuzz/libFuzzer. Eigener Workspace, damit der
+# Hauptbuild ohne Nightly bleibt. Läuft im CI-Job „Fuzzing“.
+[package]
+name = "axsafe-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.10"
+axsafe-core = { path = "../crates/axsafe-core" }
+axsafe-workerproto = { path = "../crates/axsafe-workerproto" }
+
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "typ_und_merkmale"
+path = "fuzz_targets/typ_und_merkmale.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "richtlinie"
+path = "fuzz_targets/richtlinie.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "herkunft"
+path = "fuzz_targets/herkunft.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "worker_antwort"
+path = "fuzz_targets/worker_antwort.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "worker_rahmen"
+path = "fuzz_targets/worker_rahmen.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fortsetzung_und_cache"
+path = "fuzz_targets/fortsetzung_und_cache.rs"
+test = false
+doc = false
+bench = false

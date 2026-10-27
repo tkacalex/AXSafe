@@ -406,6 +406,7 @@ impl ClamAvWorkerEngine {
     #[cfg(not(windows))]
     fn prepare_workdir(&self) -> std::io::Result<PathBuf> {
         static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        crate::sweep_stale_work_dirs(&std::env::temp_dir(), "axsafe-clamav-arbeit-");
         let dir = std::env::temp_dir().join(format!(
             "axsafe-clamav-arbeit-{}-{}",
             std::process::id(),

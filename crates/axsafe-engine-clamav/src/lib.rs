@@ -200,6 +200,51 @@ impl Drop for ClamAvEngine {
     }
 }
 
+/// Räumt Arbeitsordner abgestürzter AXSafe-Prozesse auf (AXS-028): Ordner
+/// heißen `<präfix><pid>-…`. Entfernt wird nur, wenn der Prozess
+/// nachweislich nicht mehr läuft oder die PID inzwischen einem jüngeren
+/// Prozess gehört. Liefert die Anzahl entfernter Ordner.
+pub fn sweep_stale_work_dirs(base: &std::path::Path, prefix: &str) -> usize {
+    let Ok(rd) = std::fs::read_dir(base) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let Some(rest) = name.strip_prefix(prefix) else {
+            continue;
+        };
+        let Some(pid) = rest.split('-').next().and_then(|p| p.parse::<u32>().ok()) else {
+            continue;
+        };
+        if pid == std::process::id() {
+            continue;
+        }
+        let Ok(meta) = e.metadata() else { continue };
+        if !meta.is_dir() {
+            continue;
+        }
+        let created_ns = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos() as i128)
+            .unwrap_or(i128::MAX);
+        let stale = match axsafe_proc::process_start(pid) {
+            // PID gehört einem Prozess, der erst nach dem Ordner startete.
+            Ok(p) => p.start_unix_ns > created_ns,
+            Err(err) => {
+                err.kind() == std::io::ErrorKind::NotFound
+                    || (cfg!(windows) && err.raw_os_error() == Some(87))
+            }
+        };
+        if stale && std::fs::remove_dir_all(e.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 /// Legt einen NEUEN Arbeitsordner für clamscan mit eingeschränktem Token an
 /// (je Engine-Instanz eigener Ordner – parallele Instanzen setzen sonst
 /// gleichzeitig Rechte auf denselben Ordner; in CI beobachtet: „Can't write
@@ -214,6 +259,7 @@ pub fn new_restricted_work_dir() -> std::io::Result<std::path::PathBuf> {
         .join("AXSafe")
         .join("ClamAV-Arbeitsordner");
     std::fs::create_dir_all(&base)?;
+    sweep_stale_work_dirs(&base, "");
     let dir = base.join(format!(
         "{}-{}-{}",
         std::process::id(),
@@ -1019,6 +1065,23 @@ mod tests {
             exe.ends_with("ClamAV/clamscan.exe")
                 || exe.to_string_lossy().ends_with(r"ClamAV\clamscan.exe")
         );
+    }
+
+    #[test]
+    fn stale_work_dirs_of_dead_processes_are_removed() {
+        let d = tempfile::tempdir().unwrap();
+        let dead = d.path().join("axsafe-x-4000000000-1");
+        let mine = d.path().join(format!("axsafe-x-{}-1", std::process::id()));
+        let other = d.path().join("fremd-4000000000-1");
+        for p in [&dead, &mine, &other] {
+            std::fs::create_dir(p).unwrap();
+            std::fs::write(p.join("rest.bin"), b"x").unwrap();
+        }
+        let n = sweep_stale_work_dirs(d.path(), "axsafe-x-");
+        assert_eq!(n, 1);
+        assert!(!dead.exists());
+        assert!(mine.exists(), "eigener Ordner bleibt");
+        assert!(other.exists(), "fremde Namen bleiben");
     }
 
     #[test]
