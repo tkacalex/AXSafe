@@ -27,8 +27,8 @@ Stand: 26.10.2026, vor Beginn der Umsetzung. Quelle der Anforderungen: `docs/spe
 | **E2** | Statische Merkmale im Worker, Authenticode und MotW mit Benutzerrechten, Heuristik mit Belegen | T-025 (umgesetzt; Windows-Belege über CI) |
 | **E3** | Scanarten, Fortschritt, Fortsetzen | T-026 (ohne Quarantäne-Teil → P05; umgesetzt, Windows-Belege über CI) |
 | **E4** | Sicherer Cache im Dienst | T-027 (umgesetzt; Dienst-Belege über CI) |
-| **E5** | Container-Härtetests mit echter Engine | T-024 |
-| **E6** | Regel-Harness, Regelmanifest | T-022 (Signierung → P04) |
+| **E5** | Container-Härtetests mit echter Engine | T-024 (umgesetzt; ISO belegt, RAR mit unrar) |
+| **E6** | Regel-Harness, Regelmanifest | T-022 (umgesetzt; Signierung → P04) |
 | **E7** | Engine-Vertrag und Vertragstests | T-021 |
 | **E8** | Fuzzing-Ziele und CI-Lauf, „nie ausführen“-Nachweis, Temporärdateien | T-028 |
 

@@ -1,8 +1,9 @@
 //! Gemeinsame Testhilfen: harmlose Testdaten und Container zur Laufzeit.
 #![allow(dead_code)]
 
+mod archives;
+
 use md5::{Digest, Md5};
-use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 
 /// EICAR wird zur Laufzeit zusammengesetzt (Quelltext enthält ihn nicht am Stück).
@@ -28,101 +29,8 @@ pub fn test_hdb(dir: &Path) -> PathBuf {
     p
 }
 
-pub fn zip_with(entries: &[(&str, &[u8])], password: Option<&str>) -> Vec<u8> {
-    use zip::unstable::write::FileOptionsExt;
-    use zip::write::SimpleFileOptions;
-    let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
-    for (name, data) in entries {
-        let mut opts =
-            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        if let Some(pw) = password {
-            opts = opts.with_deprecated_encryption(pw.as_bytes()).unwrap();
-        }
-        w.start_file(*name, opts).unwrap();
-        w.write_all(data).unwrap();
-    }
-    w.finish().unwrap().into_inner()
-}
-
-pub fn ooxml_with(payload: &[u8]) -> Vec<u8> {
-    let ct = br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>"#;
-    zip_with(
-        &[
-            ("[Content_Types].xml", ct),
-            ("word/embeddings/oleObject1.bin", payload),
-        ],
-        None,
-    )
-}
-
-pub fn gzip_with(payload: &[u8]) -> Vec<u8> {
-    let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-    e.write_all(payload).unwrap();
-    e.finish().unwrap()
-}
-
-pub fn cfb_with(payload: &[u8]) -> Vec<u8> {
-    let mut comp = cfb::CompoundFile::create(Cursor::new(Vec::new())).unwrap();
-    {
-        let mut s = comp.create_stream("/Inhalt").unwrap();
-        s.write_all(payload).unwrap();
-    }
-    comp.flush().unwrap();
-    comp.into_inner().into_inner()
-}
-
-pub fn cab_with(payload: &[u8]) -> Vec<u8> {
-    let mut b = cab::CabinetBuilder::new();
-    b.add_folder(cab::CompressionType::MsZip)
-        .add_file("inhalt.bin");
-    let mut w = b.build(Cursor::new(Vec::new())).unwrap();
-    while let Some(mut f) = w.next_file().unwrap() {
-        f.write_all(payload).unwrap();
-    }
-    w.finish().unwrap().into_inner()
-}
-
-pub fn sevenz_with(dir: &Path, payload: &[u8]) -> Vec<u8> {
-    let src = dir.join("7z-src");
-    std::fs::create_dir_all(&src).unwrap();
-    std::fs::write(src.join("inhalt.bin"), payload).unwrap();
-    sevenz_rust2::compress(&src, Cursor::new(Vec::new()))
-        .unwrap()
-        .into_inner()
-}
-
-/// Minimales PDF mit einem FlateDecode-Stream, der `payload` enthält.
-pub fn pdf_with(payload: &[u8]) -> Vec<u8> {
-    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-    z.write_all(payload).unwrap();
-    let stream = z.finish().unwrap();
-    let mut pdf = Vec::new();
-    let mut offs = Vec::new();
-    pdf.extend_from_slice(b"%PDF-1.4\n");
-    offs.push(pdf.len());
-    pdf.extend_from_slice(b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-    offs.push(pdf.len());
-    pdf.extend_from_slice(b"2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
-    offs.push(pdf.len());
-    pdf.extend_from_slice(
-        format!(
-            "3 0 obj\n<< /Length {} /Filter /FlateDecode >>\nstream\n",
-            stream.len()
-        )
-        .as_bytes(),
-    );
-    pdf.extend_from_slice(&stream);
-    pdf.extend_from_slice(b"\nendstream\nendobj\n");
-    let xref = pdf.len();
-    pdf.extend_from_slice(b"xref\n0 4\n0000000000 65535 f \n");
-    for o in offs {
-        pdf.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
-    }
-    pdf.extend_from_slice(
-        format!("trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n").as_bytes(),
-    );
-    pdf
-}
+#[allow(unused_imports)]
+pub use archives::*;
 
 /// Kopiert den Testhelfer als `clamscan-<modus>` in `dir`.
 pub fn fake_clamscan(dir: &Path, mode: &str) -> PathBuf {

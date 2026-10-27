@@ -41,7 +41,7 @@ use std::time::{Duration, Instant};
 /// Nur Formate mit bestandenem Integrationstest (`tests/clamav_real.rs`,
 /// `content_formats_are_backed_by_real_clamav`). RAR (abhängig von
 /// unrar-Unterstützung der Installation), ISO, RTF und VHDX fehlen bewusst.
-pub const VERIFIED_CONTENT_FORMATS: [ContentFormat; 7] = [
+pub const VERIFIED_CONTENT_FORMATS: [ContentFormat; 8] = [
     ContentFormat::Zip,
     ContentFormat::Ooxml,
     ContentFormat::Gzip,
@@ -49,7 +49,42 @@ pub const VERIFIED_CONTENT_FORMATS: [ContentFormat; 7] = [
     ContentFormat::Cab,
     ContentFormat::SevenZip,
     ContentFormat::Pdf,
+    ContentFormat::Iso,
 ];
+
+/// RAR-Inhalt prüft libclamav nur mit der Zusatzbibliothek
+/// `libclamunrar_iface`, die ClamAV unter genau diesem Namen neben libclamav
+/// sucht (Unix: mit derselben Versionsendung wie libclamav). Das offizielle
+/// Windows-Paket enthält sie; unter Debian/Ubuntu fehlt sie meist. Fehlt sie,
+/// wird RAR NICHT als geprüft beansprucht (Lücke `content_not_inspected`).
+pub fn unrar_available(libclamav: &std::path::Path) -> bool {
+    let Some(dir) = libclamav.parent() else {
+        return false;
+    };
+    if cfg!(windows) {
+        return dir.join("libclamunrar_iface.dll").is_file();
+    }
+    let real = std::fs::canonicalize(libclamav).unwrap_or_else(|_| libclamav.to_path_buf());
+    let Some(name) = real.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let Some(suffix) = name.strip_prefix("libclamav") else {
+        return false;
+    };
+    real.parent()
+        .unwrap_or(dir)
+        .join(format!("libclamunrar_iface{suffix}"))
+        .is_file()
+}
+
+/// Belegte Inhaltsformate dieser Installation (RAR nur mit unrar).
+pub fn content_formats(libclamav: &std::path::Path) -> Vec<ContentFormat> {
+    let mut v = VERIFIED_CONTENT_FORMATS.to_vec();
+    if unrar_available(libclamav) {
+        v.push(ContentFormat::Rar);
+    }
+    v
+}
 
 /// Konfiguration des Adapters.
 #[derive(Debug, Clone)]
@@ -857,7 +892,7 @@ impl Engine for ClamAvEngine {
             license: "GPL-2.0 (separat installiert, nicht mitgeliefert)".into(),
             content_kind: self.content_kind,
             content_note: self.content_note.clone(),
-            inspects_contents_of: VERIFIED_CONTENT_FORMATS.to_vec(),
+            inspects_contents_of: content_formats(&persistent::default_library(&self.cfg.clamscan)),
             isolation: self.isolation(),
         }
     }
@@ -987,13 +1022,34 @@ mod tests {
     }
 
     #[test]
+    fn rar_is_claimed_only_with_matching_unrar_library() {
+        let d = tempfile::tempdir().unwrap();
+        let (lib, iface) = if cfg!(windows) {
+            ("libclamav.dll", "libclamunrar_iface.dll".to_string())
+        } else {
+            (
+                "libclamav.so.12.1.0",
+                "libclamunrar_iface.so.12.1.0".to_string(),
+            )
+        };
+        let l = d.path().join(lib);
+        std::fs::write(&l, b"").unwrap();
+        assert!(!unrar_available(&l));
+        assert!(!content_formats(&l).contains(&ContentFormat::Rar));
+        if !cfg!(windows) {
+            // Falsche Version zählt nicht.
+            std::fs::write(d.path().join("libclamunrar_iface.so.11"), b"").unwrap();
+            assert!(!unrar_available(&l));
+        }
+        std::fs::write(d.path().join(iface), b"").unwrap();
+        assert!(unrar_available(&l));
+        assert!(content_formats(&l).contains(&ContentFormat::Rar));
+        assert!(!unrar_available(&d.path().join("fehlt").join(lib)));
+    }
+
+    #[test]
     fn verified_formats_exclude_unproven_ones() {
-        for f in [
-            ContentFormat::Rar,
-            ContentFormat::Iso,
-            ContentFormat::Rtf,
-            ContentFormat::Vhdx,
-        ] {
+        for f in [ContentFormat::Rar, ContentFormat::Rtf, ContentFormat::Vhdx] {
             assert!(
                 !VERIFIED_CONTENT_FORMATS.contains(&f),
                 "{f:?} ohne Nachweis"

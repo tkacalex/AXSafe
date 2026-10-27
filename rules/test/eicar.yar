@@ -9,12 +9,14 @@
 // Regeldatei selbst nicht von Virenscannern als Testdatei gemeldet wird.
 //
 // Pflicht-Metadaten jeder AXSafe-Regel (wird beim Laden geprüft):
-//   id, verdict, severity, confidence, author, license, source, min_engine
+//   id, version, verdict, severity, confidence, author, license, source, min_engine
+// Jede Regel braucht außerdem Positiv- und Gegenbeispiele in rule-tests/<id>.json.
 
 rule AXSafe_Test_EICAR
 {
     meta:
         id = "AXS-TEST-0001"
+        version = "1.0.0"
         name = "AXSafe.Test.EICAR"
         verdict = "malicious"
         severity = "low"

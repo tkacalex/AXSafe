@@ -9,3 +9,8 @@ content_formats_are_backed_by_real_clamav|clamscan legt Container mit EICAR-Inha
 harmless_archives_normal_encrypted_nested|clamscan legt ein ZIP mit EICAR-Inhalt als temporäre Datei ab
 report_target_windows_symlink_is_refused|braucht Administratorrechte zum Anlegen symbolischer Links
 packed_benign_program_is_hint_not_detection|braucht UPX zum Packen (wird auf dem Alltagsrechner nicht installiert); läuft in der Windows-CI
+truncated_archive_is_never_complete_and_clean|legt ein ZIP mit EICAR-Inhalt als Datei ab
+encrypted_and_nested_and_embedded_content|legt eine Programmdatei mit angehängtem EICAR-ZIP als Datei ab
+iso_content_is_inspected|clamscan legt ein ISO mit EICAR-Inhalt als temporäre Datei ab
+content_formats_are_backed_by_real_libclamav|libclamav entpackt Container mit EICAR-Inhalt in temporäre Dateien
+rar_content_follows_unrar_availability|legt ein RAR mit EICAR-Inhalt als Datei ab

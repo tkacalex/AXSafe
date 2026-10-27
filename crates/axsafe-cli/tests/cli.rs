@@ -731,3 +731,20 @@ fn json_progress_lines_are_machine_readable() {
         );
     }
 }
+
+#[test]
+fn rules_command_lists_id_version_origin_and_test_flag() {
+    let o = Command::new(bin())
+        .args(["regeln", "--json", "--rules"])
+        .arg(rules())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    let r = &v["rules"][0];
+    assert_eq!(r["id"], "AXS-TEST-0001");
+    assert_eq!(r["version"], "1.0.0");
+    assert_eq!(r["test"], true);
+    assert_eq!(v["content_kind"], "test_only");
+    assert!(!r["source"].as_str().unwrap().is_empty());
+}

@@ -8,6 +8,9 @@
 //! Tests fehl – sie bestehen nie still. Sie tragen deshalb `#[ignore]` mit
 //! Grund und laufen mit `--include-ignored` (Linux-CI, windows-clamav).
 
+#[path = "../../axsafe-engine-clamav/tests/common/archives.rs"]
+mod archives;
+
 use axsafe_core::engine::{Engine, EngineHealth, GapReason, ScanInput};
 use axsafe_core::verdict::Verdict;
 use axsafe_engine_clamav::persistent::{default_library, ClamAvWorkerEngine, WorkerSettings};
@@ -409,4 +412,67 @@ fn worker_with_mismatching_official_db_version_is_rejected() {
         EngineHealth::Unavailable { reason } => assert!(reason.contains("passt nicht"), "{reason}"),
         h => panic!("falscher Stand wurde angenommen: {h:?}"),
     }
+}
+
+/// Die dauerhafte Engine (Windows-Standard) beansprucht dieselben
+/// Inhaltsformate wie clamscan – hier mit der echten libclamav belegt.
+#[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
+fn content_formats_are_backed_by_real_libclamav() {
+    use axsafe_core::filetype::{self, ContentFormat};
+    let f = fixture("worker");
+    let e = ClamAvWorkerEngine::start(settings(&f, &[]), PathBuf::from("clamscan"));
+    ready(&e);
+    let claimed = e.info().inspects_contents_of;
+    assert_eq!(claimed, axsafe_engine_clamav::content_formats(&library()));
+    if cfg!(windows) {
+        assert!(
+            claimed.contains(&ContentFormat::Rar),
+            "Windows-Paket enthält unrar"
+        );
+    }
+    let p = eicar();
+    let tmp = tempfile::tempdir().unwrap();
+    let cases: Vec<(ContentFormat, Vec<u8>)> = vec![
+        (
+            ContentFormat::Zip,
+            archives::zip_with(&[("inhalt.bin", &p)], None),
+        ),
+        (ContentFormat::Ooxml, archives::ooxml_with(&p)),
+        (ContentFormat::Gzip, archives::gzip_with(&p)),
+        (ContentFormat::OleCfb, archives::cfb_with(&p)),
+        (ContentFormat::Cab, archives::cab_with(&p)),
+        (
+            ContentFormat::SevenZip,
+            archives::sevenz_with(tmp.path(), &p),
+        ),
+        (ContentFormat::Pdf, archives::pdf_with(&p)),
+        (ContentFormat::Iso, archives::iso_with("inhalt.bin", &p)),
+        (ContentFormat::Rar, archives::rar_with("inhalt.bin", &p)),
+    ];
+    let cases: Vec<_> = cases
+        .into_iter()
+        .filter(|(f, _)| claimed.contains(f))
+        .collect();
+    assert_eq!(
+        cases.len(),
+        claimed.len(),
+        "jedes beanspruchte Format braucht einen Fall"
+    );
+    for (fmt, data) in cases {
+        let kind = filetype::detect(&data);
+        assert_eq!(filetype::content_format(&kind), Some(fmt), "{kind:?}");
+        let o = scan(&e, &data, Duration::from_secs(60));
+        assert_eq!(
+            o.verdict,
+            Verdict::Malicious,
+            "libclamav prüft {fmt:?} nicht: {o:?}"
+        );
+    }
+    let enc = archives::zip_with(&[("a.txt", b"hallo")], Some("geheim"));
+    let o = scan(&e, &enc, Duration::from_secs(60));
+    assert!(
+        o.gaps.iter().any(|g| g.reason == GapReason::Encrypted),
+        "{o:?}"
+    );
 }

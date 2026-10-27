@@ -36,7 +36,7 @@ Die folgende Tabelle wird aus der laufenden CLI erzeugt (`axsafe faehigkeiten --
 | TAR | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
 | CAB | ✅ `filetype::tests::common_signatures` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
 | WIM | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
-| ISO 9660 | ✅ `filetype::tests::common_signatures` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
+| ISO 9660 | ✅ `filetype::tests::common_signatures` | ja | clamav | `content_formats_are_backed_by_real_clamav` | Lücke `content_not_inspected` |
 | UDF | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
 | VHD | ✅ `filetype::tests::disk_and_archive_containers` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
 | VHDX | ✅ `filetype::tests::common_signatures` | ja | **niemand – immer Lücke** | – (kein Engine-Beleg) | Lücke `content_not_inspected` |
@@ -60,6 +60,13 @@ Weitere Fälle:
 | Alternate Data Streams | jeder Strom einzeln als `Datei:Strom` geprüft | `alternate_data_streams_are_scanned_separately` (Windows) |
 | Verschlüsselte Archive | Lücke `encrypted` (nur wenn die Engine es sicher feststellt) | `harmless_archives_normal_encrypted_nested` |
 | Verschachtelung über die Grenze | Lücke `engine_limit_exceeded` | `recursion_limit_is_reported_as_gap` |
+| Beschädigtes/abgeschnittenes Archiv (ZIP, 7z, CAB) | eigene Strukturprüfung im Worker: Lücke `container_damaged`, auch wenn die Engine noch etwas findet | `truncated_archive_is_never_complete_and_clean`, `container::tests::*` |
+| Archivbombe (angegebene Entpackgröße > 400 MB oder > 1000:1) | Lücke `engine_limit_exceeded` – ClamAV allein meldet hier gemessen „OK“ | `archive_bomb_is_gap_not_clean` |
+| Verschlüsselte ZIP-Einträge ohne Engine-Meldung | Lücke `encrypted` aus der Strukturprüfung | `damaged_or_encrypted_container_is_a_gap_even_with_capable_engine` |
+| Eingebetteter Inhalt (ZIP hinter einer Programmdatei) | von ClamAV geprüft | `encrypted_and_nested_and_embedded_content` |
+| Pfadausbruch-Namen (`../`, absolute Pfade) | AXSafe entpackt nicht auf die Platte; Name als Hinweis im Bericht; geprüft, dass nichts außerhalb entsteht | `path_escape_names_write_nothing_outside` |
+| RAR | Inhalt nur geprüft, wenn ClamAV mit `libclamunrar_iface` installiert ist (offizielles Windows-Paket: ja; Ubuntu-Paket der CI: nein → Lücke `content_not_inspected`). AXSafe beansprucht RAR nur, wenn die Bibliothek passend vorhanden ist; die Tabelle oben zeigt den Linux-CI-Stand | `rar_content_follows_unrar_availability`, `content_formats_are_backed_by_real_libclamav` (Windows: RAR Pflicht) |
+| VHD/VHDX/VMDK/WIM/UDF | erkannt, Inhalt nicht geprüft → Lücke `content_not_inspected` | – |
 
 Belege: Linux-CI und Windows-CI mit echtem ClamAV 1.5.4; Rust-Testsuite zusätzlich auf dem Zielrechner LTSC (ohne die EICAR-auf-Platte-Tests).
 
@@ -89,6 +96,8 @@ Belege: Linux-CI und Windows-CI mit echtem ClamAV 1.5.4; Rust-Testsuite zusätzl
 | `custom_signatures` | eigene ClamAV-Datenbank |
 
 Aus einem EICAR-Fund wird **keine** Erkennungsleistung abgeleitet.
+
+Jede Regel hat ID, Version, Herkunft, Lizenz, Schweregrad, Konfidenz und Mindestversion; zu jeder gehören Positiv- und Gegenbeispiele in `rule-tests/` (CI-Pflicht). `axsafe regeln` listet sie. Signatur des Regelsatzes: offen bis P04.
 
 ## Schutzfunktionen
 

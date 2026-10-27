@@ -26,7 +26,7 @@
 //! * Nach `idle_timeout` ohne Anfrage wird der Worker beendet (Speicher frei);
 //!   der nächste Auftrag startet ihn neu (Kaltstart).
 
-use crate::{classify, database_content, is_test_signature, DbContent, VERIFIED_CONTENT_FORMATS};
+use crate::{classify, database_content, is_test_signature, DbContent};
 use axsafe_core::engine::{
     ContentKind, Detection, Engine, EngineHealth, EngineInfo, EngineOutcome, Gap, GapReason,
     Isolation, IsolationKind, ScanInput,
@@ -325,7 +325,11 @@ impl ClamAvWorkerEngine {
                 .into(),
             content_kind: ContentKind::Unknown,
             content_note: String::new(),
-            inspects_contents_of: VERIFIED_CONTENT_FORMATS.to_vec(),
+            inspects_contents_of: crate::content_formats(
+                &ws.library
+                    .clone()
+                    .unwrap_or_else(|| default_library(&clamscan)),
+            ),
             isolation: Isolation {
                 kind: IsolationKind::SandboxedWorker,
                 enforced: false,

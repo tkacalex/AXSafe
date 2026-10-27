@@ -894,6 +894,16 @@ impl Scanner {
             }
         }
 
+        // Containerstruktur (AXS-024): Beschädigung, verschlüsselte Einträge
+        // und übergroße Entpackgröße schränken die Engine-Aussage ein.
+        if let Some(c) = result
+            .static_features
+            .as_ref()
+            .and_then(|f| f.container.clone())
+        {
+            container_gaps(&c, data.len() as u64, &mut result.gaps);
+        }
+
         // Identität nach dem Lesen und der Prüfung erneut vergleichen.
         if self.changed_after_read(&file, path, &before, data.len()) {
             result.gaps.push(changed_gap());
@@ -933,6 +943,47 @@ impl Scanner {
         result.detection = highest_detection(detections);
         result.status = ObjectStatus::from_parts(result.detection, &result.gaps);
         FileOutcome::Result(Box::new(result))
+    }
+}
+
+/// Lücken aus der Strukturprüfung; doppelte Angaben der Engines werden nicht
+/// wiederholt.
+fn container_gaps(c: &crate::container::ContainerCheck, len: u64, gaps: &mut Vec<Gap>) {
+    if !c.damage.is_empty() {
+        gaps.push(Gap::new(
+            Verdict::Unsupported,
+            GapReason::ContainerDamaged,
+            AXSAFE,
+            format!(
+                "{} beschädigt ({}): Inhalt möglicherweise nur teilweise geprüft",
+                c.format,
+                c.damage.join("; ")
+            ),
+        ));
+    }
+    if c.encrypted_entries > 0 && !gaps.iter().any(|g| g.reason == GapReason::Encrypted) {
+        gaps.push(Gap::new(
+            Verdict::Encrypted,
+            GapReason::Encrypted,
+            AXSAFE,
+            format!(
+                "{} enthält {} verschlüsselte(n) Eintrag/Einträge: deren Inhalt wurde nicht geprüft",
+                c.format, c.encrypted_entries
+            ),
+        ));
+    }
+    if let Some(msg) = c.exceeds_expansion(len) {
+        if !gaps
+            .iter()
+            .any(|g| g.reason == GapReason::EngineLimitExceeded)
+        {
+            gaps.push(Gap::new(
+                Verdict::Unsupported,
+                GapReason::EngineLimitExceeded,
+                AXSAFE,
+                msg,
+            ));
+        }
     }
 }
 
@@ -1662,10 +1713,10 @@ mod tests {
         assert_eq!(rep.outcome, JobOutcome::Incomplete);
     }
 
+    /// Gültiges ZIP (seit AXS-024 wird die Struktur geprüft; ein bloßer
+    /// Kopf ohne Verzeichnis gilt als beschädigt).
     fn zip_bytes() -> Vec<u8> {
-        let mut z = b"PK\x03\x04".to_vec();
-        z.extend_from_slice(&[0u8; 60]);
-        z
+        crate::container::tests::zip_of(&[("a.txt", b"harmlos", false)])
     }
 
     #[test]
@@ -1685,6 +1736,67 @@ mod tests {
         );
         assert_eq!(rep.outcome, JobOutcome::Incomplete);
         assert!(!rep.complete);
+    }
+
+    /// AXS-024: Beschädigung und verschlüsselte Einträge sind Lücken, auch
+    /// wenn die containerfähige Engine nichts dazu sagt.
+    #[test]
+    fn damaged_or_encrypted_container_is_a_gap_even_with_capable_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let z = zip_bytes();
+        fs::write(dir.path().join("kaputt.zip"), &z[..z.len() - 5]).unwrap();
+        fs::write(
+            dir.path().join("enc.zip"),
+            crate::container::tests::zip_of(&[("g.txt", b"x", true)]),
+        )
+        .unwrap();
+        let rep = run(
+            &scanner(vec![Box::new(TestEngine::container_capable())]),
+            dir.path(),
+        );
+        let by = |n: &str| rep.files.iter().find(|f| f.path.ends_with(n)).unwrap();
+        assert!(by("kaputt.zip")
+            .gaps
+            .iter()
+            .any(|g| g.reason == GapReason::ContainerDamaged));
+        let e = by("enc.zip");
+        assert!(
+            e.gaps
+                .iter()
+                .any(|g| g.reason == GapReason::Encrypted && g.state == Verdict::Encrypted),
+            "{e:?}"
+        );
+        assert_eq!(rep.outcome, JobOutcome::Incomplete);
+    }
+
+    /// Zip-Slip-Namen: Hinweis, kein Fund; AXSafe schreibt nichts.
+    #[test]
+    fn escaping_archive_names_are_hint_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("daten");
+        fs::create_dir(&data).unwrap();
+        fs::write(
+            data.join("a.zip"),
+            crate::container::tests::zip_of(&[("../../ausbruch.txt", b"x", false)]),
+        )
+        .unwrap();
+        let rep = run(
+            &scanner(vec![Box::new(TestEngine::container_capable())]),
+            &data,
+        );
+        let f = &rep.files[0];
+        assert_eq!(f.detection, Verdict::NoDetection);
+        let h = f
+            .engines
+            .iter()
+            .find(|e| e.engine == crate::heuristics::HEURISTICS_ENGINE)
+            .unwrap();
+        assert!(
+            h.note.as_deref().unwrap_or("").contains("Pfadausbruch"),
+            "{h:?}"
+        );
+        assert!(!dir.path().join("ausbruch.txt").exists());
+        assert!(!dir.path().parent().unwrap().join("ausbruch.txt").exists());
     }
 
     #[test]

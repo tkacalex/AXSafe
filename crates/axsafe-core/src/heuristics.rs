@@ -208,6 +208,15 @@ pub fn evaluate(
             hints.push(format!("Authenticode: {} – {}", a.status, a.detail));
         }
     }
+    if let Some(c) = features.and_then(|f| f.container.as_ref()) {
+        if !c.escaping_names.is_empty() {
+            hints.push(format!(
+                "{}-Einträge mit Pfadausbruch-Muster ({}) – AXSafe entpackt nicht auf die Platte",
+                c.format,
+                c.escaping_names.join(", ")
+            ));
+        }
+    }
     if let Some(pe) = features.and_then(|f| f.pe.as_ref()) {
         let packed: Vec<&str> = pe
             .sections
@@ -338,6 +347,7 @@ mod tests {
         let feats = StaticFeatures {
             entropy: 7.9,
             pe: Some(f),
+            container: None,
         };
         let origin = parse_zone_identifier("[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://user:pw@download.example.org/a.exe?token=geheim\r\n").unwrap();
         let auth = Authenticode {

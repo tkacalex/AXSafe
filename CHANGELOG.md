@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Neu – Phase P03, Etappe 6: Regelpflege und Regeltests
+- Jede YARA-X-Regel braucht jetzt zusätzlich eine **Version**; IDs müssen eindeutig sein. Ein fehlerhafter Regelsatz wird vollständig abgelehnt (keine stille Teilladung). Funde nennen Regel-ID **und** Regelversion.
+- **Regeltests** (`rule-tests/<id>.json`): Zu jeder Regel gehören Positiv- und gutartige Gegenbeispiele; die CI prüft sie bei jedem Lauf, ebenso eine Laufzeitgrenze je Regelsatz. Beispiele entstehen zur Laufzeit.
+- `axsafe regeln` zeigt ID, Version, Herkunft, Lizenz und das Kennzeichen „NUR FUNKTIONSTEST“.
+- Signatur des Regelsatzes: bewusst noch offen, kommt mit dem Updatevertrauen in P04.
+
+### Neu – Phase P03, Etappe 5: Container-Härtetests
+- Eigene, begrenzte **Strukturprüfung** für ZIP/OOXML, 7z und CAB (im Dienst im abgeschotteten Worker): beschädigte oder abgeschnittene Archive, verschlüsselte Einträge und übergroße Entpackgrößen (Archivbomben) erscheinen als Prüflücke – auch wenn die Engine selbst nichts meldet. Gemessen: ClamAV meldet eine 150-MiB-Nullbombe allein als „OK“.
+- **ISO 9660** ist jetzt mit echtem ClamAV (clamscan und dauerhafter Worker) als inhaltlich geprüft belegt; die dauerhafte Engine hat dafür eigene Formattests.
+- Pfadausbruch-Namen in Archiven (`../`, absolute Pfade) erscheinen als Hinweis; AXSafe entpackt nichts auf die Platte (Test prüft, dass nichts außerhalb entsteht).
+- **RAR** gilt nur dann als inhaltlich geprüft, wenn ClamAV mit der unrar-Bibliothek installiert ist (offizielles Windows-Paket); sonst bleibt es eine sichtbare Lücke. VHD/VHDX, VMDK, WIM und UDF bleiben ehrlich „erkannt, Inhalt nicht geprüft“.
+
 ### Neu – Phase P03, Etappe 4: Sicherer Ergebnis-Cache im Dienst
 - Wiederholte Prüfungen über den Dienst überspringen die Engines für Dateien, deren **Inhalt** (SHA-256) unter **demselben** Engine-, Regel-, Signatur-, Richtlinien- und Programmstand schon vollständig geprüft wurde. Dateien werden trotzdem immer gelesen; Heuristik, Herkunft und Signatur werden neu bestimmt.
 - Geänderter Inhalt (auch mit zurückgesetztem Zeitstempel), neue Signaturen, neue Regeln oder eine andere Richtlinie führen immer zu einer neuen Bewertung. Unvollständige Ergebnisse werden nie zwischengespeichert.

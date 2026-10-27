@@ -25,8 +25,9 @@ use std::time::Instant;
 pub const YARAX_VERSION: &str = "1.22.0";
 
 /// Pflichtfelder in `meta:` jeder AXSafe-Regel.
-pub const REQUIRED_META: [&str; 8] = [
+pub const REQUIRED_META: [&str; 9] = [
     "id",
+    "version",
     "verdict",
     "severity",
     "confidence",
@@ -202,6 +203,7 @@ fn compile(sources: &[RuleSource]) -> Result<Loaded, String> {
     let engine = version_tuple(YARAX_VERSION).expect("gültige Konstante");
     let mut count = 0usize;
     let mut test_count = 0usize;
+    let mut ids = std::collections::HashSet::new();
     for rule in rules.iter() {
         count += 1;
         if meta_str(&rule, "test").as_deref() == Some("true") {
@@ -219,6 +221,27 @@ fn compile(sources: &[RuleSource]) -> Result<Loaded, String> {
         parse_severity(&s).ok_or(format!("Regel {ident}: ungültige severity '{s}'"))?;
         let c = meta_str(&rule, "confidence").unwrap_or_default();
         parse_confidence(&c).ok_or(format!("Regel {ident}: ungültige confidence '{c}'"))?;
+        let id = meta_str(&rule, "id").unwrap_or_default();
+        if id.is_empty()
+            || id.len() > 64
+            || !id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        {
+            return Err(format!("Regel {ident}: ungültige id '{id}'"));
+        }
+        if !ids.insert(id.clone()) {
+            return Err(format!("Regel {ident}: id '{id}' ist doppelt vergeben"));
+        }
+        let ver = meta_str(&rule, "version").unwrap_or_default();
+        version_tuple(&ver).ok_or(format!(
+            "Regel {ident}: ungültige version '{ver}' (erwartet z. B. 1.0.0)"
+        ))?;
+        if let Some(t) = meta_str(&rule, "test") {
+            if t != "true" && t != "false" {
+                return Err(format!("Regel {ident}: test muss true oder false sein"));
+            }
+        }
         let min = meta_str(&rule, "min_engine").unwrap_or_default();
         let min_t =
             version_tuple(&min).ok_or(format!("Regel {ident}: ungültige min_engine '{min}'"))?;
@@ -315,6 +338,36 @@ impl YaraXEngine {
     pub fn test_rule_count(&self) -> usize {
         self.loaded.as_ref().map(|l| l.test_rule_count).unwrap_or(0)
     }
+
+    /// Geladene Regeln mit ID, Version und Testkennzeichen (für Regeltests
+    /// und Berichte). Leer, wenn der Regelsatz abgelehnt wurde.
+    pub fn rule_catalog(&self) -> Vec<RuleEntry> {
+        let Ok(l) = &self.loaded else {
+            return Vec::new();
+        };
+        l.rules
+            .iter()
+            .map(|r| RuleEntry {
+                id: meta_str(&r, "id").unwrap_or_default(),
+                version: meta_str(&r, "version").unwrap_or_default(),
+                name: meta_str(&r, "name").unwrap_or_else(|| r.identifier().to_string()),
+                test: meta_str(&r, "test").as_deref() == Some("true"),
+                license: meta_str(&r, "license").unwrap_or_default(),
+                source: meta_str(&r, "source").unwrap_or_default(),
+            })
+            .collect()
+    }
+}
+
+/// Eine geladene Regel (Herkunft und Version, AXS-022).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RuleEntry {
+    pub id: String,
+    pub version: String,
+    pub name: String,
+    pub test: bool,
+    pub license: String,
+    pub source: String,
 }
 
 impl Engine for YaraXEngine {
@@ -381,7 +434,7 @@ impl Engine for YaraXEngine {
                                 .push(format!("Bedingung der Regel {} erfüllt", rule.identifier()));
                         }
                         dets.push(Detection {
-                            rule_version: None,
+                            rule_version: meta_str(&rule, "version"),
                             name: meta_str(&rule, "name")
                                 .unwrap_or_else(|| rule.identifier().to_string()),
                             verdict: parse_verdict(&get("verdict")).unwrap_or(Verdict::Suspicious),
@@ -478,7 +531,7 @@ mod tests {
         std::fs::write(
             dir.path().join("prod.yar"),
             r#"rule Prod { meta: id = "P1" verdict = "suspicious" severity = "low" confidence = "low"
-               author = "t" license = "CC0-1.0" source = "t" min_engine = "1.0.0"
+               author = "t" license = "CC0-1.0" source = "t" min_engine = "1.0.0" version = "1.0.0"
                strings: $a = "nie-vorkommender-teststring-axsafe" condition: $a }"#,
         )
         .unwrap();
@@ -553,13 +606,59 @@ mod tests {
         ));
     }
 
+    fn rule(id: &str, extra: &str) -> String {
+        format!(
+            r#"rule R_{n} {{ meta: id = "{id}" verdict = "suspicious" severity = "low" confidence = "low"
+               author = "t" license = "CC0-1.0" source = "t" min_engine = "1.0.0" {extra}
+               condition: false }}"#,
+            n = id.replace(['-', '.'], "_")
+        )
+    }
+
+    #[test]
+    fn version_duplicate_ids_and_test_flag_are_validated() {
+        for (text, needle) in [
+            (rule("A-1", ""), "version"),
+            (rule("A-1", r#"version = "eins""#), "version"),
+            (
+                format!(
+                    "{}\n{}",
+                    rule("A-1", r#"version = "1.0.0""#),
+                    rule("A-1", r#"version = "1.0.0""#).replace("R_A_1", "R_B")
+                ),
+                "doppelt",
+            ),
+            (rule("A 1", r#"version = "1.0.0""#), "id"),
+            (
+                rule("A-1", r#"version = "1.0.0" test = "vielleicht""#),
+                "test",
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("r.yar"), &text).unwrap();
+            match YaraXEngine::from_dir(dir.path()).info().health {
+                EngineHealth::Unavailable { reason } => {
+                    assert!(reason.contains(needle), "{needle}: {reason}")
+                }
+                h => panic!("{text}: {h:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn detection_carries_rule_version() {
+        let e = YaraXEngine::from_dir(repo_rules());
+        let o = scan(&e, &eicar());
+        assert_eq!(o.detections[0].rule_version.as_deref(), Some("1.0.0"));
+    }
+
     #[test]
     fn too_new_min_engine_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("new.yar"),
             r#"rule Future { meta: id = "T" verdict = "suspicious" severity = "low" confidence = "low"
-               author = "t" license = "CC0-1.0" source = "t" min_engine = "99.0.0"
+               author = "t" license = "CC0-1.0" source = "t" min_engine = "99.0.0" version = "1.0.0"
                condition: false }"#,
         )
         .unwrap();
@@ -576,7 +675,7 @@ mod tests {
         std::fs::write(
             dir.path().join("slow.yar"),
             r#"rule Slow { meta: id = "T-SLOW" verdict = "suspicious" severity = "low" confidence = "low"
-               author = "t" license = "CC0-1.0" source = "t" min_engine = "1.0.0"
+               author = "t" license = "CC0-1.0" source = "t" min_engine = "1.0.0" version = "1.0.0"
                strings: $a = "A"
                condition: for all i in (1..#a) : ( for all j in (1..#a) : ( @a[i] + @a[j] >= 0 ) ) }"#,
         )

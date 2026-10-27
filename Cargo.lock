@@ -145,13 +145,18 @@ dependencies = [
  "axsafe-engine-clamav",
  "axsafe-proc",
  "axsafe-workerproto",
+ "cab",
+ "cfb",
+ "flate2",
  "hex",
  "libc",
  "md-5",
  "serde",
  "serde_json",
+ "sevenz-rust2",
  "tempfile",
  "windows-sys",
+ "zip",
 ]
 
 [[package]]
@@ -221,6 +226,7 @@ dependencies = [
  "axsafe-core",
  "hex",
  "serde",
+ "serde_json",
  "sha2",
  "tempfile",
  "yara-x",

@@ -46,3 +46,9 @@ axsafe-proc = { path = "../axsafe-proc" }
 tempfile.workspace = true
 md-5.workspace = true
 hex.workspace = true
+# Nur Testdaten (Container zur Laufzeit), nicht Teil des Programms.
+zip.workspace = true
+flate2.workspace = true
+cfb.workspace = true
+cab.workspace = true
+sevenz-rust2.workspace = true

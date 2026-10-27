@@ -27,6 +27,9 @@ pub struct StaticFeatures {
     pub entropy: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pe: Option<PeFeatures>,
+    /// Strukturprüfung von Containern (AXS-024).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<crate::container::ContainerCheck>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -141,6 +144,7 @@ pub fn analyze(data: &[u8], kind: &FileKind) -> StaticFeatures {
     StaticFeatures {
         entropy: entropy(data),
         pe: matches!(kind, FileKind::Pe { .. }).then(|| pe_features(data)),
+        container: crate::container::check(data, kind),
     }
 }
 

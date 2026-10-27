@@ -192,6 +192,15 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Geladene YARA-X-Regeln mit ID, Version, Herkunft und Lizenz (AXS-022)
+    Regeln {
+        /// Verzeichnis mit YARA-X-Regeln (Standard: ./rules oder <exe>/rules)
+        #[arg(long)]
+        rules: Option<PathBuf>,
+        /// Maschinenlesbar als JSON ausgeben
+        #[arg(long)]
+        json: bool,
+    },
     /// Ziele einer Scanart anzeigen (AXS-026), z. B. für die Oberfläche
     Ziele {
         /// schnell, voll, wechsel
@@ -1157,6 +1166,36 @@ fn main() -> ExitCode {
                 }
             }
             ExitCode::from(code)
+        }
+        Cmd::Regeln { rules, json } => {
+            let e = YaraXEngine::from_dir(rules.unwrap_or_else(default_rules_dir));
+            let info = e.info();
+            if let EngineHealth::Unavailable { reason } = &info.health {
+                eprintln!("Regelsatz abgelehnt: {reason}");
+                return ExitCode::from(3);
+            }
+            let cat = e.rule_catalog();
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({"content_version": info.content_version, "content_kind": info.content_kind, "rules": cat})
+                );
+            } else {
+                println!("Regelsatz {} – {}", info.content_version, info.content_note);
+                for r in &cat {
+                    println!(
+                        "  {} v{}  {}{}  Lizenz {}  Quelle: {}",
+                        r.id,
+                        r.version,
+                        r.name,
+                        if r.test { " [NUR FUNKTIONSTEST]" } else { "" },
+                        r.license,
+                        r.source
+                    );
+                }
+                println!("Signatur des Regelsatzes: noch nicht vorhanden (folgt mit P04)");
+            }
+            ExitCode::SUCCESS
         }
         Cmd::Ziele { art, json } => {
             let Some(kind) = axsafe_core::scanjob::ScanKind::parse(&art) else {

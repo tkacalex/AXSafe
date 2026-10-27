@@ -83,6 +83,7 @@ fn content_formats_are_backed_by_real_clamav() {
         (ContentFormat::Cab, common::cab_with(&p)),
         (ContentFormat::SevenZip, common::sevenz_with(dir.path(), &p)),
         (ContentFormat::Pdf, common::pdf_with(&p)),
+        (ContentFormat::Iso, common::iso_with("inhalt.bin", &p)),
     ];
     assert_eq!(cases.len(), VERIFIED_CONTENT_FORMATS.len());
     for (fmt, data) in cases {

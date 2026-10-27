@@ -119,9 +119,9 @@
     },
     "AXS-022": {
       "status": "teilweise",
-      "where": "crates/axsafe-engine-yarax, rules/",
-      "evidence": "Pflichtmetadaten, Mindestversion, Zeitlimit; Regelbestand nur Testregeln wird als test_only gemeldet und in UI/CLI unübersehbar angezeigt; Speichergrenze des Workers (Job-Commit bzw. RLIMIT_AS) getestet",
-      "rest": "Regelsignatur (P04), produktiver Regelbestand"
+      "where": "crates/axsafe-engine-yarax (Laden/Prüfen, rule_catalog), rules/, rule-tests/, Test rule_harness; CLI axsafe regeln",
+      "evidence": "Pflichtmetadaten id, version, verdict, severity, confidence, author, license, source, min_engine; ungültige oder doppelte id, ungültige Version, ungültiges test-Kennzeichen und zu neue min_engine lassen den Regelsatz ablehnen (fail closed); Funde tragen Regel-ID und -Version; Regeltests: jede Regel hat Positiv- und gutartige Gegenbeispiele (rule-tests/<id>.json, Version muss passen), Laufzeitgrenze je Regelsatz auf 8 MiB Zufalls- und Wiederholungsdaten; Zeitlimit je Scan und Speichergrenze des Workers; Regelbestand nur aus Testregeln wird überall als NUR FUNKTIONSTEST ausgewiesen; axsafe regeln zeigt ID, Version, Herkunft, Lizenz",
+      "rest": "Signatur des Regelsatzes folgt mit P04 (Updatevertrauen) – bis dahin offene Abnahme; produktiver Regelbestand fehlt bewusst (keine Regeln ohne geprüfte Qualität)"
     },
     "AXS-023": {
       "status": "erfuellt",
@@ -131,9 +131,9 @@
     },
     "AXS-024": {
       "status": "teilweise",
-      "where": "crates/axsafe-engine-clamav",
-      "evidence": "Containerinhalt gilt nur als geprüft, wenn eine bereite Engine das Format nachweislich inspiziert; sonst Lücke content_not_inspected; Passwort-ZIP mit echtem ClamAV → Encrypted; Rekursionsgrenze → Lücke; normale/verschlüsselte/verschachtelte harmlose Archive getestet",
-      "rest": "RAR/ISO/VHDX ohne belegte Inhaltsprüfung; Archivbomben-Tests mit echter Engine; Windows-Nachweis"
+      "where": "crates/axsafe-core/src/container.rs, scan.rs; crates/axsafe-engine-clamav (VERIFIED_CONTENT_FORMATS); Tests container_hard.rs",
+      "evidence": "Inhalt gilt nur als geprüft, wenn eine bereite Engine das Format nachweislich inspiziert (ZIP, OOXML, GZIP, OLE, CAB, 7z, PDF, neu ISO 9660 – mit clamscan UND libclamav-Worker belegt; RAR nur, wenn ClamAV mit unrar installiert ist – offizielles Windows-Paket, Testarchiv zur Laufzeit erzeugt); eigene begrenzte Strukturprüfung (ZIP-Verzeichnis, 7z-Kopf-CRC, CAB-Größe) im Worker: beschädigt → container_damaged, verschlüsselte Einträge → encrypted, Entpackgröße > 400 MB bzw. > 1000:1 → engine_limit_exceeded (ClamAV allein meldet eine 150-MiB-Nullbombe gemessen als OK); eingebetteter Inhalt geprüft; Pfadausbruch unmöglich, da AXSafe nicht entpackt – Test belegt, dass außerhalb nichts entsteht; Mutationstest der Strukturprüfung ohne Panic",
+      "rest": "Windows-Nachweis der neuen Tests erst nach grüner CI; RAR ohne unrar-Bibliothek (z. B. Ubuntu-Paket) bleibt content_not_inspected; VHD/VHDX/VMDK/WIM/UDF-Inhalt nicht geprüft; ZIP64-Verzeichnisse werden nicht ausgewertet (Hinweis im Bericht)"
     },
     "AXS-026": {
       "status": "teilweise",
@@ -251,7 +251,10 @@
       "tests::timeout_is_reported_as_timeout",
       "tests::rule_without_required_meta_is_rejected",
       "tests::repo_rules_are_marked_test_only",
-      "memory_hungry_worker_is_stopped_by_limit"
+      "memory_hungry_worker_is_stopped_by_limit",
+      "tests::{version_duplicate_ids_and_test_flag_are_validated, detection_carries_rule_version}",
+      "rule_harness: every_rule_has_tests_and_every_test_has_a_rule, positives_hit_exactly_their_rule_and_benign_cases_do_not, every_rule_stays_within_runtime_limit, sample_builder_rejects_unknown_fields_and_oversize",
+      "cli: rules_command_lists_id_version_origin_and_test_flag"
     ],
     "T-023": [
       "filetype::tests::renaming_does_not_change_type",
@@ -269,7 +272,11 @@
       "recursion_limit_is_reported_as_gap",
       "scan::tests::container_without_capable_engine_is_content_gap",
       "scan::tests::capable_engine_that_fails_does_not_count_as_inspected",
-      "archives_without_container_engine_are_incomplete"
+      "archives_without_container_engine_are_incomplete",
+      "container::tests::{intact_zip_has_no_findings, truncated_zip_is_damaged, escaping_names_and_encrypted_entries_are_reported, declared_bomb_exceeds_limit, sevenzip_header_crc_and_bounds, mutated_containers_never_panic}",
+      "scan::tests::{damaged_or_encrypted_container_is_a_gap_even_with_capable_engine, escaping_archive_names_are_hint_only}",
+      "container_hard: truncated_archive_is_never_complete_and_clean, archive_bomb_is_gap_not_clean, encrypted_and_nested_and_embedded_content, path_escape_names_write_nothing_outside, iso_content_is_inspected, rar_content_follows_unrar_availability",
+      "persistent: content_formats_are_backed_by_real_libclamav"
     ],
     "T-026": [
       "scan::tests::positive_benign_and_counts",

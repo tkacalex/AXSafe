@@ -249,6 +249,7 @@ public static class Texts
         "cancelled" => "abgebrochen",
         "no_engine" => "keine Engine",
         "excluded_by_policy" => "durch Richtlinie ausgenommen",
+        "container_damaged" => "Container beschädigt",
         _ => r,
     };
 }

@@ -22,6 +22,7 @@
 #![cfg_attr(windows, deny(unsafe_code))]
 
 pub mod cache;
+pub mod container;
 pub mod engine;
 pub mod features;
 pub mod filetype;

@@ -85,6 +85,9 @@ pub enum GapReason {
     NoEngine,
     /// Objekte durch eine Ausnahme der Richtlinie nicht geprüft (AXS-017).
     ExcludedByPolicy,
+    /// Container beschädigt oder abgeschnitten: Inhalt evtl. nur teilweise
+    /// geprüft (AXS-024).
+    ContainerDamaged,
 }
 
 /// Eine Prüflücke: Was wurde nicht (vollständig) geprüft, wodurch, warum.
