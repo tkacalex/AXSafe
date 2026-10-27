@@ -66,6 +66,42 @@ pub struct JobSpec {
     pub access: Arc<dyn axsafe_core::scan::FileAccess>,
     /// Prozess des Auftraggebers (PID + Startzeit), nur Nachweis.
     pub client_process: Option<axsafe_core::report::ProcessIdentity>,
+    /// Scanart und Auslöser (Angabe des Clients, nur Bericht).
+    pub kind: axsafe_core::scanjob::ScanKind,
+    pub trigger: axsafe_core::scanjob::Trigger,
+    /// Fortschritt, vom Runner fortgeschrieben.
+    pub progress: Arc<JobProgress>,
+}
+
+/// Fortschritt eines Auftrags (Objekte und Bytes bisher).
+#[derive(Debug, Default)]
+pub struct JobProgress {
+    pub objects: std::sync::atomic::AtomicU64,
+    pub bytes: std::sync::atomic::AtomicU64,
+}
+
+impl axsafe_core::scan::Progress for &JobProgress {
+    fn on_result(&mut self, r: &axsafe_core::report::FileResult) {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.objects.fetch_add(1, Relaxed);
+        self.bytes.fetch_add(r.size.unwrap_or(0), Relaxed);
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct ProgressView {
+    pub objects: u64,
+    pub bytes: u64,
+}
+
+impl JobProgress {
+    pub fn view(&self) -> ProgressView {
+        use std::sync::atomic::Ordering::Relaxed;
+        ProgressView {
+            objects: self.objects.load(Relaxed),
+            bytes: self.bytes.load(Relaxed),
+        }
+    }
 }
 
 /// Führt einen Auftrag aus (Dienst: echte Engines mit Impersonation).
@@ -80,6 +116,9 @@ pub struct JobView {
     pub state: JobState,
     pub paths: Vec<String>,
     pub use_clamav: bool,
+    pub kind: axsafe_core::scanjob::ScanKind,
+    pub trigger: axsafe_core::scanjob::Trigger,
+    pub progress: ProgressView,
 }
 
 struct Job {
@@ -203,6 +242,9 @@ impl JobManager {
                     .map(|p| p.display().to_string())
                     .collect(),
                 use_clamav: j.spec.use_clamav,
+                kind: j.spec.kind,
+                trigger: j.spec.trigger,
+                progress: j.spec.progress.view(),
             })
         })
     }
@@ -224,6 +266,9 @@ impl JobManager {
                     .map(|p| p.display().to_string())
                     .collect(),
                 use_clamav: j.spec.use_clamav,
+                kind: j.spec.kind,
+                trigger: j.spec.trigger,
+                progress: j.spec.progress.view(),
             })
             .collect();
         v.sort_by(|a, b| a.job_id.cmp(&b.job_id));
@@ -441,6 +486,9 @@ mod tests {
             owner: owner.clone(),
             access: Arc::new(axsafe_core::scan::ProcessAccess),
             client_process: None,
+            kind: Default::default(),
+            trigger: axsafe_core::scanjob::Trigger::Service,
+            progress: Default::default(),
         }
     }
 

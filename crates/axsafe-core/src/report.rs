@@ -71,6 +71,23 @@ pub struct ScanScope {
     pub follows_links: bool,
     #[serde(default)]
     pub excluded: Vec<ExcludedObject>,
+    /// Scanart (AXS-026) und was sie nicht abdeckt.
+    #[serde(default)]
+    pub kind: crate::scanjob::ScanKind,
+    #[serde(default)]
+    pub trigger: crate::scanjob::Trigger,
+    #[serde(default)]
+    pub kind_note: String,
+    /// Orte der Scanart, die es auf diesem Rechner nicht gibt.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_targets: Vec<String>,
+    /// Schlüssel über Programm-, Engine-, Regel-, Heuristik-, Richtlinienstand
+    /// und Grenzen; Grundlage für Fortsetzen und Cache.
+    #[serde(default)]
+    pub version_key: String,
+    /// Gesetzt, wenn dieser Auftrag einen früheren fortsetzt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume: Option<crate::resume::ResumeInfo>,
 }
 
 /// Art des Objekts im Dateisystem.

@@ -97,7 +97,9 @@ Aus einem EICAR-Fund wird **keine** Erkennungsleistung abgeleitet.
 | Scan auf Anforderung (Dateien/Ordner) | ✅ CLI + UI | AXS-026 |
 | Abbruch | ✅ UI beendet Prozess; es wird kein Ergebnis angezeigt | AXS-026 |
 | Leerer Auftrag | ✅ „Keine prüfbaren Objekte“ (`nothing_scanned`, Exit 5) | AXS-026 |
-| Schnell-/Vollscan, Kontextmenü, Zeitplan | ⛔ | AXS-026 |
+| Schnell-, Voll-, Wechseldatenträgerscan | ✅ CLI + UI + Dienst; Bericht nennt, was nicht abgedeckt ist | AXS-026 |
+| Fortschritt, Fortsetzen nach Abbruch | ✅ CLI + UI (nur inhaltsgleiche Ergebnisse bei gleichem Engine-/Regelstand übernommen); Dienstaufträge: kein Fortsetzen | AXS-026 |
+| Kontextmenü, Zeitplan | ✅ Skripte (Benutzerrechte, keine Erhöhung) | AXS-026 |
 | Echtzeitschutz | ⛔ | AXS-053 ff. |
 | Quarantäne | ⛔ (nur Meldung) | AXS-035 ff. |
 | AMSI / Skriptschutz | ⛔ | AXS-047 ff. |

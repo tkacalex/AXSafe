@@ -14,11 +14,12 @@ public static class ServiceScan
         ReportValidator.ExitToOutcome.ToDictionary(kv => kv.Value, kv => kv.Key);
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    public static async Task<ScanResult> RunAsync(IReadOnlyList<string> paths, bool useClamav, CancellationToken ct, string? saveDir = null)
+    public static async Task<ScanResult> RunAsync(IReadOnlyList<string> paths, bool useClamav, CancellationToken ct, string? saveDir = null,
+        string kind = "custom", string trigger = "manual", IProgress<ScanProgressInfo>? progress = null)
     {
         var abs = paths.Select(Path.GetFullPath).ToList();
         using var c = ServiceClient.Connect(5000);
-        var start = await c.CallAsync(ServiceClient.ScanStart(abs, useClamav), CancellationToken.None).ConfigureAwait(false);
+        var start = await c.CallAsync(ServiceClient.ScanStart(abs, useClamav, kind, trigger), CancellationToken.None).ConfigureAwait(false);
         if (start["ok"]?.GetValue<bool>() != true)
             return ScanResult.Failed(Guid.Empty, null, $"Dienst lehnt den Auftrag ab: {start["error"]?["message"]}");
         var jobText = (string?)start["result"]?["job_id"];
@@ -38,6 +39,9 @@ public static class ServiceScan
             if (j["ok"]?.GetValue<bool>() != true)
                 return ScanResult.Failed(jobId, null, $"Auftrag nicht abrufbar: {j["error"]?["message"]}");
             state = (string?)j["result"]?["state"] ?? "";
+            var objects = (long?)j["result"]?["progress"]?["objects"];
+            if (objects is not null)
+                progress?.Report(new ScanProgressInfo(objects.Value, null, (long?)j["result"]?["progress"]?["bytes"] ?? 0, null));
             if (state is "finished" or "failed") break;
         }
         if (state == "failed")
@@ -58,7 +62,7 @@ public static class ServiceScan
         if (report is null)
             return ScanResult.Failed(jobId, null, "Bericht ist leer.");
         var exit = OutcomeToExit.TryGetValue(report.Outcome, out var e) ? e : -1;
-        var problems = ReportValidator.Validate(report, jobId, abs, exit).ToList();
+        var problems = ReportValidator.Validate(report, jobId, abs, exit, kind).ToList();
         if (report.ExecutedBy?.Kind != "dienst")
             problems.Add("Bericht nennt nicht den Dienst als Ausführenden.");
         if (problems.Count > 0)

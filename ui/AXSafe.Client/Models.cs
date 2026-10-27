@@ -58,6 +58,18 @@ public sealed class Scope
     [JsonPropertyName("roots")] public List<string> Roots { get; set; } = new();
     [JsonPropertyName("engines")] public List<EngineInfo> Engines { get; set; } = new();
     [JsonPropertyName("excluded")] public List<ExcludedObject> Excluded { get; set; } = new();
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "custom";
+    [JsonPropertyName("trigger")] public string Trigger { get; set; } = "manual";
+    [JsonPropertyName("kind_note")] public string KindNote { get; set; } = "";
+    [JsonPropertyName("resume")] public ResumeInfo? Resume { get; set; }
+}
+
+public sealed class ResumeInfo
+{
+    [JsonPropertyName("from_job_id")] public string FromJobId { get; set; } = "";
+    [JsonPropertyName("reused")] public long Reused { get; set; }
+    [JsonPropertyName("version_mismatch")] public bool VersionMismatch { get; set; }
+    [JsonPropertyName("note")] public string Note { get; set; } = "";
 }
 
 public sealed class ExcludedObject

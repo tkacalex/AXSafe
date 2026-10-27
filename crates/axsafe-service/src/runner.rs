@@ -16,7 +16,7 @@
 use crate::jobs::{JobRunner, JobSpec};
 use axsafe_core::engine::Engine;
 use axsafe_core::report::{ExecutedBy, ScanLimits, ScanReport};
-use axsafe_core::scan::{NoProgress, Scanner};
+use axsafe_core::scan::Scanner;
 use axsafe_engine_clamav::persistent::{ClamAvWorkerEngine, WorkerSettings};
 use axsafe_engine_clamav::{ClamAvConfig, ClamAvEngine};
 use axsafe_worker::host::{WorkerConfig, WorkerEngine};
@@ -99,8 +99,10 @@ impl JobRunner for ServiceRunner {
         let scanner = Scanner::new(self.engines(job.use_clamav), self.limits.clone())
             .with_file_access(job.access.clone())
             .classify_in_engine(true)
-            .with_policy(Arc::new(policy));
-        let mut rep = scanner.scan_job(job.job_id.clone(), &job.paths, cancel, &mut NoProgress);
+            .with_policy(Arc::new(policy))
+            .with_kind(job.kind, job.trigger, Vec::new());
+        let mut progress: &crate::jobs::JobProgress = &job.progress;
+        let mut rep = scanner.scan_job(job.job_id.clone(), &job.paths, cancel, &mut progress);
         rep.executed_by = Some(ExecutedBy {
             kind: "dienst".into(),
             name: "AXSafeService".into(),

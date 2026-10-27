@@ -219,8 +219,15 @@
                                 <Button x:Name="BtnFolder" Style="{StaticResource Primary}" Content="Ordner wählen und prüfen" Click="ScanFolder_Click"/>
                                 <Button x:Name="BtnFiles" Style="{StaticResource Secondary}" Content="Dateien wählen und prüfen" Click="ScanFiles_Click"/>
                                 <Button x:Name="BtnCancel" Style="{StaticResource Secondary}" Content="Abbrechen" IsEnabled="False" Click="Cancel_Click"/>
-                                <Button Style="{StaticResource Secondary}" Content="Schnellscan (P03)" IsEnabled="False"
-                                        ToolTip="Schnellscan braucht eine geprüfte Liste typischer Ablageorte. Geplant in Phase P03."/>
+                                <Button x:Name="BtnQuick" Style="{StaticResource Secondary}" Content="Schnellprüfung" Click="QuickScan_Click"
+                                        ToolTip="Downloads, Desktop, Temp- und Autostart-Ordner. Nicht: übrige Ordner, Registrierung, Dienste, Arbeitsspeicher."/>
+                                <Button x:Name="BtnFull" Style="{StaticResource Secondary}" Content="Vollständige Prüfung" Click="FullScan_Click"
+                                        ToolTip="Alle festen Laufwerke. Kann lange dauern; Abbrechen und später Fortsetzen ist möglich."/>
+                                <Button x:Name="BtnRemovable" Style="{StaticResource Secondary}" Content="Wechseldatenträger" Click="RemovableScan_Click"
+                                        ToolTip="Angeschlossene USB-Sticks und Speicherkarten (kein automatischer Scan beim Anschließen)."/>
+                                <Button x:Name="BtnResume" Style="{StaticResource Secondary}" Content="Abgebrochene Prüfung fortsetzen" Click="Resume_Click"
+                                        Visibility="Collapsed"
+                                        ToolTip="Übernimmt nur Ergebnisse unveränderter Dateien bei gleichem Engine- und Regelstand; alles andere wird neu geprüft."/>
                                 <Button Style="{StaticResource Secondary}" Content="Offline-Scan (P09)" IsEnabled="False"
                                         ToolTip="Kein Rettungsmedium vorhanden. Geplant in Phase P09 (AXS-066)."/>
                             </WrapPanel>

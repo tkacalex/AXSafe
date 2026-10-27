@@ -119,11 +119,13 @@ public sealed class ServiceClient : IDisposable
     }
 
     public static JsonObject Status() => new() { ["type"] = "status" };
-    public static JsonObject ScanStart(IEnumerable<string> paths, bool useClamav) => new()
+    public static JsonObject ScanStart(IEnumerable<string> paths, bool useClamav, string kind = "custom", string trigger = "manual") => new()
     {
         ["type"] = "scan_start",
         ["paths"] = new JsonArray(paths.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray()),
         ["use_clamav"] = useClamav,
+        ["kind"] = kind,
+        ["trigger"] = trigger,
     };
     public static JsonObject ScanCancel(string jobId) => new() { ["type"] = "scan_cancel", ["job_id"] = jobId };
     public static JsonObject Job(string jobId) => new() { ["type"] = "job", ["job_id"] = jobId };

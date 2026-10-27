@@ -46,6 +46,12 @@ pub enum Body {
         paths: Vec<String>,
         #[serde(default)]
         use_clamav: bool,
+        /// Scanart als Angabe für den Bericht (Ziele bestimmt der Client mit
+        /// seinen Pfaden, z. B. Downloads des Benutzers).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<axsafe_core::scanjob::ScanKind>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trigger: Option<axsafe_core::scanjob::Trigger>,
     },
     /// Eigenen Auftrag abbrechen.
     ScanCancel { job_id: String },
@@ -313,12 +319,16 @@ mod tests {
         assert!(validate(&r).is_err());
         assert!(validate(&req(Body::ScanStart {
             paths: vec![],
-            use_clamav: false
+            use_clamav: false,
+            kind: None,
+            trigger: None
         }))
         .is_err());
         assert!(validate(&req(Body::ScanStart {
             paths: vec!["x".into(); MAX_PATHS + 1],
-            use_clamav: false
+            use_clamav: false,
+            kind: None,
+            trigger: None
         }))
         .is_err());
         assert!(validate(&req(Body::Report {

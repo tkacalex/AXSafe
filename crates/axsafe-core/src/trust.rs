@@ -210,6 +210,43 @@ mod tests {
         assert!(checked, "keine eingebettet signierte Systemdatei gefunden");
     }
 
+    /// T-025: echter gepackter, gutartiger Gegenfall. Eine Kopie dieses
+    /// Testprogramms wird zur Laufzeit mit UPX gepackt (nichts davon liegt im
+    /// Repository). Erwartung: kein Fund, nur Hinweise (Packer, unsigniert).
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "braucht UPX (AXSAFE_UPX); die Windows-CI installiert es"]
+    fn packed_benign_program_is_hint_not_detection() {
+        let upx = std::env::var("AXSAFE_UPX").expect("AXSAFE_UPX nicht gesetzt");
+        let dir = std::env::temp_dir().join(format!("axsafe-upx-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("werkzeug.exe");
+        std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
+        let st = std::process::Command::new(&upx)
+            .args(["-q", "-1", "--force"])
+            .arg(&exe)
+            .status()
+            .unwrap();
+        assert!(st.success(), "UPX fehlgeschlagen");
+        let data = std::fs::read(&exe).unwrap();
+        let kind = crate::filetype::detect(&data);
+        assert!(
+            matches!(kind, crate::filetype::FileKind::Pe { .. }),
+            "{kind:?}"
+        );
+        let feats = crate::features::analyze(&data, &kind);
+        let auth = authenticode(&File::open(&exe).unwrap(), &exe);
+        let (dets, hints) =
+            crate::heuristics::evaluate("werkzeug.exe", &kind, Some(&feats), None, Some(&auth));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            dets.is_empty(),
+            "gepacktes gutartiges Programm darf kein Fund sein: {dets:?}"
+        );
+        assert!(hints.iter().any(|h| h.contains("UPX")), "{hints:?}");
+        assert!(hints.iter().any(|h| h.contains("unsigniert")), "{hints:?}");
+    }
+
     #[cfg(windows)]
     #[test]
     fn origin_from_zone_identifier_stream() {

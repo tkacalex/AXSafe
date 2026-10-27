@@ -85,6 +85,8 @@ enum ClamAvModus {
     Clamscan,
 }
 
+// Wird genau einmal geparst; Boxen brächte nichts.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Cmd {
     /// Mit dem AXSafe-Dienst sprechen (Windows; axsafe.ipc/1)
@@ -94,14 +96,36 @@ enum Cmd {
     },
     /// Dateien oder Ordner prüfen
     Scan {
-        /// Zu prüfende Dateien oder Ordner
-        #[arg(required = true)]
+        /// Zu prüfende Dateien oder Ordner (bei --art benutzer)
         paths: Vec<PathBuf>,
+        /// Scanart: benutzer (Standard, angegebene Pfade), schnell, voll, wechsel
+        #[arg(long, default_value = "benutzer")]
+        art: String,
+        /// Auslöser für den Bericht: manuell, kontextmenue, zeitplan
+        #[arg(long, default_value = "manuell")]
+        ausloeser: String,
+        /// Abgebrochenen Auftrag aus dieser Fortsetzungsdatei fortsetzen
+        #[arg(long)]
+        fortsetzen: Option<PathBuf>,
+        /// Fortsetzungsdatei (NEU) für diesen Auftrag; Standard: im
+        /// AXSafe-Benutzerordner. Nach normalem Ende wird sie entfernt.
+        #[arg(long)]
+        fortsetzungsdatei: Option<PathBuf>,
+        /// Keine Fortsetzungsdatei schreiben
+        #[arg(long)]
+        ohne_fortsetzung: bool,
+        /// Fortschritt als JSON-Zeilen auf stderr (für die Oberfläche)
+        #[arg(long)]
+        fortschritt_json: bool,
         #[command(flatten)]
         engines: EngineArgs,
         /// JSON-Bericht in diese NEUE Datei schreiben (wird nie überschrieben)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "json_ordner")]
         json: Option<PathBuf>,
+        /// JSON-Bericht als neue Datei scan-<Zeit>-<Auftrag>.json in diesen
+        /// Ordner schreiben (z. B. für geplante Prüfungen)
+        #[arg(long)]
+        json_ordner: Option<PathBuf>,
         /// Auftragskennung (UUID), die im Bericht steht; Standard: zufällig
         #[arg(long)]
         job_id: Option<String>,
@@ -168,6 +192,15 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Ziele einer Scanart anzeigen (AXS-026), z. B. für die Oberfläche
+    Ziele {
+        /// schnell, voll, wechsel
+        #[arg(long)]
+        art: String,
+        /// Maschinenlesbar als JSON ausgeben
+        #[arg(long)]
+        json: bool,
+    },
     /// Richtlinie und Ausnahmen anzeigen bzw. eine Datei prüfen (AXS-017)
     Richtlinie {
         /// Zu prüfende Datei (Standard: die geltende Richtlinie)
@@ -209,8 +242,15 @@ enum DienstCmd {
     Status,
     /// Scan durch den Dienst mit den eigenen Rechten starten
     Scan {
-        #[arg(required = true)]
+        /// Dateien oder Ordner (bei --art benutzer)
         paths: Vec<PathBuf>,
+        /// Scanart: benutzer, schnell, voll, wechsel (Ziele bestimmt dieser
+        /// Client mit den Pfaden des angemeldeten Benutzers)
+        #[arg(long, default_value = "benutzer")]
+        art: String,
+        /// Auslöser: manuell, kontextmenue, zeitplan
+        #[arg(long, default_value = "manuell")]
+        ausloeser: String,
         /// ClamAV zusätzlich verwenden
         #[arg(long)]
         clamav: bool,
@@ -259,9 +299,29 @@ fn dienst(cmd: DienstCmd) -> ExitCode {
         DienstCmd::Abbrechen { job_id } => Body::ScanCancel { job_id },
         DienstCmd::Scan {
             paths,
+            art,
+            ausloeser,
             clamav,
             warten,
         } => {
+            let (Some(kind), Some(trigger)) = (
+                axsafe_core::scanjob::ScanKind::parse(&art),
+                axsafe_core::scanjob::Trigger::parse(&ausloeser),
+            ) else {
+                eprintln!("Unbekannte Scanart oder unbekannter Auslöser");
+                return ExitCode::from(3);
+            };
+            let paths = match axsafe_core::scanjob::targets(kind, &paths) {
+                Ok(t) if !t.roots.is_empty() => t.roots,
+                Ok(_) => {
+                    eprintln!("Keine Ziele für diese Scanart");
+                    return ExitCode::from(3);
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::from(3);
+                }
+            };
             // Absolute Pfade; die Prüfung erfolgt im Dienst mit den Rechten
             // dieses Benutzers.
             let paths: Vec<String> = paths
@@ -278,6 +338,8 @@ fn dienst(cmd: DienstCmd) -> ExitCode {
                 Body::ScanStart {
                     paths,
                     use_clamav: clamav,
+                    kind: Some(kind),
+                    trigger: Some(trigger),
                 },
             ) {
                 Ok(r) => r,
@@ -509,10 +571,61 @@ fn status_tag(s: ObjectStatus) -> &'static str {
 
 struct Live {
     verbose: bool,
+    json_progress: bool,
+    done: u64,
+    bytes: u64,
+    /// Vorab gezählte Objekte; u64::MAX = (noch) unbekannt.
+    total: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    last: std::time::Instant,
+}
+
+/// Benutzerordner für Fortsetzungsdateien.
+fn default_checkpoint(job_id: &str) -> Option<PathBuf> {
+    let base = if cfg!(windows) {
+        std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("AXSafe"))
+    } else {
+        std::env::var_os("XDG_STATE_HOME")
+            .map(|d| PathBuf::from(d).join("axsafe"))
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state/axsafe"))
+            })
+    }?;
+    Some(base.join("Fortsetzung").join(format!("{job_id}.jsonl")))
+}
+
+impl Live {
+    fn progress(&mut self, r: &FileResult) {
+        self.done += 1;
+        self.bytes += r.size.unwrap_or(0);
+        if self.last.elapsed() < std::time::Duration::from_secs(2) {
+            return;
+        }
+        self.last = std::time::Instant::now();
+        let total = self.total.load(std::sync::atomic::Ordering::Relaxed);
+        let total = (total != u64::MAX).then_some(total);
+        if self.json_progress {
+            eprintln!(
+                "{}",
+                serde_json::json!({"fortschritt": {"objekte": self.done, "gesamt": total, "bytes": self.bytes, "aktuell": r.path}})
+            );
+        } else {
+            let pct = total
+                .filter(|t| *t > 0)
+                .map(|t| format!(" ({}%)", (self.done * 100 / t).min(99)))
+                .unwrap_or_default();
+            eprintln!(
+                "Fortschritt: {} Objekte{pct}, {} MB – {}",
+                self.done,
+                self.bytes / (1024 * 1024),
+                r.path
+            );
+        }
+    }
 }
 
 impl Progress for Live {
     fn on_result(&mut self, r: &FileResult) {
+        self.progress(r);
         if !self.verbose && r.status == ObjectStatus::NoDetection {
             return;
         }
@@ -1045,16 +1158,62 @@ fn main() -> ExitCode {
             }
             ExitCode::from(code)
         }
+        Cmd::Ziele { art, json } => {
+            let Some(kind) = axsafe_core::scanjob::ScanKind::parse(&art) else {
+                eprintln!("Unbekannte Scanart {art:?}");
+                return ExitCode::from(3);
+            };
+            match axsafe_core::scanjob::targets(kind, &[]) {
+                Ok(t) => {
+                    let roots: Vec<String> =
+                        t.roots.iter().map(|p| p.display().to_string()).collect();
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({"kind": kind, "roots": roots, "missing": t.missing, "note": kind.coverage_note()})
+                        );
+                    } else {
+                        println!("{}: {}", kind.label(), kind.coverage_note());
+                        for r in &roots {
+                            println!("  {r}");
+                        }
+                        for m in &t.missing {
+                            println!("  (nicht vorhanden) {m}");
+                        }
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::from(3)
+                }
+            }
+        }
         Cmd::Scan {
             paths,
+            art,
+            ausloeser,
+            fortsetzen,
+            fortsetzungsdatei,
+            ohne_fortsetzung,
+            fortschritt_json,
             engines,
             json,
+            json_ordner,
             job_id,
             max_file_size_mb,
             timeout_secs,
             timeout_ms,
             verbose,
         } => {
+            let Some(mut kind) = axsafe_core::scanjob::ScanKind::parse(&art) else {
+                eprintln!("Unbekannte Scanart {art:?} (benutzer, schnell, voll, wechsel)");
+                return ExitCode::from(3);
+            };
+            let Some(trigger) = axsafe_core::scanjob::Trigger::parse(&ausloeser) else {
+                eprintln!("Unbekannter Auslöser {ausloeser:?} (manuell, kontextmenue, zeitplan)");
+                return ExitCode::from(3);
+            };
             let yara_in_process = engines.yara_in_process;
             let job_id = match job_id {
                 Some(j) => match uuid::Uuid::parse_str(&j) {
@@ -1067,6 +1226,16 @@ fn main() -> ExitCode {
                 None => uuid::Uuid::new_v4().to_string(),
             };
             // Berichtsziel VOR dem Scan exklusiv anlegen (Befund 1).
+            let json = json.or_else(|| {
+                json_ordner.as_ref().map(|d| {
+                    let _ = std::fs::create_dir_all(d);
+                    d.join(format!(
+                        "scan-{}-{}.json",
+                        chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f"),
+                        job_id.replace('-', "")
+                    ))
+                })
+            });
             let target = match json.as_deref().map(ReportTarget::reserve).transpose() {
                 Ok(t) => t,
                 Err(e) => {
@@ -1097,13 +1266,129 @@ fn main() -> ExitCode {
             let mut scanner = Scanner::new(engines, limits)
                 .classify_in_engine(!yara_in_process)
                 .with_policy(std::sync::Arc::new(policy));
+            // Fortsetzen: Scanart und Ziele kommen aus der Kopfzeile.
+            let mut paths = paths;
+            if let Some(cp) = &fortsetzen {
+                if !paths.is_empty() {
+                    eprintln!("Beim Fortsetzen keine Pfade angeben: Ziele stehen in der Fortsetzungsdatei");
+                    return ExitCode::from(3);
+                }
+                let r = match axsafe_core::resume::Resume::load(cp, &scanner.version_key()) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("Fortsetzen nicht möglich ({}): {e}", cp.display());
+                        return ExitCode::from(3);
+                    }
+                };
+                kind = r.header.kind;
+                paths = r.header.roots.iter().map(PathBuf::from).collect();
+                let r = std::sync::Arc::new(r);
+                println!(
+                    "Fortsetzung von Auftrag {}: {}",
+                    r.header.job_id,
+                    r.info().note
+                );
+                scanner = scanner.with_resume(r);
+            }
+            let targets = match axsafe_core::scanjob::targets(kind, &paths) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::from(3);
+                }
+            };
+            if kind == axsafe_core::scanjob::ScanKind::Custom && targets.roots.is_empty() {
+                eprintln!("Keine Pfade angegeben (oder --art schnell|voll|wechsel verwenden)");
+                return ExitCode::from(3);
+            }
+            let missing = targets.missing.clone();
+            let mut scanner = scanner.with_kind(kind, trigger, missing);
             print_engines(&scanner.engine_infos());
+            println!(
+                "Scanart:         {} – {}",
+                kind.label(),
+                kind.coverage_note()
+            );
+            for m in &targets.missing {
+                println!("                 nicht vorhanden: {m}");
+            }
             if let Some(t) = &target {
                 scanner.exclude_identity(t.identity().clone(), "Berichtsdatei dieses Auftrags");
             }
+            let roots = targets.roots;
+            // Fortsetzungsdatei vor dem Scan NEU anlegen und vom Scan ausnehmen.
+            let cp_path = if ohne_fortsetzung {
+                None
+            } else {
+                match fortsetzungsdatei.or_else(|| default_checkpoint(&job_id)) {
+                    Some(p) => Some(p),
+                    None => {
+                        eprintln!("Hinweis: kein Benutzerordner für die Fortsetzungsdatei – Fortsetzen nicht möglich");
+                        None
+                    }
+                }
+            };
+            let header = axsafe_core::resume::CheckpointHeader {
+                schema: axsafe_core::resume::CHECKPOINT_SCHEMA.into(),
+                job_id: job_id.clone(),
+                kind,
+                trigger,
+                roots: roots.iter().map(|p| p.display().to_string()).collect(),
+                version_key: scanner.version_key(),
+                created_utc: chrono::Utc::now().to_rfc3339(),
+            };
+            let total = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(u64::MAX));
+            {
+                let (r, t) = (roots.clone(), total.clone());
+                std::thread::spawn(move || {
+                    if let Some(n) = axsafe_core::scanjob::count_files(
+                        &r,
+                        5_000_000,
+                        std::time::Duration::from_secs(60),
+                    ) {
+                        t.store(n, std::sync::atomic::Ordering::Relaxed);
+                    }
+                });
+            }
+            let mut live = Live {
+                verbose,
+                json_progress: fortschritt_json,
+                done: 0,
+                bytes: 0,
+                total,
+                last: std::time::Instant::now(),
+            };
             println!("Ergebnisse:");
             let cancel = AtomicBool::new(false);
-            let mut rep = scanner.scan_job(job_id, &paths, &cancel, &mut Live { verbose });
+            let (mut rep, cp_written) = match cp_path.as_deref().map(|p| {
+                if let Some(d) = p.parent() {
+                    let _ = std::fs::create_dir_all(d);
+                }
+                axsafe_core::resume::CheckpointWriter::create(p, &header, &mut live)
+            }) {
+                Some(Ok(mut w)) => {
+                    let p = cp_path.clone().unwrap_or_default();
+                    eprintln!(
+                        "Bei Abbruch fortsetzen mit: axsafe scan --fortsetzen \"{}\"",
+                        p.display()
+                    );
+                    if let Ok(f) = std::fs::File::open(&p) {
+                        if let Ok(id) = axsafe_core::identity::FileIdentity::from_file(&f) {
+                            scanner.exclude_identity(id, "Fortsetzungsdatei dieses Auftrags");
+                        }
+                    }
+                    let rep = scanner.scan_job(job_id, &roots, &cancel, &mut w);
+                    if let Some(e) = &w.error {
+                        eprintln!("Hinweis: {e}");
+                    }
+                    (rep, Some(p))
+                }
+                Some(Err(e)) => {
+                    eprintln!("Hinweis: Fortsetzungsdatei nicht anlegbar ({e}) – Fortsetzen nicht möglich");
+                    (scanner.scan_job(job_id, &roots, &cancel, &mut live), None)
+                }
+                None => (scanner.scan_job(job_id, &roots, &cancel, &mut live), None),
+            };
             // Herkunft (AXS-016): dieser CLI-Prozess mit PID UND Startzeit.
             let me = axsafe_proc::current_process().ok();
             rep.executed_by = Some(axsafe_core::report::ExecutedBy {
@@ -1135,6 +1420,17 @@ fn main() -> ExitCode {
                     return ExitCode::from(3);
                 }
                 println!("Bericht:         {shown}");
+            }
+            // Normal beendet: Fortsetzungsdatei wird nicht mehr gebraucht.
+            if let Some(p) = cp_written {
+                let _ = std::fs::remove_file(p);
+            }
+            // Fortgesetzter Auftrag vollständig durchgelaufen: die alte
+            // Fortsetzungsdatei ist überholt.
+            if let Some(old) = &fortsetzen {
+                if !rep.cancelled {
+                    let _ = std::fs::remove_file(old);
+                }
             }
             ExitCode::from(rep.outcome.exit_code())
         }

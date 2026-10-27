@@ -18,7 +18,8 @@ public static class ReportValidator
     };
 
     public static IReadOnlyList<string> Validate(
-        ScanReport report, Guid expectedJobId, IReadOnlyList<string> requestedPaths, int exitCode)
+        ScanReport report, Guid expectedJobId, IReadOnlyList<string> requestedPaths, int exitCode,
+        string expectedKind = "custom")
     {
         var problems = new List<string>();
         if (report.Schema != ScanReport.SchemaV2)
@@ -27,6 +28,8 @@ public static class ReportValidator
             problems.Add($"Bericht gehört zu einem anderen Auftrag ('{report.JobId}', erwartet {expectedJobId}).");
         if (!report.Scope.Roots.SequenceEqual(requestedPaths))
             problems.Add("Die Pfade im Bericht stimmen nicht mit den angeforderten Pfaden überein.");
+        if (report.Scope.Kind != expectedKind)
+            problems.Add($"Scanart im Bericht ('{report.Scope.Kind}') ist nicht die angeforderte ('{expectedKind}').");
         if (!ExitToOutcome.TryGetValue(exitCode, out var expectedOutcome))
             problems.Add($"Exitcode {exitCode} ist für einen gültigen Bericht nicht zulässig.");
         else if (report.Outcome != expectedOutcome)

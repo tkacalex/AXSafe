@@ -103,6 +103,51 @@ public sealed class ClientTests : IDisposable
         Assert.DoesNotContain("Fund:", good.Details);
     }
 
+    /// AXS-026: Abbrechen in der Oberfläche beendet die CLI hart; die
+    /// Fortsetzung übernimmt Unverändertes und prüft den Rest. Fortschritt
+    /// kommt während des Laufs an.
+    [Fact]
+    public async Task Cancel_then_resume_reuses_unchanged_results_and_reports_progress()
+    {
+        var files = Enumerable.Range(0, 4000).Select(i => ($"f{i:0000}.txt", System.Text.Encoding.UTF8.GetBytes($"inhalt {i}"))).ToArray();
+        var dir = Folder("fortsetzen", files);
+        var c = Client();
+        using var cts = new CancellationTokenSource();
+        var seen = new List<ScanProgressInfo>();
+        var progress = new SyncProgress(p =>
+        {
+            lock (seen) seen.Add(p);
+            if (p.Objects > 50) cts.Cancel();
+        });
+        var r = await c.ScanAsync(new[] { dir }, false, new ScanOptions(Progress: progress), cts.Token);
+        Assert.True(r.Cancelled, r.Error);
+        Assert.NotNull(r.ResumePath);
+        Assert.NotEmpty(seen);
+
+        var r2 = await c.ScanAsync(Array.Empty<string>(), false, new ScanOptions(ResumeFrom: r.ResumePath), CancellationToken.None);
+        Assert.True(r2.Success, r2.Error);
+        Assert.Equal(4000, r2.Report!.Files.Count);
+        Assert.NotNull(r2.Report.Scope.Resume);
+        Assert.True(r2.Report.Scope.Resume!.Reused > 0);
+        Assert.False(File.Exists(r.ResumePath));
+    }
+
+    private sealed class SyncProgress(Action<ScanProgressInfo> a) : IProgress<ScanProgressInfo>
+    {
+        public void Report(ScanProgressInfo value) => a(value);
+    }
+
+    [Fact]
+    public void Progress_line_parsing_is_strict()
+    {
+        var p = AxsafeCliClient.TryParseProgress("{\"fortschritt\":{\"objekte\":5,\"gesamt\":10,\"bytes\":7,\"aktuell\":\"/a\"}}");
+        Assert.NotNull(p);
+        Assert.Equal(50, p!.Percent);
+        Assert.Null(AxsafeCliClient.TryParseProgress("Fortschritt: 5 Objekte"));
+        Assert.Null(AxsafeCliClient.TryParseProgress("{\"fortschritt\": kaputt"));
+        Assert.Null(new ScanProgressInfo(5, null, 0, null).Percent);
+    }
+
     [Fact]
     public async Task Two_parallel_jobs_get_distinct_ids_and_own_reports()
     {
@@ -225,6 +270,7 @@ public sealed class ClientTests : IDisposable
     [InlineData("exit-mismatch")]
     [InlineData("counts")]
     [InlineData("complete")]
+    [InlineData("kind")]
     public void Validator_rejects_foreign_or_inconsistent_report(string tamper)
     {
         var id = Guid.NewGuid();
@@ -240,6 +286,7 @@ public sealed class ClientTests : IDisposable
             case "exit-mismatch": exit = 1; break;
             case "counts": r.Summary.WithDetection = 5; break;
             case "complete": r.Complete = false; break;
+            case "kind": r.Scope.Kind = "quick"; break;
         }
         Assert.NotEmpty(ReportValidator.Validate(r, id, roots, exit));
     }

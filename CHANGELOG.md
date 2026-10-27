@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Neu – Phase P03, Etappe 3: Scanarten, Fortschritt, Abbruch und Fortsetzen
+- `axsafe scan --art schnell|voll|wechsel|benutzer`: Schnellprüfung (Downloads, Desktop, Temp, Autostart-Ordner), alle festen Laufwerke, angeschlossene Wechseldatenträger oder eigene Pfade. Der Bericht nennt Scanart, Auslöser und **was die Scanart nicht abdeckt**. `axsafe ziele --art …` zeigt die Ziele vorab.
+- **Fortschritt** in CLI, Oberfläche und Dienst (Objekte, Bytes; Prozent, sobald die Vorabzählung fertig ist).
+- **Fortsetzen** nach Abbruch oder Absturz: `axsafe scan --fortsetzen <datei>` bzw. „Abgebrochene Prüfung fortsetzen“ in der Oberfläche. Übernommen wird nur, was inhaltlich gleich ist (SHA-256) und unter demselben Engine-, Regel-, Richtlinien- und Programmstand vollständig geprüft wurde; alles andere wird neu geprüft.
+- **Kontextmenü** „Mit AXSafe prüfen“ (`scripts/windows/kontextmenue.ps1`, nur für den Benutzer, ohne Adminrechte) und **geplante Prüfungen** (`scripts/windows/zeitplan.ps1`, Aufgabenplanung mit Benutzerrechten; Berichte landen im Berichtsordner der Oberfläche). `--json-ordner` legt Berichte mit eindeutigem Namen ab.
+- Oberfläche: Schaltflächen für Schnell-, Voll- und Wechseldatenträgerprüfung statt des bisher deaktivierten Platzhalters.
+
 ### Neu – Phase P03, Etappe 2: Statische Merkmale und Heuristik mit Belegen
 - Berichte enthalten zusätzlich SHA-1 und MD5 (nur zum Abgleich), die **PE-Struktur** (Sektionen mit Entropie und Rechten, Importe, Overlay, Einsprungpunkt) – im Dienst im abgeschotteten Worker bestimmt –, die **Herkunft** laut Mark of the Web (nur Zone und Rechnername, keine Adressparameter) und den **Authenticode-Status** (Windows, ohne Netzabfrage).
 - Drei **Heuristiken** melden „Verdächtig“ nur bei eindeutigen Täuschungsmustern und nennen ihre Belege: Richtungssteuerzeichen im Dateinamen, doppelte Endung (z. B. `.pdf.exe`), Programm mit Dokument-Endung. Hohe Entropie, fehlende Signatur, Packer oder Internet-Herkunft sind **nie** ein Fund, nur ein Hinweis. Gutartige Gegenfälle sind getestet.

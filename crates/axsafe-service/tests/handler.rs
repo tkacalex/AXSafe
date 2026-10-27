@@ -4,7 +4,7 @@
 #![cfg(unix)]
 
 use axsafe_core::report::ScanReport;
-use axsafe_core::scan::{NoProgress, ProcessAccess, Scanner};
+use axsafe_core::scan::{ProcessAccess, Scanner};
 use axsafe_service::client::{nonce, Client};
 use axsafe_service::handler::{serve, ConnAuth, ConnEnd, ConnLimits, ServiceCtx};
 use axsafe_service::identity::Identity;
@@ -26,8 +26,11 @@ impl JobRunner for TestRunner {
         while self.hold && !cancel.load(Ordering::SeqCst) && t.elapsed() < Duration::from_secs(10) {
             std::thread::sleep(Duration::from_millis(5));
         }
-        let s = Scanner::new(Vec::new(), Default::default()).with_file_access(job.access.clone());
-        Ok(s.scan_job(job.job_id.clone(), &job.paths, cancel, &mut NoProgress))
+        let s = Scanner::new(Vec::new(), Default::default())
+            .with_file_access(job.access.clone())
+            .with_kind(job.kind, job.trigger, Vec::new());
+        let mut p: &axsafe_service::jobs::JobProgress = &job.progress;
+        Ok(s.scan_job(job.job_id.clone(), &job.paths, cancel, &mut p))
     }
 }
 
@@ -96,12 +99,18 @@ fn owner_can_scan_and_read_report_other_user_cannot() {
         .call(Body::ScanStart {
             paths: vec![target.display().to_string()],
             use_clamav: false,
+            kind: Some(axsafe_core::scanjob::ScanKind::Quick),
+            trigger: Some(axsafe_core::scanjob::Trigger::ContextMenu),
         })
         .unwrap();
     assert!(r.ok, "{r:?}");
     let job = r.result["job_id"].as_str().unwrap().to_string();
     let fin = wait_finished(&mut c, &job);
     assert_eq!(fin["state"], "finished", "{fin}");
+    // AXS-026: Fortschritt und Scanart sind im Auftragszustand sichtbar.
+    assert_eq!(fin["progress"]["objects"], 1, "{fin}");
+    assert_eq!(fin["progress"]["bytes"], 7, "{fin}");
+    assert_eq!(fin["kind"], "quick");
     let rep = c
         .call(Body::Report {
             job_id: job.clone(),
@@ -109,6 +118,7 @@ fn owner_can_scan_and_read_report_other_user_cannot() {
         .unwrap();
     assert!(rep.ok);
     assert_eq!(rep.result["report"]["job_id"], job.as_str());
+    assert_eq!(rep.result["report"]["scope"]["trigger"], "context_menu");
 
     for other in [
         identity("S-1-5-21-1-2-3-1002", 99),
@@ -145,6 +155,8 @@ fn cancel_running_job_and_service_restart_keeps_report() {
         .call(Body::ScanStart {
             paths: vec![dir.path().display().to_string()],
             use_clamav: false,
+            kind: None,
+            trigger: None,
         })
         .unwrap();
     let job = r.result["job_id"].as_str().unwrap().to_string();
@@ -187,6 +199,8 @@ fn replayed_and_non_increasing_requests_are_rejected() {
     let body = Body::ScanStart {
         paths: vec![dir.path().display().to_string()],
         use_clamav: false,
+        kind: None,
+        trigger: None,
     };
     let n = nonce();
     let req = |seq: u64| {
@@ -295,6 +309,8 @@ fn rate_and_job_limits_bound_overload() {
             .call(Body::ScanStart {
                 paths: vec![dir.path().display().to_string()],
                 use_clamav: false,
+                kind: None,
+                trigger: None,
             })
             .unwrap();
         if r.ok {
@@ -342,6 +358,8 @@ fn damaged_report_is_reported_and_service_continues() {
         .call(Body::ScanStart {
             paths: vec![target.display().to_string()],
             use_clamav: false,
+            kind: None,
+            trigger: None,
         })
         .unwrap();
     let job = r.result["job_id"].as_str().unwrap().to_string();
@@ -362,6 +380,8 @@ fn damaged_report_is_reported_and_service_continues() {
         .call(Body::ScanStart {
             paths: vec![target.display().to_string()],
             use_clamav: false,
+            kind: None,
+            trigger: None,
         })
         .unwrap();
     assert!(r2.ok, "{r2:?}");
@@ -404,6 +424,8 @@ fn p02_gate_service_is_no_file_reader_or_deleter() {
         .call(Body::ScanStart {
             paths: vec![target.display().to_string()],
             use_clamav: false,
+            kind: None,
+            trigger: None,
         })
         .unwrap();
     let job = r.result["job_id"].as_str().unwrap().to_string();

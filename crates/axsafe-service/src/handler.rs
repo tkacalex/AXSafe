@@ -275,7 +275,12 @@ fn dispatch(req: &Request, auth: &ConnAuth, ctx: &ServiceCtx) -> Response {
             v["engines"] = (ctx.status)();
             Response::ok(req.seq, v)
         }
-        Body::ScanStart { paths, use_clamav } => {
+        Body::ScanStart {
+            paths,
+            use_clamav,
+            kind,
+            trigger,
+        } => {
             let spec = JobSpec {
                 job_id: uuid::Uuid::new_v4().to_string(),
                 paths: paths.iter().map(PathBuf::from).collect(),
@@ -283,6 +288,10 @@ fn dispatch(req: &Request, auth: &ConnAuth, ctx: &ServiceCtx) -> Response {
                 owner: me.clone(),
                 access: Arc::clone(&auth.access),
                 client_process: auth.client_process.clone(),
+                kind: kind.unwrap_or_default(),
+                // Ohne Angabe: über den Dienst ausgelöst.
+                trigger: trigger.unwrap_or(axsafe_core::scanjob::Trigger::Service),
+                progress: Default::default(),
             };
             match ctx.jobs.submit(spec) {
                 Ok(id) => Response::ok(req.seq, serde_json::json!({ "job_id": id })),

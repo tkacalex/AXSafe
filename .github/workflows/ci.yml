@@ -366,6 +366,14 @@ jobs:
           set -o pipefail
           cargo test -p axsafe-cli --test cli --locked -- --ignored report_target_windows_symlink_is_refused --exact 2>&1 | tee cargo-test-symlink.log
           grep -q "1 passed" cargo-test-symlink.log
+      - name: Gepackter gutartiger Gegenfall (T-025, UPX zur Laufzeit)
+        shell: pwsh
+        run: |
+          choco install upx --version 4.2.4 -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "UPX nicht installierbar" }
+          $env:AXSAFE_UPX = (Get-Command upx).Source
+          cargo test -p axsafe-core --lib --locked -- --ignored trust::tests::packed_benign_program_is_hint_not_detection --exact 2>&1 | Tee-Object cargo-test-upx.log
+          if (-not (Select-String -Path cargo-test-upx.log -Pattern '1 passed' -Quiet)) { throw "Gegenfall nicht bestanden" }
       - name: CLI bauen (Release)
         run: cargo build --release --locked -p axsafe-cli -p axsafe-service -p axsafe-clamav-worker
       - uses: actions/setup-dotnet@v4
@@ -381,7 +389,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          cat cargo-test.log cargo-test-symlink.log > cargo-all.log 2>/dev/null || true
+          cat cargo-test.log cargo-test-symlink.log cargo-test-upx.log > cargo-all.log 2>/dev/null || true
           python scripts/ci/test_summary.py --cargo cargo-all.log --dotnet trx \
             --platform "Windows Server (windows-latest) – kein LTSC-Nachweis" --markdown "$GITHUB_STEP_SUMMARY"
       - name: Oberfläche bauen (.NET 10 WPF)
@@ -402,6 +410,16 @@ jobs:
           if ($y.health.state -ne 'ready' -or $y.isolation.kind -ne 'sandboxed_worker' -or -not $y.isolation.enforced) {
             throw "Scanworker nicht nachweislich abgeschottet"
           }
+      - name: Scanarten (AXS-026) – Ziele, Kontextmenü, geplante Prüfung (Systemtest)
+        shell: pwsh
+        run: |
+          ./scripts/ci/scantypes_e2e.ps1 -Dist dist/AXSafe -EvidenceDir scanarten-nachweis
+          if ($LASTEXITCODE -ne 0) { throw "Scanarten-Systemtest fehlgeschlagen" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scanarten-nachweis
+          path: scanarten-nachweis/
       - name: Releaseinventar prüfen (T-012; Testregel bewusst freigegeben für Vorversion)
         run: python scripts/check_release_inventory.py dist/AXSafe --allow-test-rules --require-notices --inventory dist/inventory.json
       - name: Bildschirmauflösung für UI-Prüfung und Screenshots

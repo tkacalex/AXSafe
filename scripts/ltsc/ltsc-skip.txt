@@ -8,3 +8,4 @@ positive_benign_and_test_only_content|clamscan legt die übergebene EICAR-Probe 
 content_formats_are_backed_by_real_clamav|clamscan legt Container mit EICAR-Inhalt als temporäre Datei ab
 harmless_archives_normal_encrypted_nested|clamscan legt ein ZIP mit EICAR-Inhalt als temporäre Datei ab
 report_target_windows_symlink_is_refused|braucht Administratorrechte zum Anlegen symbolischer Links
+packed_benign_program_is_hint_not_detection|braucht UPX zum Packen (wird auf dem Alltagsrechner nicht installiert); läuft in der Windows-CI

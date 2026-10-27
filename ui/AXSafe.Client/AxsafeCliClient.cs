@@ -13,9 +13,39 @@ public sealed record ScanResult(
     string? Error,
     bool Cancelled)
 {
+    /// <summary>Fortsetzungsdatei eines abgebrochenen Auftrags (falls vorhanden).</summary>
+    public string? ResumePath { get; init; }
+
     public static ScanResult Failed(Guid jobId, int? exit, string error, string? path = null) =>
         new(jobId, false, null, path, exit, error, false);
 }
+
+/// <summary>Fortschritt: Objekte bisher, vorab gezählte Gesamtzahl (falls bekannt).</summary>
+public sealed record ScanProgressInfo(long Objects, long? Total, long Bytes, string? Current)
+{
+    public double? Percent => Total is > 0 ? Math.Min(99.0, Objects * 100.0 / Total.Value) : null;
+}
+
+/// <summary>Scanart (AXS-026): custom, quick, full, removable; Auslöser manual, context_menu, schedule.</summary>
+public sealed record ScanOptions(string Kind = "custom", string Trigger = "manual", string? ResumeFrom = null, IProgress<ScanProgressInfo>? Progress = null)
+{
+    public static string CliKind(string kind) => kind switch
+    {
+        "quick" => "schnell",
+        "full" => "voll",
+        "removable" => "wechsel",
+        _ => "benutzer",
+    };
+    public static string CliTrigger(string t) => t switch
+    {
+        "context_menu" => "kontextmenue",
+        "schedule" => "zeitplan",
+        _ => "manuell",
+    };
+}
+
+/// <summary>Ziele einer Scanart, wie die CLI sie bestimmt.</summary>
+public sealed record ScanTargets(string Kind, List<string> Roots, List<string> Missing, string Note);
 
 /// <summary>
 /// Startet die echte AXSafe-CLI für genau einen Auftrag und verknüpft das
@@ -67,9 +97,74 @@ public sealed class AxsafeCliClient
         return HealthView.Parse(run.Stdout);
     }
 
-    public async Task<ScanResult> ScanAsync(IReadOnlyList<string> paths, bool useClamav, CancellationToken ct)
+    /// <summary>Ziele einer Scanart (z. B. Downloads und Temp für die Schnellprüfung).</summary>
+    public async Task<ScanTargets?> GetTargetsAsync(string kind, CancellationToken ct)
+    {
+        var psi = NewStartInfo();
+        psi.ArgumentList.Add("ziele");
+        psi.ArgumentList.Add("--art");
+        psi.ArgumentList.Add(ScanOptions.CliKind(kind));
+        psi.ArgumentList.Add("--json");
+        var run = await RunAsync(psi, ct).ConfigureAwait(false);
+        if (run.StartError is not null || run.ExitCode != 0) return null;
+        try
+        {
+            var n = System.Text.Json.Nodes.JsonNode.Parse(run.Stdout);
+            if (n is null) return null;
+            return new ScanTargets(
+                (string?)n["kind"] ?? "",
+                n["roots"]?.AsArray().Select(x => (string)x!).ToList() ?? new(),
+                n["missing"]?.AsArray().Select(x => (string)x!).ToList() ?? new(),
+                (string?)n["note"] ?? "");
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Ziele (Wurzeln) aus der Kopfzeile einer Fortsetzungsdatei.</summary>
+    public static (string Kind, List<string> Roots)? ReadResumeHeader(string path)
+    {
+        try
+        {
+            using var r = new StreamReader(path);
+            var line = r.ReadLine();
+            if (line is null || line.Length > 1_000_000) return null;
+            var n = System.Text.Json.Nodes.JsonNode.Parse(line);
+            if ((string?)n?["schema"] != "axsafe.fortsetzung/1") return null;
+            return ((string?)n!["kind"] ?? "custom", n["roots"]?.AsArray().Select(x => (string)x!).ToList() ?? new());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    public Task<ScanResult> ScanAsync(IReadOnlyList<string> paths, bool useClamav, CancellationToken ct) =>
+        ScanAsync(paths, useClamav, new ScanOptions(), ct);
+
+    public async Task<ScanResult> ScanAsync(IReadOnlyList<string> paths, bool useClamav, ScanOptions opt, CancellationToken ct)
     {
         var jobId = Guid.NewGuid();
+        // Erwartete Wurzeln: angegebene Pfade, Ziele der Scanart oder die
+        // Ziele des fortgesetzten Auftrags.
+        IReadOnlyList<string> expectedRoots = paths;
+        var expectedKind = opt.Kind;
+        if (opt.ResumeFrom is not null)
+        {
+            var h = ReadResumeHeader(opt.ResumeFrom);
+            if (h is null) return ScanResult.Failed(jobId, null, "Fortsetzungsdatei nicht lesbar oder ungültig.");
+            expectedRoots = h.Value.Roots;
+            expectedKind = h.Value.Kind;
+        }
+        else if (opt.Kind != "custom")
+        {
+            var t = await GetTargetsAsync(opt.Kind, ct).ConfigureAwait(false);
+            if (t is null) return ScanResult.Failed(jobId, null, "Ziele der Scanart nicht ermittelbar.");
+            if (t.Roots.Count == 0) return ScanResult.Failed(jobId, null, "Für diese Scanart gibt es auf diesem Rechner keine Ziele.");
+            expectedRoots = t.Roots;
+        }
         string reportPath;
         try
         {
@@ -87,18 +182,41 @@ public sealed class AxsafeCliClient
         psi.ArgumentList.Add(jobId.ToString("D"));
         psi.ArgumentList.Add("--json");
         psi.ArgumentList.Add(reportPath);
+        var resumePath = Path.Combine(ReportsDir, $"fortsetzung-{jobId:N}.jsonl");
+        psi.ArgumentList.Add("--fortsetzungsdatei");
+        psi.ArgumentList.Add(resumePath);
+        psi.ArgumentList.Add("--fortschritt-json");
+        psi.ArgumentList.Add("--ausloeser");
+        psi.ArgumentList.Add(ScanOptions.CliTrigger(opt.Trigger));
         AddEngineArgs(psi, useClamav);
-        psi.ArgumentList.Add("--");
-        foreach (var p in paths) psi.ArgumentList.Add(p);
+        if (opt.ResumeFrom is not null)
+        {
+            psi.ArgumentList.Add("--fortsetzen");
+            psi.ArgumentList.Add(opt.ResumeFrom);
+        }
+        else if (opt.Kind != "custom")
+        {
+            psi.ArgumentList.Add("--art");
+            psi.ArgumentList.Add(ScanOptions.CliKind(opt.Kind));
+        }
+        else
+        {
+            psi.ArgumentList.Add("--");
+            foreach (var p in paths) psi.ArgumentList.Add(p);
+        }
 
         CliRun run;
         try
         {
-            run = await RunAsync(psi, ct).ConfigureAwait(false);
+            run = await RunAsync(psi, ct, opt.Progress).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            return new ScanResult(jobId, false, null, null, null, "Abgebrochen. Es liegt kein Ergebnis vor.", true);
+            // Bereits geprüfte Objekte stehen in der Fortsetzungsdatei.
+            return new ScanResult(jobId, false, null, null, null, "Abgebrochen. Es liegt kein Ergebnis vor.", true)
+            {
+                ResumePath = File.Exists(resumePath) ? resumePath : null,
+            };
         }
         if (run.StartError is not null)
             return ScanResult.Failed(jobId, null, run.StartError);
@@ -126,7 +244,7 @@ public sealed class AxsafeCliClient
         if (report is null)
             return ScanResult.Failed(jobId, run.ExitCode, "Bericht ist leer.", reportPath);
 
-        var problems = ReportValidator.Validate(report, jobId, paths, run.ExitCode.Value);
+        var problems = ReportValidator.Validate(report, jobId, expectedRoots, run.ExitCode.Value, expectedKind);
         if (problems.Count > 0)
             return ScanResult.Failed(jobId, run.ExitCode, "Bericht abgelehnt: " + string.Join(" ", problems), reportPath);
         return new ScanResult(jobId, true, report, reportPath, run.ExitCode, null, false);
@@ -155,7 +273,7 @@ public sealed class AxsafeCliClient
 
     private sealed record CliRun(int? ExitCode, string Stdout, string Stderr, string? StartError);
 
-    private static async Task<CliRun> RunAsync(ProcessStartInfo psi, CancellationToken ct)
+    private static async Task<CliRun> RunAsync(ProcessStartInfo psi, CancellationToken ct, IProgress<ScanProgressInfo>? progress = null)
     {
         using var proc = new Process { StartInfo = psi };
         try
@@ -167,7 +285,7 @@ public sealed class AxsafeCliClient
             return new CliRun(null, "", "", $"axsafe konnte nicht gestartet werden: {ex.Message}");
         }
         var outTask = proc.StandardOutput.ReadToEndAsync(CancellationToken.None);
-        var errTask = proc.StandardError.ReadToEndAsync(CancellationToken.None);
+        var errTask = ReadStderrAsync(proc.StandardError, progress);
         try
         {
             await proc.WaitForExitAsync(ct).ConfigureAwait(false);
@@ -178,5 +296,37 @@ public sealed class AxsafeCliClient
             throw;
         }
         return new CliRun(proc.ExitCode, await outTask.ConfigureAwait(false), await errTask.ConfigureAwait(false), null);
+    }
+
+    /// <summary>Liest stderr vollständig; Fortschrittszeilen (JSON) werden gemeldet.</summary>
+    private static async Task<string> ReadStderrAsync(StreamReader r, IProgress<ScanProgressInfo>? progress)
+    {
+        var sb = new System.Text.StringBuilder();
+        string? line;
+        while ((line = await r.ReadLineAsync().ConfigureAwait(false)) is not null)
+        {
+            if (TryParseProgress(line) is { } p)
+            {
+                progress?.Report(p);
+                continue;
+            }
+            sb.AppendLine(line);
+        }
+        return sb.ToString();
+    }
+
+    public static ScanProgressInfo? TryParseProgress(string line)
+    {
+        if (!line.StartsWith("{\"fortschritt\"", StringComparison.Ordinal)) return null;
+        try
+        {
+            var n = System.Text.Json.Nodes.JsonNode.Parse(line)?["fortschritt"];
+            if (n is null) return null;
+            return new ScanProgressInfo((long?)n["objekte"] ?? 0, (long?)n["gesamt"], (long?)n["bytes"] ?? 0, (string?)n["aktuell"]);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }

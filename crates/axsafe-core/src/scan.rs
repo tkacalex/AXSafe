@@ -52,6 +52,10 @@ pub struct Scanner {
     access: std::sync::Arc<dyn FileAccess>,
     classify_in_engine: bool,
     policy: Option<std::sync::Arc<crate::policy::Policy>>,
+    resume: Option<std::sync::Arc<crate::resume::Resume>>,
+    kind: crate::scanjob::ScanKind,
+    trigger: crate::scanjob::Trigger,
+    missing_targets: Vec<String>,
 }
 
 /// Mit wessen Rechten auf Dateien zugegriffen wird.
@@ -151,7 +155,45 @@ impl Scanner {
             access: std::sync::Arc::new(ProcessAccess),
             classify_in_engine: false,
             policy: None,
+            resume: None,
+            kind: crate::scanjob::ScanKind::Custom,
+            trigger: crate::scanjob::Trigger::Manual,
+            missing_targets: Vec::new(),
         }
+    }
+
+    /// Scanart und Auslöser für den Bericht; `missing` sind Orte der
+    /// Scanart, die es nicht gibt.
+    pub fn with_kind(
+        mut self,
+        kind: crate::scanjob::ScanKind,
+        trigger: crate::scanjob::Trigger,
+        missing: Vec<String>,
+    ) -> Self {
+        self.kind = kind;
+        self.trigger = trigger;
+        self.missing_targets = missing;
+        self
+    }
+
+    /// Früheren Stand fortsetzen (nur inhaltsgleiche, vollständige
+    /// Ergebnisse mit gleichem Versionsschlüssel werden übernommen).
+    pub fn with_resume(mut self, r: std::sync::Arc<crate::resume::Resume>) -> Self {
+        self.resume = Some(r);
+        self
+    }
+
+    /// Richtlinienstand, wie er im Bericht steht.
+    pub fn policy_version(&self) -> String {
+        match &self.policy {
+            Some(p) => format!("{}+{}", crate::POLICY_VERSION, p.version),
+            None => crate::POLICY_VERSION.into(),
+        }
+    }
+
+    /// Versionsschlüssel (Engines, Regeln, Heuristik, Richtlinie, Grenzen).
+    pub fn version_key(&self) -> String {
+        crate::resume::version_key(&self.engine_infos(), &self.policy_version(), &self.limits)
     }
 
     /// Richtlinie mit Ausnahmen (AXS-017). Ausgenommene Objekte werden im
@@ -212,6 +254,7 @@ impl Scanner {
         let started = Instant::now();
         let started_utc = now_utc();
         let infos = self.engine_infos();
+        let version_key = crate::resume::version_key(&infos, &self.policy_version(), &self.limits);
 
         // Auftragslücken, unabhängig von einzelnen Dateien (Befund 6).
         let mut job_gaps = Vec::new();
@@ -273,10 +316,7 @@ impl Scanner {
             schema: crate::REPORT_SCHEMA_VERSION.into(),
             job_id,
             axsafe_version: crate::AXSAFE_VERSION.into(),
-            policy_version: match &self.policy {
-                Some(p) => format!("{}+{}", crate::POLICY_VERSION, p.version),
-                None => crate::POLICY_VERSION.into(),
-            },
+            policy_version: self.policy_version(),
             started_utc,
             finished_utc: now_utc(),
             utc_offset: chrono::Local::now().format("%:z").to_string(),
@@ -287,6 +327,12 @@ impl Scanner {
                 limits: self.limits.clone(),
                 follows_links: false,
                 excluded,
+                kind: self.kind,
+                trigger: self.trigger,
+                kind_note: self.kind.coverage_note().into(),
+                missing_targets: self.missing_targets.clone(),
+                version_key: version_key.clone(),
+                resume: self.resume.as_ref().map(|r| r.info()),
             },
             outcome,
             detection: highest_detection(files.iter().map(|f| f.detection)),
@@ -593,6 +639,31 @@ impl Scanner {
         let sha = hex::encode(Sha256::digest(&data));
         let timeout = Duration::from_millis(self.limits.engine_timeout_ms);
 
+        // Fortsetzen: früheres Ergebnis nur für denselben Inhalt (SHA-256)
+        // bei gleichem Versionsschlüssel übernehmen. Identität, Herkunft und
+        // Zeitpunkt werden aktuell gesetzt; Änderungen während des Lesens
+        // werden unten wie sonst geprüft.
+        let reused = self
+            .resume
+            .as_ref()
+            .and_then(|r| r.reusable(&result.path, &sha).cloned());
+        if let Some(prev) = reused {
+            let mut r = prev;
+            r.identity = result.identity.take();
+            r.size = result.size;
+            r.origin = origin;
+            r.scanned_utc = now_utc();
+            r.notes.push(
+                "aus Fortsetzung übernommen: Inhalt (SHA-256) und Engine-/Regelstand unverändert"
+                    .into(),
+            );
+            if self.changed_after_read(&file, path, &before, data.len()) {
+                r.gaps.push(changed_gap());
+            }
+            r.status = ObjectStatus::from_parts(r.detection, &r.gaps);
+            return FileOutcome::Result(Box::new(r));
+        }
+
         // Dateityp: im eigenen Prozess oder (Dienst) im abgeschotteten Worker.
         let mut pre: Option<(usize, EngineOutcome)> = None;
         let mut features = None;
@@ -745,26 +816,8 @@ impl Scanner {
         }
 
         // Identität nach dem Lesen und der Prüfung erneut vergleichen.
-        let changed = match FileIdentity::from_file(&file) {
-            Ok(after) => !before.unchanged(&after) || data.len() as u64 != before.size,
-            Err(_) => true,
-        };
-        let path_moved = match self
-            .access
-            .enter()
-            .and_then(|_g| open_no_follow(path).and_then(|f| FileIdentity::from_file(&f)))
-        {
-            Ok(now) => !before.same_object(&now),
-            Err(_) => true,
-        };
-        if changed || path_moved {
-            result.gaps.push(Gap::new(
-                Verdict::ChangedDuringScan,
-                GapReason::ChangedDuringScan,
-                AXSAFE,
-                "Datei oder Pfad hat sich während der Prüfung geändert: neu prüfen. \
-                 Ein Fund bezieht sich auf den gelesenen Stand.",
-            ));
+        if self.changed_after_read(&file, path, &before, data.len()) {
+            result.gaps.push(changed_gap());
         }
         // Heuristiken: Funde nur bei eindeutigen Täuschungsmustern, sonst
         // Hinweise. Belege stehen im Fund.
@@ -789,6 +842,42 @@ impl Scanner {
         result.detection = highest_detection(detections);
         result.status = ObjectStatus::from_parts(result.detection, &result.gaps);
         FileOutcome::Result(Box::new(result))
+    }
+}
+
+fn changed_gap() -> Gap {
+    Gap::new(
+        Verdict::ChangedDuringScan,
+        GapReason::ChangedDuringScan,
+        AXSAFE,
+        "Datei oder Pfad hat sich während der Prüfung geändert: neu prüfen. \
+         Ein Fund bezieht sich auf den gelesenen Stand.",
+    )
+}
+
+impl Scanner {
+    /// Hat sich die Datei (Handle) oder das Objekt hinter dem Pfad seit dem
+    /// ersten Öffnen geändert?
+    fn changed_after_read(
+        &self,
+        file: &File,
+        path: &Path,
+        before: &FileIdentity,
+        read_len: usize,
+    ) -> bool {
+        let changed = match FileIdentity::from_file(file) {
+            Ok(after) => !before.unchanged(&after) || read_len as u64 != before.size,
+            Err(_) => true,
+        };
+        let path_moved = match self
+            .access
+            .enter()
+            .and_then(|_g| open_no_follow(path).and_then(|f| FileIdentity::from_file(&f)))
+        {
+            Ok(now) => !before.same_object(&now),
+            Err(_) => true,
+        };
+        changed || path_moved
     }
 }
 
@@ -1018,6 +1107,195 @@ mod tests {
         assert!(good.authenticode.as_ref().unwrap().status == "nicht_pruefbar");
         #[cfg(windows)]
         assert_eq!(good.authenticode.as_ref().unwrap().status, "unsigniert");
+    }
+
+    /// Zählt Engine-Aufrufe (für Fortsetzen: übernommene Dateien werden
+    /// nicht erneut an Engines gegeben).
+    struct Counting {
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        content: &'static str,
+    }
+    impl Engine for Counting {
+        fn name(&self) -> &str {
+            "zaehler"
+        }
+        fn info(&self) -> EngineInfo {
+            let mut i = TestEngine::prefix().info();
+            i.name = "zaehler".into();
+            i.content_version = self.content.into();
+            i
+        }
+        fn scan(&self, input: &ScanInput<'_>) -> EngineOutcome {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let mut o = TestEngine::prefix().scan(input);
+            o.engine = "zaehler".into();
+            o.content_version = self.content.into();
+            o
+        }
+    }
+
+    fn counting(
+        content: &'static str,
+    ) -> (Scanner, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let s = scanner(vec![Box::new(Counting {
+            calls: calls.clone(),
+            content,
+        })]);
+        (s, calls)
+    }
+
+    fn header(s: &Scanner, roots: &[PathBuf]) -> crate::resume::CheckpointHeader {
+        crate::resume::CheckpointHeader {
+            schema: crate::resume::CHECKPOINT_SCHEMA.into(),
+            job_id: "vorher".into(),
+            kind: crate::scanjob::ScanKind::Custom,
+            trigger: crate::scanjob::Trigger::Manual,
+            roots: roots.iter().map(|p| p.display().to_string()).collect(),
+            version_key: s.version_key(),
+            created_utc: now_utc(),
+        }
+    }
+
+    /// AXS-026: Abbruch, Änderung, Fortsetzen. Unveränderte Dateien werden
+    /// übernommen, geänderte und neue neu geprüft, eine halbe Zeile
+    /// (Abbruch beim Schreiben) ignoriert.
+    #[test]
+    fn resume_reuses_only_unchanged_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("daten");
+        fs::create_dir(&data).unwrap();
+        for (n, c) in [("a.txt", "eins"), ("b.txt", "zwei"), ("c.bin", "BAD drei")] {
+            fs::write(data.join(n), c).unwrap();
+        }
+        let roots = vec![data.clone()];
+        let cp = dir.path().join("fortsetzung.jsonl");
+        let (s1, calls1) = counting("1");
+        {
+            let mut np = NoProgress;
+            let mut w = crate::resume::CheckpointWriter::create(&cp, &header(&s1, &roots), &mut np)
+                .unwrap();
+            s1.scan_paths(&roots, &AtomicBool::new(false), &mut w);
+            assert!(w.error.is_none());
+        }
+        assert_eq!(calls1.load(Ordering::SeqCst), 3);
+        // Abbruch simulieren: letzte Zeile halb geschrieben.
+        let text = fs::read_to_string(&cp).unwrap();
+        let mut lines: Vec<&str> = text.lines().collect();
+        let last = lines.pop().unwrap();
+        let cut = format!("{}\n{}", lines.join("\n"), &last[..last.len() / 2]);
+        fs::write(&cp, cut).unwrap();
+        // Änderung nach dem Abbruch und eine neue Datei.
+        fs::write(data.join("b.txt"), "zwei geändert").unwrap();
+        fs::write(data.join("d.txt"), "neu").unwrap();
+
+        let (s2, calls2) = counting("1");
+        let r = std::sync::Arc::new(crate::resume::Resume::load(&cp, &s2.version_key()).unwrap());
+        assert_eq!(r.ignored_lines, 1);
+        let s2 = s2.with_resume(r);
+        let rep = run(&s2, &data);
+        // a.txt übernommen; b geändert, c (halbe Zeile) und d neu geprüft.
+        assert_eq!(calls2.load(Ordering::SeqCst), 3, "{rep:?}");
+        let info = rep.scope.resume.as_ref().unwrap();
+        assert_eq!(info.reused, 1);
+        assert!(!info.version_mismatch);
+        let a = rep
+            .files
+            .iter()
+            .find(|f| f.path.ends_with("a.txt"))
+            .unwrap();
+        assert!(a.notes.iter().any(|n| n.contains("Fortsetzung")));
+        let c = rep
+            .files
+            .iter()
+            .find(|f| f.path.ends_with("c.bin"))
+            .unwrap();
+        assert_eq!(c.detection, Verdict::Malicious);
+        assert_eq!(rep.summary.objects_total, 4);
+    }
+
+    /// Neuer Regel-/Signaturstand: nichts wird übernommen.
+    #[test]
+    fn resume_with_new_engine_content_rescans_everything() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "eins").unwrap();
+        let roots = vec![dir.path().join("a.txt")];
+        let cp = dir.path().join("cp.jsonl");
+        let (s1, _) = counting("alt");
+        {
+            let mut np = NoProgress;
+            let mut w = crate::resume::CheckpointWriter::create(&cp, &header(&s1, &roots), &mut np)
+                .unwrap();
+            s1.scan_paths(&roots, &AtomicBool::new(false), &mut w);
+        }
+        let (s2, calls) = counting("neu");
+        assert_ne!(s1.version_key(), s2.version_key());
+        let r = std::sync::Arc::new(crate::resume::Resume::load(&cp, &s2.version_key()).unwrap());
+        assert!(r.version_mismatch);
+        let rep = s2
+            .with_resume(r)
+            .scan_paths(&roots, &AtomicBool::new(false), &mut NoProgress);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(rep.scope.resume.as_ref().unwrap().reused, 0);
+        // Eine bestehende Fortsetzungsdatei wird nie überschrieben.
+        let mut np = NoProgress;
+        assert!(
+            crate::resume::CheckpointWriter::create(&cp, &header(&s1, &roots), &mut np).is_err()
+        );
+    }
+
+    /// Früher unvollständige Ergebnisse werden nie übernommen; manipulierte
+    /// Zeilen (anderer Hash) auch nicht.
+    #[test]
+    fn resume_never_reuses_incomplete_or_mismatching_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("x.txt");
+        fs::write(&f, "inhalt").unwrap();
+        let (s, calls) = counting("1");
+        let key = s.version_key();
+        let mut good = s.scan_file(&f);
+        let mut incomplete = good.clone();
+        incomplete.gaps.push(changed_gap());
+        incomplete.status = ObjectStatus::Incomplete;
+        good.sha256 = Some("00".repeat(32)); // anderer Inhalt behauptet
+        for prev in [incomplete, good] {
+            let cp = dir
+                .path()
+                .join(format!("cp-{}.jsonl", uuid::Uuid::new_v4()));
+            let mut h = header(&s, std::slice::from_ref(&f));
+            h.version_key = key.clone();
+            let mut t = serde_json::to_string(&h).unwrap();
+            t.push('\n');
+            t.push_str(&serde_json::to_string(&prev).unwrap());
+            t.push_str("\nkein json\n");
+            fs::write(&cp, t).unwrap();
+            let r = crate::resume::Resume::load(&cp, &key).unwrap();
+            assert_eq!(r.ignored_lines, 1);
+            assert!(r
+                .reusable(&prev.path, &s.scan_file(&f).sha256.unwrap())
+                .is_none());
+        }
+        assert!(calls.load(Ordering::SeqCst) >= 3);
+    }
+
+    #[test]
+    fn report_states_kind_and_what_it_does_not_cover() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "x").unwrap();
+        let s = scanner(vec![Box::new(TestEngine::prefix())]).with_kind(
+            crate::scanjob::ScanKind::Quick,
+            crate::scanjob::Trigger::Schedule,
+            vec!["/gibt/es/nicht".into()],
+        );
+        let rep = run(&s, dir.path());
+        assert_eq!(rep.scope.kind, crate::scanjob::ScanKind::Quick);
+        assert_eq!(rep.scope.trigger, crate::scanjob::Trigger::Schedule);
+        assert!(rep.scope.kind_note.contains("Nicht geprüft"));
+        assert_eq!(
+            rep.scope.missing_targets,
+            vec!["/gibt/es/nicht".to_string()]
+        );
+        assert_eq!(rep.scope.version_key.len(), 64);
     }
 
     #[test]

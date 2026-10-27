@@ -30,7 +30,11 @@ fn sha(p: &Path) -> String {
 
 fn scan(args: &[&str], extra: &[&Path]) -> Output {
     let mut c = Command::new(bin());
-    c.arg("scan").arg("--rules").arg(rules()).args(args);
+    c.arg("scan")
+        .arg("--rules")
+        .arg(rules())
+        .arg("--ohne-fortsetzung")
+        .args(args);
     for p in extra {
         c.arg(p);
     }
@@ -543,4 +547,187 @@ fn detection_is_traceable_from_event_to_action() {
     assert_eq!(e["detections"][0]["name"], "AXSafe.Test.EICAR");
     // Aktion: diese Vorversion meldet nur.
     assert!(f["action"].is_string() || f["action"].is_object(), "{f}");
+}
+
+// ---------------------------------------------------------------------------
+// AXS-026: Scanarten, Fortschritt, Abbruch und Fortsetzen
+// ---------------------------------------------------------------------------
+
+/// Echter Abbruch (Prozess wird hart beendet), Änderung einer bereits
+/// geprüften Datei, Fortsetzen: Unverändertes wird übernommen, Geändertes
+/// neu geprüft, nichts fehlt, die Fortsetzungsdatei wird danach entfernt.
+#[test]
+fn killed_scan_resumes_and_rescans_changed_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("daten");
+    std::fs::create_dir(&data).unwrap();
+    for i in 0..3000 {
+        std::fs::write(data.join(format!("f{i:04}.txt")), format!("inhalt {i}")).unwrap();
+    }
+    let cp = dir.path().join("fortsetzung.jsonl");
+    let mut child = Command::new(bin())
+        .arg("scan")
+        .arg("--rules")
+        .arg(rules())
+        .arg("--no-clamav")
+        .arg("--fortsetzungsdatei")
+        .arg(&cp)
+        .arg(&data)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    loop {
+        let lines = std::fs::read_to_string(&cp)
+            .map(|t| t.lines().count())
+            .unwrap_or(0);
+        if lines > 60 {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Fortsetzungsdatei wächst nicht"
+        );
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "Scan zu schnell fertig für den Test"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    child.kill().unwrap();
+    let _ = child.wait();
+    let text = std::fs::read_to_string(&cp).unwrap();
+    let done: Vec<String> = text
+        .lines()
+        .skip(1)
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .map(|v| v["path"].as_str().unwrap().to_string())
+        .collect();
+    assert!(done.len() >= 60);
+    // Eine bereits geprüfte Datei nach dem Abbruch ändern.
+    std::fs::write(&done[0], "geändert nach Abbruch").unwrap();
+
+    let rep_path = dir.path().join("bericht.json");
+    let o = Command::new(bin())
+        .arg("scan")
+        .arg("--rules")
+        .arg(rules())
+        .arg("--no-clamav")
+        .arg("--fortsetzen")
+        .arg(&cp)
+        .arg("--fortsetzungsdatei")
+        .arg(dir.path().join("neu.jsonl"))
+        .arg("--json")
+        .arg(&rep_path)
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    let rep = report(&rep_path);
+    assert_eq!(rep["summary"]["objects_total"], 3000);
+    let info = &rep["scope"]["resume"];
+    let reused = info["reused"].as_u64().unwrap();
+    assert!(reused >= done.len() as u64 - 1, "{info}");
+    assert!(reused < 3000);
+    assert_eq!(info["version_mismatch"], false);
+    let changed = file_entry(&rep, &done[0]);
+    assert!(
+        !changed["notes"].to_string().contains("Fortsetzung"),
+        "geänderte Datei darf nicht übernommen werden: {changed}"
+    );
+    let same = file_entry(&rep, &done[1]);
+    assert!(same["notes"].to_string().contains("Fortsetzung"), "{same}");
+    assert!(
+        !cp.exists(),
+        "alte Fortsetzungsdatei nach vollständigem Lauf entfernt"
+    );
+    assert!(!dir.path().join("neu.jsonl").exists());
+}
+
+#[test]
+fn quick_scan_covers_downloads_and_states_its_limits() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(home.join("Downloads")).unwrap();
+    std::fs::write(home.join("Downloads").join("geladen.txt"), "harmlos").unwrap();
+    let tmp = dir.path().join("tmp");
+    std::fs::create_dir_all(&tmp).unwrap();
+    let rep_path = dir.path().join("bericht.json");
+    let o = Command::new(bin())
+        .args([
+            "scan",
+            "--art",
+            "schnell",
+            "--ausloeser",
+            "zeitplan",
+            "--no-clamav",
+            "--ohne-fortsetzung",
+        ])
+        .arg("--rules")
+        .arg(rules())
+        .arg("--json")
+        .arg(&rep_path)
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("TMPDIR", &tmp)
+        .env("TEMP", &tmp)
+        .env("TMP", &tmp)
+        .env_remove("APPDATA")
+        .env_remove("ProgramData")
+        .env_remove("PUBLIC")
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    let rep = report(&rep_path);
+    assert_eq!(rep["scope"]["kind"], "quick");
+    assert_eq!(rep["scope"]["trigger"], "schedule");
+    assert!(rep["scope"]["kind_note"]
+        .as_str()
+        .unwrap()
+        .contains("Nicht geprüft"));
+    file_entry(&rep, "geladen.txt");
+    assert!(rep["scope"]["missing_targets"]
+        .to_string()
+        .contains("Desktop"));
+}
+
+#[test]
+fn scan_kind_errors_are_explicit() {
+    let o = scan(&["--art", "irgendwas"], &[]);
+    assert_eq!(o.status.code(), Some(3));
+    let o = scan(&[], &[]);
+    assert_eq!(o.status.code(), Some(3), "ohne Pfade kein stiller Leerlauf");
+    #[cfg(not(windows))]
+    {
+        let o = scan(&["--art", "voll", "--no-clamav"], &[]);
+        assert_eq!(o.status.code(), Some(3));
+        assert!(stderr(&o).contains("nur unter Windows"));
+    }
+}
+
+#[test]
+fn json_progress_lines_are_machine_readable() {
+    let dir = tempfile::tempdir().unwrap();
+    for i in 0..1500 {
+        std::fs::write(dir.path().join(format!("{i}.txt")), "x").unwrap();
+    }
+    let o = scan(&["--no-clamav", "--fortschritt-json"], &[dir.path()]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let lines: Vec<serde_json::Value> = stderr(&o)
+        .lines()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .filter(|v| v.get("fortschritt").is_some())
+        .collect();
+    // Bei sehr schnellen Läufen kann es keine Zwischenmeldung geben; wenn
+    // es welche gibt, müssen sie wohlgeformt und steigend sein.
+    let mut last = 0;
+    for l in &lines {
+        let n = l["fortschritt"]["objekte"].as_u64().unwrap();
+        assert!(n > last);
+        last = n;
+        assert!(
+            l["fortschritt"]["gesamt"].is_null()
+                || l["fortschritt"]["gesamt"].as_u64().unwrap() >= 1500
+        );
+    }
 }

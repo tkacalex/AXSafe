@@ -92,10 +92,21 @@ public partial class MainWindow : Window
         var args = Environment.GetCommandLineArgs().Skip(1).ToList();
         var i = args.IndexOf("--scan");
         if (i < 0) return;
-        var paths = args.Skip(i + 1).Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToList();
-        if (paths.Count == 0) return;
+        // Optionen mit Wert zuerst herausnehmen, damit ihr Wert nie als Pfad gilt.
+        var trigger = "manual";
+        var rest = new List<string>();
+        for (var k = i + 1; k < args.Count; k++)
+        {
+            if (args[k] == "--ausloeser" && k + 1 < args.Count)
+            {
+                trigger = args[++k] == "kontextmenue" ? "context_menu" : "manual";
+                continue;
+            }
+            if (!args[k].StartsWith("--", StringComparison.Ordinal)) rest.Add(args[k]);
+        }
+        if (rest.Count == 0) return;
         GoScan_Click(this, new RoutedEventArgs());
-        await RunScanAsync(paths);
+        await RunScanAsync(rest, new ScanOptions(Trigger: trigger));
     }
 
     private Brush B(string key) => (Brush)FindResource(key);
@@ -228,18 +239,53 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog(this) == true) await RunScanAsync(dlg.FileNames);
     }
 
+    private async void QuickScan_Click(object sender, RoutedEventArgs e) => await RunScanAsync(Array.Empty<string>(), new ScanOptions(Kind: "quick"));
+    private async void FullScan_Click(object sender, RoutedEventArgs e) => await RunScanAsync(Array.Empty<string>(), new ScanOptions(Kind: "full"));
+    private async void RemovableScan_Click(object sender, RoutedEventArgs e) => await RunScanAsync(Array.Empty<string>(), new ScanOptions(Kind: "removable"));
+
+    private string? _resumePath;
+
+    private async void Resume_Click(object sender, RoutedEventArgs e)
+    {
+        if (_resumePath is null) return;
+        var from = _resumePath;
+        await RunScanAsync(Array.Empty<string>(), new ScanOptions(ResumeFrom: from), forceLocal: true);
+    }
+
     private void Cancel_Click(object sender, RoutedEventArgs e) => _scanCts?.Cancel();
 
     private void SetBusy(bool busy)
     {
         BtnFolder.IsEnabled = !busy;
         BtnFiles.IsEnabled = !busy;
+        BtnQuick.IsEnabled = !busy;
+        BtnFull.IsEnabled = !busy;
+        BtnRemovable.IsEnabled = !busy;
+        BtnResume.IsEnabled = !busy;
         BtnCancel.IsEnabled = busy;
         ScanProgress.IsIndeterminate = busy;
+        ScanProgress.Value = 0;
     }
 
-    private async Task RunScanAsync(IReadOnlyList<string> paths)
+    private void OnProgress(ScanProgressInfo p)
     {
+        if (p.Percent is { } pct)
+        {
+            ScanProgress.IsIndeterminate = false;
+            ScanProgress.Value = pct;
+            ScanStatus.Text = $"Geprüft: {p.Objects} von {p.Total} Objekten ({pct:0} %)";
+        }
+        else
+        {
+            ScanStatus.Text = $"Geprüft: {p.Objects} Objekte ({p.Bytes / (1024 * 1024)} MB)";
+        }
+    }
+
+    private Task RunScanAsync(IReadOnlyList<string> paths) => RunScanAsync(paths, new ScanOptions());
+
+    private async Task RunScanAsync(IReadOnlyList<string> paths, ScanOptions opt, bool forceLocal = false)
+    {
+        opt = opt with { Progress = new Progress<ScanProgressInfo>(OnProgress) };
         if (_cli is null)
         {
             ScanStatus.Text = "axsafe.exe wurde nicht gefunden. Siehe Hilfe.";
@@ -250,16 +296,33 @@ public partial class MainWindow : Window
         // Altes Ergebnis sofort entfernen: Es darf nie als Ergebnis des neuen Auftrags erscheinen.
         ResultList.ItemsSource = null;
         ScanSummary.Text = "";
-        ScanStatus.Text = $"Prüfe {paths.Count} Auswahl(en) …";
+        ScanStatus.Text = opt.ResumeFrom is not null ? "Setze abgebrochene Prüfung fort …"
+            : opt.Kind switch
+            {
+                "quick" => "Schnellprüfung läuft …",
+                "full" => "Vollständige Prüfung läuft – das kann lange dauern …",
+                "removable" => "Prüfe Wechseldatenträger …",
+                _ => $"Prüfe {paths.Count} Auswahl(en) …",
+            };
         try
         {
             ScanResult r;
-            if (_service?.State == ServiceState.Bereit && OperatingSystem.IsWindows())
+            if (!forceLocal && _service?.State == ServiceState.Bereit && OperatingSystem.IsWindows())
             {
                 _lastScanPath = "über den AXSafe-Dienst, mit deinen Benutzerrechten";
                 try
                 {
-                    r = await ServiceScan.RunAsync(paths, UseClamav.IsChecked == true, _scanCts.Token, CliLocator.ReportsDir);
+                    // Ziele der Scanart bestimmt die CLI mit den Pfaden dieses Benutzers.
+                    var targets = paths;
+                    if (opt.Kind != "custom")
+                    {
+                        var t = await _cli.GetTargetsAsync(opt.Kind, _scanCts.Token);
+                        targets = t?.Roots ?? new List<string>();
+                    }
+                    r = targets.Count == 0
+                        ? ScanResult.Failed(Guid.Empty, null, "Für diese Scanart gibt es auf diesem Rechner keine Ziele.")
+                        : await ServiceScan.RunAsync(targets, UseClamav.IsChecked == true, _scanCts.Token, CliLocator.ReportsDir,
+                            opt.Kind, opt.Trigger, opt.Progress);
                 }
                 catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException or InvalidDataException)
                 {
@@ -270,10 +333,14 @@ public partial class MainWindow : Window
             else
             {
                 _lastScanPath = $"lokal mit deinen Benutzerrechten ({_service?.Label ?? "Dienst nicht geprüft"})";
-                r = await _cli.ScanAsync(paths, UseClamav.IsChecked == true, _scanCts.Token);
+                r = await _cli.ScanAsync(paths, UseClamav.IsChecked == true, opt, _scanCts.Token);
             }
+            _resumePath = r.Cancelled ? r.ResumePath : null;
+            BtnResume.Visibility = _resumePath is null ? Visibility.Collapsed : Visibility.Visible;
             if (r.Cancelled)
-                ScanStatus.Text = "Abgebrochen. Es liegt kein Ergebnis vor.";
+                ScanStatus.Text = r.ResumePath is null
+                    ? "Abgebrochen. Es liegt kein Ergebnis vor."
+                    : "Abgebrochen. Es liegt kein Ergebnis vor. Bereits Geprüftes kann beim Fortsetzen übernommen werden, wenn es unverändert ist.";
             else if (!r.Success || r.Report is null)
                 ScanStatus.Text = $"Fehler (Auftrag {r.JobId:D}): {r.Error}";
             else
@@ -308,6 +375,10 @@ public partial class MainWindow : Window
         ScanSummary.Text =
             $"{s.ObjectsTotal} Objekte · {s.ObjectsRead} gelesen · {s.WithDetection} mit Fund · {s.Incomplete} mit Prüflücke " +
             $"(davon {s.DetectionAndIncomplete} mit Fund) · {s.NoDetectionComplete} ohne Fund vollständig · {s.BytesRead:N0} Bytes · {rep.DurationMs} ms";
+        if (rep.Scope.Kind != "custom" && rep.Scope.KindNote.Length > 0)
+            ScanSummary.Text += "\n" + rep.Scope.KindNote;
+        if (rep.Scope.Resume is { } res)
+            ScanSummary.Text += "\nFortsetzung: " + res.Note;
         if (rep.JobGaps.Count > 0)
             ScanSummary.Text += "\nAuftragslücken: " + string.Join("; ", rep.JobGaps.Select(g => $"{Texts.GapReason(g.Reason)} ({g.Source})"));
 

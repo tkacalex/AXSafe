@@ -29,7 +29,9 @@ pub mod heuristics;
 pub mod identity;
 pub mod policy;
 pub mod report;
+pub mod resume;
 pub mod scan;
+pub mod scanjob;
 pub mod trust;
 pub mod verdict;
 
