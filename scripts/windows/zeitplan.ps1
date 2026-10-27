@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Geplante AXSafe-Prüfung für den angemeldeten Benutzer einrichten, anzeigen
   oder entfernen (AXS-026). Keine Administratorrechte nötig.

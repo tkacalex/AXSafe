@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Explorer-Kontextmenü „Mit AXSafe prüfen“ für den angemeldeten Benutzer
   einrichten oder entfernen (AXS-026). Keine Administratorrechte nötig.

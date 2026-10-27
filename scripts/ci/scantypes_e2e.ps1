@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Systemtest Scanarten (AXS-026) auf Windows: Ziele der Schnell-/Voll-/
   Wechseldatenträgerprüfung, Kontextmenü einrichten/entfernen, geplante
@@ -34,6 +34,8 @@ Check 'Wechseldatenträger: ehrliche Liste (Runner hat keine)' ($LASTEXITCODE -e
 # 2) Kontextmenü (HKCU, ohne Adminrechte)
 & powershell -NoProfile -ExecutionPolicy Bypass -File "$Scripts\kontextmenue.ps1" -Programm $Ui
 Check 'Kontextmenü: Skript erfolgreich' ($LASTEXITCODE -eq 0)
+$verb = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Classes\*\shell\AXSafe.Pruefen').MUIVerb
+Check 'Kontextmenü: Beschriftung mit Umlaut korrekt' ($verb -eq "Mit AXSafe pr$([char]0xFC)fen") $verb
 foreach ($k in 'HKCU:\Software\Classes\*\shell\AXSafe.Pruefen\command', 'HKCU:\Software\Classes\Directory\shell\AXSafe.Pruefen\command') {
     $v = (Get-ItemProperty -LiteralPath $k).'(default)'
     Check "Kontextmenü-Befehl $k" ($v -eq ('"{0}" --scan "%1" --ausloeser kontextmenue' -f $Ui)) $v
