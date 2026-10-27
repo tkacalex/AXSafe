@@ -19,7 +19,7 @@ jobs:
   paket:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust-Toolchain
         run: rustup show active-toolchain; if ($LASTEXITCODE -ne 0) { rustup toolchain install }
       - name: Testpaket bauen (unter C:\axsafe-ltsc)
