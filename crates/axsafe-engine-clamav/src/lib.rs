@@ -77,6 +77,44 @@ pub fn unrar_available(libclamav: &std::path::Path) -> bool {
         .is_file()
 }
 
+/// Harmlose RAR-Probe (gespeicherte Datei mit gesetztem Verschlüsselungs-
+/// kennzeichen). Kann libclamav RAR lesen (unrar geladen), meldet es sie mit
+/// `CL_SCAN_HEURISTIC_ENCRYPTED_ARCHIVE` als verschlüsselt; ohne unrar bleibt
+/// sie „sauber“. So wird die RAR-Fähigkeit zur Laufzeit belegt statt aus
+/// Dateinamen geschlossen.
+pub fn rar_capability_probe() -> Vec<u8> {
+    use axsafe_core::container::crc32;
+    fn block(htype: u8, flags: u16, body: &[u8], data: &[u8]) -> Vec<u8> {
+        let mut h = vec![htype];
+        h.extend_from_slice(&flags.to_le_bytes());
+        h.extend_from_slice(&((7 + body.len()) as u16).to_le_bytes());
+        h.extend_from_slice(body);
+        let mut out = ((crc32(&h) & 0xFFFF) as u16).to_le_bytes().to_vec();
+        out.extend(h);
+        out.extend_from_slice(data);
+        out
+    }
+    let data = b"AXSafe RAR-Probe";
+    let name = b"probe.txt";
+    let mut out = b"Rar!\x1a\x07\x00".to_vec();
+    out.extend(block(0x73, 0, &[0u8; 6], &[]));
+    let mut fh = Vec::new();
+    fh.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    fh.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    fh.push(2);
+    fh.extend_from_slice(&crc32(data).to_le_bytes());
+    fh.extend_from_slice(&0x5B5A_0000u32.to_le_bytes());
+    fh.push(20);
+    fh.push(0x30);
+    fh.extend_from_slice(&(name.len() as u16).to_le_bytes());
+    fh.extend_from_slice(&0x20u32.to_le_bytes());
+    fh.extend_from_slice(name);
+    // 0x8000: Größenfeld vorhanden, 0x0004: verschlüsselt.
+    out.extend(block(0x74, 0x8004, &fh, data));
+    out.extend(block(0x7B, 0x4000, &[], &[]));
+    out
+}
+
 /// Belegte Inhaltsformate dieser Installation (RAR nur mit unrar).
 pub fn content_formats(libclamav: &std::path::Path) -> Vec<ContentFormat> {
     let mut v = VERIFIED_CONTENT_FORMATS.to_vec();

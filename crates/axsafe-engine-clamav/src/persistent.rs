@@ -325,11 +325,8 @@ impl ClamAvWorkerEngine {
                 .into(),
             content_kind: ContentKind::Unknown,
             content_note: String::new(),
-            inspects_contents_of: crate::content_formats(
-                &ws.library
-                    .clone()
-                    .unwrap_or_else(|| default_library(&clamscan)),
-            ),
+            // RAR erst nach erfolgreicher Laufzeitprobe (siehe activate).
+            inspects_contents_of: crate::VERIFIED_CONTENT_FORMATS.to_vec(),
             isolation: Isolation {
                 kind: IsolationKind::SandboxedWorker,
                 enforced: false,
@@ -662,8 +659,41 @@ impl ClamAvWorkerEngine {
             .daily
             .and(chrono::DateTime::from_timestamp(a.stats.db_time, 0))
             .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+        // RAR nur beanspruchen, wenn libclamav die Probe als RAR liest.
+        let rar = Self::probe_rar(&mut a);
+        info.inspects_contents_of = crate::VERIFIED_CONTENT_FORMATS.to_vec();
+        if rar {
+            info.inspects_contents_of
+                .push(axsafe_core::filetype::ContentFormat::Rar);
+        } else {
+            info.content_note
+                .push_str("; RAR-Inhalt nicht prüfbar (unrar in libclamav nicht geladen)");
+        }
         info.health = EngineHealth::Ready;
         inner.active = Some(a);
+    }
+
+    /// Laufzeitprobe: Liest libclamav RAR? (verschlüsselte Probe ⇒ Meldung
+    /// „Encrypted“). Fehler oder Zeitüberschreitung zählen als „nein“.
+    fn probe_rar(a: &mut Active) -> bool {
+        let data = crate::rar_capability_probe();
+        let mut payload = 5_000u32.to_le_bytes().to_vec();
+        payload.extend_from_slice(&data);
+        let Ok(frame) = encode_frame(T_SCAN, &payload) else {
+            return false;
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let res = a
+            .session
+            .write_all(frame, deadline)
+            .and_then(|_| read_response(&mut a.session, deadline));
+        match res {
+            Ok((T_RESULT, p)) => matches!(
+                serde_json::from_slice::<ScanReply>(&p).map(|r| r.result),
+                Ok(ScanResult::Virus { name }) if name.contains("Encrypted")
+            ),
+            _ => false,
+        }
     }
 
     fn note(&self, a: &Active, update_error: Option<&str>, previous: Option<&str>) -> String {
