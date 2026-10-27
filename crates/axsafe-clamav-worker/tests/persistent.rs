@@ -476,3 +476,24 @@ fn content_formats_are_backed_by_real_libclamav() {
         "{o:?}"
     );
 }
+
+/// AXS-021: Engine-Vertrag für die dauerhaft geladene ClamAV-Engine.
+#[test]
+#[ignore = "braucht libclamav (Linux-CI: Paket clamav; Windows: Job windows-clamav)"]
+fn conformance_persistent_worker() {
+    let f = fixture("worker");
+    let e = ClamAvWorkerEngine::start(settings(&f, &[]), PathBuf::from("clamscan"));
+    ready(&e);
+    axsafe_core::conformance::assert_conforms(&axsafe_core::conformance::check_ready(
+        &e,
+        &eicar(),
+        b"Hallo Welt",
+    ));
+    let g = fixture("worker");
+    std::fs::remove_file(g.db.join("axsafe-test.hdb")).unwrap();
+    std::fs::write(g.db.join("kaputt.hdb"), b"kein gueltiger eintrag\n").unwrap();
+    let broken = ClamAvWorkerEngine::start(settings(&g, &[]), PathBuf::from("clamscan"));
+    axsafe_core::conformance::assert_conforms(&axsafe_core::conformance::check_unavailable(
+        &broken,
+    ));
+}

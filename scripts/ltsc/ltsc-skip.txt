@@ -14,3 +14,5 @@ encrypted_and_nested_and_embedded_content|legt eine Programmdatei mit angehängt
 iso_content_is_inspected|clamscan legt ein ISO mit EICAR-Inhalt als temporäre Datei ab
 content_formats_are_backed_by_real_libclamav|libclamav entpackt Container mit EICAR-Inhalt in temporäre Dateien
 rar_content_follows_unrar_availability|legt ein RAR mit EICAR-Inhalt als Datei ab
+conformance_clamscan|clamscan legt die EICAR-Probe als temporäre Datei ab
+conformance_persistent_worker|libclamav kann die EICAR-Probe als temporäre Datei ablegen

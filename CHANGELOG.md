@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen an AXSafe. Format angelehnt an [Keep a Changelog]
 
 ## [Unveröffentlicht]
 
+### Neu – Phase P03, Etappe 7: Engine-Vertrag
+- [`docs/ENGINE-CONTRACT.md`](docs/ENGINE-CONTRACT.md) legt fest, was jede Engine liefern muss (Versionen, Bereitschaft, belegte Containerformate, Ergebnisregeln, isolierte Ausfälle).
+- Eine gemeinsame **Prüfreihe** (`axsafe_core::conformance`) prüft alle vier Adapter – YARA-X im Prozess und im abgeschotteten Worker, ClamAV per clamscan und dauerhaft geladen – im bereiten und im nicht bereiten Zustand. Sie erkennt nachweislich eine absichtlich fehlerhafte Engine.
+
 ### Neu – Phase P03, Etappe 6: Regelpflege und Regeltests
 - Jede YARA-X-Regel braucht jetzt zusätzlich eine **Version**; IDs müssen eindeutig sein. Ein fehlerhafter Regelsatz wird vollständig abgelehnt (keine stille Teilladung). Funde nennen Regel-ID **und** Regelversion.
 - **Regeltests** (`rule-tests/<id>.json`): Zu jeder Regel gehören Positiv- und gutartige Gegenbeispiele; die CI prüft sie bei jedem Lauf, ebenso eine Laufzeitgrenze je Regelsatz. Beispiele entstehen zur Laufzeit.

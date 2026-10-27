@@ -500,6 +500,21 @@ mod tests {
         })
     }
 
+    /// AXS-021: Engine-Vertrag (bereit und nicht bereit).
+    #[test]
+    fn conformance_in_process() {
+        let e = YaraXEngine::from_dir(repo_rules());
+        axsafe_core::conformance::assert_conforms(&axsafe_core::conformance::check_ready(
+            &e,
+            &eicar(),
+            b"Hallo Welt",
+        ));
+        let empty = tempfile::tempdir().unwrap();
+        axsafe_core::conformance::assert_conforms(&axsafe_core::conformance::check_unavailable(
+            &YaraXEngine::from_dir(empty.path()),
+        ));
+    }
+
     #[test]
     fn repo_rules_load_with_required_meta() {
         let e = YaraXEngine::from_dir(repo_rules());

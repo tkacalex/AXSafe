@@ -113,9 +113,9 @@
     },
     "AXS-021": {
       "status": "teilweise",
-      "where": "crates/axsafe-engine-clamav",
-      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 7 Formate mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen); YARA-X-Worker: Absturz/Hänger/Protokollbruch bleiben im Worker, Neustart beim nächsten Objekt (Windows Server und Linux getestet); ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, nur eigener Arbeitsordner beschreibbar), Netzwerk per Firewall-Regel gesperrt; B-18: libclamav dauerhaft im abgeschotteten axsafe-clamav-worker (Datenbank einmal laden, Ausfall/Hänger/Warteschlange/Größe als Lücke, Update erst nach erfolgreichem Laden aktiv, Tests mit echter libclamav)",
-      "rest": "LTSC (B-02); Messung mit neuem Paket auf dem Zielrechner (B-18)"
+      "where": "crates/axsafe-engine-clamav, crates/axsafe-engine-yarax, crates/axsafe-worker, crates/axsafe-clamav-worker; Vertrag docs/ENGINE-CONTRACT.md, Prüfreihe axsafe_core::conformance",
+      "evidence": "Echter ClamAV 1.5.4 über stdin, kein TCP; gemeinsames Ablaufdatum inkl. Nachkommen und Pipes, Ausgabe- und Speichergrenze; Inhaltsprüfung für 8 Formate (+ RAR mit unrar) mit echtem ClamAV belegt; Signaturbestand getrennt (offiziell/Test/eigen); YARA-X-Worker: Absturz/Hänger/Protokollbruch bleiben im Worker, Neustart beim nächsten Objekt (Windows Server und Linux getestet); ClamAV unter Windows mit eingeschränktem Token (Integrität Niedrig, nur eigener Arbeitsordner beschreibbar), Netzwerk per Firewall-Regel gesperrt; B-18: libclamav dauerhaft im abgeschotteten axsafe-clamav-worker (Datenbank einmal laden, Ausfall/Hänger/Warteschlange/Größe als Lücke, Update erst nach erfolgreichem Laden aktiv, Tests mit echter libclamav); Engine-Vertrag dokumentiert und für alle vier Adapter (YARA-X im Prozess, YARA-X-Worker, clamscan, dauerhafter ClamAV-Worker) mit derselben Prüfreihe getestet: bereit (Versionen, Positiv-/Gegenfall, leere/zufällige/kaputte Eingaben, Wiederholbarkeit, nie „ohne Fund“ mit Lücke, Funde mit Belegen) und nicht bereit (nie „ohne Fund“); Zielrechner LTSC: Rust-Testsuite 146/0 (26.10.2026), ClamAV-Worker gemessen (B-18)",
+      "rest": "Windows-Nachweis der neuen Vertragstests erst nach grüner CI; LTSC-Lauf der neuen Tests mit dem nächsten Testpaket"
     },
     "AXS-022": {
       "status": "teilweise",
@@ -243,7 +243,12 @@
       "without_database_is_unavailable",
       "parent_exits_but_descendant_holds_pipes",
       "crash_is_error_gap_and_worker_restarts",
-      "hanging_worker_is_timeout_and_killed_within_budget"
+      "hanging_worker_is_timeout_and_killed_within_budget",
+      "conformance::tests::broken_engine_is_caught",
+      "conformance_in_process",
+      "conformance_sandboxed_worker",
+      "conformance_clamscan",
+      "conformance_persistent_worker"
     ],
     "T-022": [
       "tests::eicar_positive",

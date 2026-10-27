@@ -496,3 +496,22 @@ fn appcontainer_path_resolution_is_measured() {
     );
     assert!(text.contains("canonicalize"), "keine Messausgabe: {out:?}");
 }
+
+/// AXS-021: Engine-Vertrag für den abgeschotteten YARA-X-Worker.
+#[test]
+fn conformance_sandboxed_worker() {
+    let e = WorkerEngine::start(WorkerConfig::new(worker(), rules()));
+    axsafe_core::conformance::assert_conforms(&axsafe_core::conformance::check_ready(
+        &e,
+        &eicar(),
+        b"Hallo Welt",
+    ));
+    let empty = tempfile::tempdir().unwrap();
+    let broken = WorkerEngine::start(WorkerConfig::new(
+        worker(),
+        axsafe_engine_yarax::read_rule_sources(empty.path()),
+    ));
+    axsafe_core::conformance::assert_conforms(&axsafe_core::conformance::check_unavailable(
+        &broken,
+    ));
+}

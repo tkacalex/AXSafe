@@ -147,3 +147,25 @@ fn recursion_limit_is_reported_as_gap() {
         "Rekursionsgrenze muss als Lücke erscheinen: {o:?}"
     );
 }
+
+/// AXS-021: Engine-Vertrag für clamscan je Objekt.
+#[test]
+#[ignore = "benötigt clamscan (Linux-CI: Pflicht)"]
+fn conformance_clamscan() {
+    let dir = tempfile::tempdir().unwrap();
+    let e = engine(dir.path());
+    axsafe_core::conformance::assert_conforms(&axsafe_core::conformance::check_ready(
+        &e,
+        &common::eicar(),
+        b"Hallo Welt",
+    ));
+    let empty = dir.path().join("leer");
+    std::fs::create_dir(&empty).unwrap();
+    let broken = ClamAvEngine::new(ClamAvConfig {
+        database: Some(empty),
+        ..Default::default()
+    });
+    axsafe_core::conformance::assert_conforms(&axsafe_core::conformance::check_unavailable(
+        &broken,
+    ));
+}
