@@ -39,7 +39,7 @@ jobs:
           $code = $LASTEXITCODE
           Get-ChildItem C:\axsafe-ltsc\ergebnis, "$env:USERPROFILE\Desktop\AXSafe\nachweise" -Filter 'ltsc-tests-*' -ErrorAction SilentlyContinue | Copy-Item -Destination "$PWD\ltsc"
           if ($code -ne 0) { throw "Selbstprüfung des Testpakets fehlgeschlagen ($code)" }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ltsc-testpaket

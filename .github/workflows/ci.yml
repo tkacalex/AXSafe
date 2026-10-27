@@ -86,7 +86,7 @@ jobs:
           python3 -c "import hashlib,sys; e=b'AXSafe-Faehigkeiten'; open(sys.argv[1]+'/t.hdb','w').write(hashlib.md5(e).hexdigest()+':%d:AXSafe.Test.Matrix\\n' % len(e))" "$D"
           target/debug/axsafe faehigkeiten --rules rules --clamav-db "$D" --json > faehigkeiten.json
           python3 scripts/gen_capability_matrix.py faehigkeiten.json --check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: belege-linux
@@ -169,7 +169,7 @@ jobs:
           rm -rf "$D"
           cat messung-clamav-linux.txt >> "$GITHUB_STEP_SUMMARY"
           test "$rc" = 0
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: beleg-clamav-signaturen
@@ -272,7 +272,7 @@ jobs:
           [ -f cargo-test-clamav.log ] || { echo "Keine ClamAV-Tests ausgeführt (Einrichtung gescheitert)"; exit 1; }
           python scripts/ci/test_summary.py --cargo cargo-test-clamav.log \
             --platform "Windows Server mit ClamAV (Skript-Installation) – kein LTSC-Nachweis" --markdown "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: beleg-windows-clamav
@@ -306,7 +306,7 @@ jobs:
         run: |
           .\scripts\ci\service_e2e.ps1 -BinDir "$PWD\target\release" -RulesDir "$PWD\rules" -EvidenceDir "$PWD\dienst-nachweis" -ClientTests "$PWD\ui\AXSafe.Client.Tests"
           if ($LASTEXITCODE -ne 0) { throw "Dienst-Systemtest fehlgeschlagen" }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: beleg-windows-dienst
@@ -340,7 +340,7 @@ jobs:
         run: |
           cargo cyclonedx --format json --all-features --spec-version 1.5 --target x86_64-pc-windows-msvc
           mkdir -p sbom && find crates -name '*.cdx.json' -exec cp {} sbom/ \;
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom-und-hinweise
           path: |
@@ -431,13 +431,13 @@ jobs:
           New-Item -ItemType Directory screenshots | Out-Null
           ./scripts/ci/screenshot.ps1 -Exe dist/AXSafe/AXSafe.exe -Out screenshots/ui-overview.png
           ./scripts/ci/screenshot.ps1 -Exe dist/AXSafe/AXSafe.exe -Out screenshots/ui-scan.png -AppArgs @('--scan', "$env:RUNNER_TEMP\AXSafe-Demo") -WaitSeconds 15
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: axsafe-windows-x64-preview
           path: |
             dist/AXSafe/
             dist/inventory.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: belege-windows
