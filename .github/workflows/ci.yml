@@ -326,7 +326,7 @@ jobs:
           rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal
           cargo +"$FUZZ_NIGHTLY" install cargo-fuzz --locked --version 0.13.2
       - name: Saatdaten (harmlos, zur Laufzeit erzeugt)
-        run: AXSAFE_FUZZ_SEEDS="$PWD/fuzz-seeds" cargo test --locked -p axsafe-core --lib write_fuzz_seeds -- --ignored
+        run: AXSAFE_FUZZ_SEEDS="$PWD/fuzz-seeds" cargo test --locked -p axsafe-core --lib write_fuzz_seeds
       - name: Fuzz-Ziele je 120 s
         run: |
           set -o pipefail

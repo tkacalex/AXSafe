@@ -151,15 +151,21 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(120));
     }
 
-    /// Schreibt die Saatdaten für den libFuzzer-Lauf (CI).
+    /// Schreibt die Saatdaten für den libFuzzer-Lauf (CI-Job Fuzzing setzt
+    /// `AXSAFE_FUZZ_SEEDS`); sonst in einen temporären Ordner und prüft, dass
+    /// alle Saaten geschrieben und wieder lesbar sind.
     #[test]
-    #[ignore = "nur für den Fuzzing-Job: AXSAFE_FUZZ_SEEDS=<ordner>"]
     fn write_fuzz_seeds() {
-        let dir = std::env::var("AXSAFE_FUZZ_SEEDS").expect("AXSAFE_FUZZ_SEEDS");
-        let dir = std::path::Path::new(&dir);
-        std::fs::create_dir_all(dir).unwrap();
-        for (name, data) in seeds() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = std::env::var_os("AXSAFE_FUZZ_SEEDS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| tmp.path().to_path_buf());
+        std::fs::create_dir_all(&dir).unwrap();
+        let seeds = seeds();
+        assert!(seeds.len() >= 9);
+        for (name, data) in &seeds {
             std::fs::write(dir.join(name), data).unwrap();
+            assert_eq!(&std::fs::read(dir.join(name)).unwrap(), data);
         }
     }
 }
